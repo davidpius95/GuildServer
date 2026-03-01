@@ -1,0 +1,46 @@
+{
+  "name": "guildserver-paas",
+  "version": "1.0.0",
+  "description": "Enterprise-grade Platform-as-a-Service solution",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "start": "turbo run start",
+    "test": "turbo run test",
+    "test:watch": "turbo run test:watch",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "format": "prettier --write \"**/*.{js,ts,tsx,md,json}\"",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "db:generate": "turbo run db:generate",
+    "db:migrate": "turbo run db:migrate",
+    "db:studio": "turbo run db:studio",
+    "db:seed": "turbo run db:seed",
+    "docker:build": "docker build -t guildserver-paas .",
+    "docker:run": "docker-compose up -d",
+    "docker:stop": "docker-compose down",
+    "k8s:deploy": "kubectl apply -f infrastructure/kubernetes/",
+    "terraform:init": "cd infrastructure/terraform && terraform init",
+    "terraform:plan": "cd infrastructure/terraform && terraform plan",
+    "terraform:apply": "cd infrastructure/terraform && terraform apply"
+  },
+  "devDependencies": {
+    "@turbo/gen": "^1.11.2",
+    "turbo": "^1.11.2",
+    "prettier": "^3.1.1",
+    "eslint": "^8.56.0",
+    "@typescript-eslint/eslint-plugin": "^6.18.1",
+    "@typescript-eslint/parser": "^6.18.1",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}
