@@ -24,9 +24,11 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
       transformer: superjson,
       links: [
         httpBatchLink({
-          url: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/trpc',
+          url: process.env.NEXT_PUBLIC_API_URL || '/trpc',
           headers() {
-            const token = localStorage.getItem('guildserver-token')
+            const token = typeof window !== 'undefined'
+              ? localStorage.getItem('guildserver-token')
+              : null
             return token ? { authorization: `Bearer ${token}` } : {}
           },
         }),

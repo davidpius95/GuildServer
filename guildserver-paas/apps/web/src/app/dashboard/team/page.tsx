@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { 
+import {
   Users,
   Plus,
   Search,
@@ -19,114 +19,11 @@ import {
   UserPlus,
   UserMinus,
   Edit,
-  Key
+  Key,
+  RefreshCw
 } from "lucide-react"
-
-const mockTeamMembers = [
-  {
-    id: "1",
-    name: "John Doe",
-    email: "john.doe@company.com",
-    role: "owner",
-    status: "active",
-    joinedAt: "2023-06-15",
-    lastActive: "2 hours ago",
-    permissions: ["admin", "deploy", "billing"],
-    avatar: "JD",
-  },
-  {
-    id: "2",
-    name: "Jane Smith",
-    email: "jane.smith@company.com",
-    role: "admin",
-    status: "active",
-    joinedAt: "2023-08-22",
-    lastActive: "1 day ago",
-    permissions: ["admin", "deploy"],
-    avatar: "JS",
-  },
-  {
-    id: "3",
-    name: "Mike Johnson",
-    email: "mike.johnson@company.com",
-    role: "developer",
-    status: "active",
-    joinedAt: "2023-09-10",
-    lastActive: "30 minutes ago",
-    permissions: ["deploy", "read"],
-    avatar: "MJ",
-  },
-  {
-    id: "4",
-    name: "Sarah Wilson",
-    email: "sarah.wilson@company.com",
-    role: "developer",
-    status: "invited",
-    joinedAt: "2024-01-18",
-    lastActive: "Never",
-    permissions: ["read"],
-    avatar: "SW",
-  },
-  {
-    id: "5",
-    name: "Tom Brown",
-    email: "tom.brown@company.com",
-    role: "viewer",
-    status: "inactive",
-    joinedAt: "2023-07-05",
-    lastActive: "2 weeks ago",
-    permissions: ["read"],
-    avatar: "TB",
-  },
-]
-
-const invitations = [
-  {
-    id: "inv-1",
-    email: "alex.garcia@company.com",
-    role: "developer",
-    invitedBy: "John Doe",
-    invitedAt: "2024-01-19",
-    status: "pending",
-    expiresAt: "2024-01-26",
-  },
-  {
-    id: "inv-2",
-    email: "lisa.chen@company.com", 
-    role: "admin",
-    invitedBy: "Jane Smith",
-    invitedAt: "2024-01-18",
-    status: "pending",
-    expiresAt: "2024-01-25",
-  },
-]
-
-const auditLogs = [
-  {
-    id: "log-1",
-    action: "Member invited",
-    actor: "john.doe@company.com",
-    target: "alex.garcia@company.com",
-    timestamp: "2024-01-19 14:30:00",
-    details: "Invited as developer with deploy permissions",
-  },
-  {
-    id: "log-2",
-    action: "Role changed",
-    actor: "john.doe@company.com",
-    target: "mike.johnson@company.com",
-    timestamp: "2024-01-18 10:15:00",
-    details: "Changed from viewer to developer",
-  },
-  {
-    id: "log-3",
-    action: "Member removed",
-    actor: "jane.smith@company.com",
-    target: "old.member@company.com",
-    timestamp: "2024-01-17 16:45:00",
-    details: "Removed from organization",
-  },
-]
+import { trpc } from "@/components/trpc-provider"
+import { useOrganization } from "@/hooks/use-auth"
 
 const getRoleColor = (role: string) => {
   switch (role) {
@@ -134,6 +31,7 @@ const getRoleColor = (role: string) => {
       return "bg-purple-50 text-purple-700 border-purple-200"
     case "admin":
       return "bg-red-50 text-red-700 border-red-200"
+    case "member":
     case "developer":
       return "bg-blue-50 text-blue-700 border-blue-200"
     case "viewer":
@@ -143,28 +41,31 @@ const getRoleColor = (role: string) => {
   }
 }
 
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case "active":
-      return "bg-green-50 text-green-700 border-green-200"
-    case "invited":
-    case "pending":
-      return "bg-yellow-50 text-yellow-700 border-yellow-200"
-    case "inactive":
-      return "bg-gray-50 text-gray-700 border-gray-200"
-    default:
-      return "bg-gray-50 text-gray-700 border-gray-200"
-  }
-}
-
 export default function TeamPage() {
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedMember, setSelectedMember] = useState<string | null>(null)
+  const { orgId, currentOrg } = useOrganization()
 
-  const filteredMembers = mockTeamMembers.filter(member =>
-    member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    member.email.toLowerCase().includes(searchQuery.toLowerCase())
+  // Real data queries
+  const membersQuery = trpc.organization.getMembers.useQuery(
+    { organizationId: orgId },
+    { enabled: !!orgId }
   )
+
+  const auditQuery = trpc.audit.getLogs.useQuery(
+    { organizationId: orgId, limit: 20 },
+    { enabled: !!orgId }
+  )
+
+  const members = membersQuery.data ?? []
+  const auditLogs = auditQuery.data ?? []
+
+  const filteredMembers = members.filter((member: any) =>
+    (member.user?.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (member.user?.email || "").toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
+  const activeMembers = members.filter((m: any) => m.user)
+  const adminCount = members.filter((m: any) => m.role === "admin" || m.role === "owner").length
 
   return (
     <div className="space-y-6">
@@ -176,9 +77,9 @@ export default function TeamPage() {
             Manage team members, roles, and permissions
           </p>
         </div>
-        <Button>
-          <UserPlus className="mr-2 h-4 w-4" />
-          Invite Member
+        <Button onClick={() => membersQuery.refetch()}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
         </Button>
       </div>
 
@@ -190,22 +91,22 @@ export default function TeamPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockTeamMembers.length}</div>
+            <div className="text-2xl font-bold">{members.length}</div>
             <p className="text-xs text-muted-foreground">
-              {mockTeamMembers.filter(m => m.status === 'active').length} active
+              {activeMembers.length} active
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Invites</CardTitle>
-            <Mail className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Organization</CardTitle>
+            <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{invitations.length}</div>
+            <div className="text-2xl font-bold truncate">{currentOrg?.name || "—"}</div>
             <p className="text-xs text-muted-foreground">
-              Awaiting response
+              {currentOrg?.slug || ""}
             </p>
           </CardContent>
         </Card>
@@ -216,9 +117,7 @@ export default function TeamPage() {
             <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {mockTeamMembers.filter(m => m.role === 'admin' || m.role === 'owner').length}
-            </div>
+            <div className="text-2xl font-bold">{adminCount}</div>
             <p className="text-xs text-muted-foreground">
               With admin access
             </p>
@@ -227,17 +126,13 @@ export default function TeamPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Recently Active</CardTitle>
+            <CardTitle className="text-sm font-medium">Audit Events</CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {mockTeamMembers.filter(m => 
-                m.lastActive.includes('hour') || m.lastActive.includes('minute')
-              ).length}
-            </div>
+            <div className="text-2xl font-bold">{auditLogs.length}</div>
             <p className="text-xs text-muted-foreground">
-              In last 24 hours
+              Recent actions
             </p>
           </CardContent>
         </Card>
@@ -246,7 +141,6 @@ export default function TeamPage() {
       <Tabs defaultValue="members" className="space-y-4">
         <TabsList>
           <TabsTrigger value="members">Members</TabsTrigger>
-          <TabsTrigger value="invitations">Invitations</TabsTrigger>
           <TabsTrigger value="roles">Roles & Permissions</TabsTrigger>
           <TabsTrigger value="audit">Audit Log</TabsTrigger>
         </TabsList>
@@ -270,90 +164,49 @@ export default function TeamPage() {
               <CardDescription>Manage your team members and their access</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {filteredMembers.map((member) => (
-                  <div key={member.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center gap-4">
-                      <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-medium">
-                        {member.avatar}
-                      </div>
-                      <div>
-                        <h4 className="font-medium">{member.name}</h4>
-                        <p className="text-sm text-muted-foreground">{member.email}</p>
-                        <div className="flex gap-2 mt-1">
-                          <Badge variant="outline" className={getRoleColor(member.role)}>
-                            {member.role}
-                          </Badge>
-                          <Badge variant="outline" className={getStatusColor(member.status)}>
-                            {member.status}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm text-muted-foreground">
-                        <div>Joined {member.joinedAt}</div>
-                        <div>Active {member.lastActive}</div>
-                      </div>
-                      <div className="flex gap-2 mt-2">
-                        <Button variant="outline" size="sm">
-                          <Edit className="mr-2 h-3 w-3" />
-                          Edit
-                        </Button>
-                        <Button variant="outline" size="sm">
-                          <MoreHorizontal className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+              {membersQuery.isLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Loading members...</div>
+              ) : filteredMembers.length > 0 ? (
+                <div className="space-y-4">
+                  {filteredMembers.map((member: any) => {
+                    const user = member.user
+                    const initials = user?.name
+                      ? user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
+                      : user?.email?.slice(0, 2).toUpperCase() || "?"
 
-        <TabsContent value="invitations" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Pending Invitations</CardTitle>
-              <CardDescription>Team invitations waiting for response</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {invitations.map((invitation) => (
-                  <div key={invitation.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center gap-4">
-                      <Mail className="h-8 w-8 text-muted-foreground" />
-                      <div>
-                        <h4 className="font-medium">{invitation.email}</h4>
-                        <div className="flex gap-4 text-sm text-muted-foreground">
-                          <span>Invited as {invitation.role}</span>
-                          <span>by {invitation.invitedBy}</span>
-                          <span>on {invitation.invitedAt}</span>
+                    return (
+                      <div key={member.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="flex items-center gap-4">
+                          <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-medium text-sm">
+                            {initials}
+                          </div>
+                          <div>
+                            <h4 className="font-medium">{user?.name || "Unknown"}</h4>
+                            <p className="text-sm text-muted-foreground">{user?.email || ""}</p>
+                            <div className="flex gap-2 mt-1">
+                              <Badge variant="outline" className={getRoleColor(member.role)}>
+                                {member.role}
+                              </Badge>
+                            </div>
+                          </div>
                         </div>
-                        <div className="mt-1">
-                          <Badge variant="outline" className={getStatusColor(invitation.status)}>
-                            {invitation.status}
-                          </Badge>
+                        <div className="text-right">
+                          <div className="text-sm text-muted-foreground">
+                            <div>Joined {member.createdAt ? new Date(member.createdAt).toLocaleDateString() : "N/A"}</div>
+                            {user?.lastLogin && (
+                              <div>Last login {new Date(user.lastLogin).toLocaleDateString()}</div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm text-muted-foreground mb-2">
-                        Expires {invitation.expiresAt}
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm">
-                          Resend
-                        </Button>
-                        <Button variant="outline" size="sm">
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  {searchQuery ? "No members match your search" : "No team members found"}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -383,17 +236,10 @@ export default function TeamPage() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
-                      <h4 className="font-medium">Developer</h4>
+                      <h4 className="font-medium">Member</h4>
                       <p className="text-sm text-muted-foreground">Deploy and manage applications</p>
                     </div>
-                    <Badge className={getRoleColor("developer")}>Developer</Badge>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium">Viewer</h4>
-                      <p className="text-sm text-muted-foreground">Read-only access</p>
-                    </div>
-                    <Badge className={getRoleColor("viewer")}>Viewer</Badge>
+                    <Badge className={getRoleColor("member")}>Member</Badge>
                   </div>
                 </div>
               </CardContent>
@@ -406,37 +252,32 @@ export default function TeamPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <div className="grid grid-cols-5 gap-2 text-sm font-medium">
+                  <div className="grid grid-cols-4 gap-2 text-sm font-medium">
                     <span>Permission</span>
                     <span className="text-center">Owner</span>
                     <span className="text-center">Admin</span>
-                    <span className="text-center">Dev</span>
-                    <span className="text-center">Viewer</span>
+                    <span className="text-center">Member</span>
                   </div>
-                  <div className="grid grid-cols-5 gap-2 text-sm">
+                  <div className="grid grid-cols-4 gap-2 text-sm">
                     <span>Billing</span>
                     <span className="text-center">✓</span>
                     <span className="text-center">-</span>
                     <span className="text-center">-</span>
-                    <span className="text-center">-</span>
                   </div>
-                  <div className="grid grid-cols-5 gap-2 text-sm">
+                  <div className="grid grid-cols-4 gap-2 text-sm">
                     <span>Team Management</span>
                     <span className="text-center">✓</span>
                     <span className="text-center">✓</span>
                     <span className="text-center">-</span>
-                    <span className="text-center">-</span>
                   </div>
-                  <div className="grid grid-cols-5 gap-2 text-sm">
+                  <div className="grid grid-cols-4 gap-2 text-sm">
                     <span>Deploy Apps</span>
                     <span className="text-center">✓</span>
                     <span className="text-center">✓</span>
                     <span className="text-center">✓</span>
-                    <span className="text-center">-</span>
                   </div>
-                  <div className="grid grid-cols-5 gap-2 text-sm">
+                  <div className="grid grid-cols-4 gap-2 text-sm">
                     <span>View Resources</span>
-                    <span className="text-center">✓</span>
                     <span className="text-center">✓</span>
                     <span className="text-center">✓</span>
                     <span className="text-center">✓</span>
@@ -451,27 +292,50 @@ export default function TeamPage() {
           <Card>
             <CardHeader>
               <CardTitle>Audit Log</CardTitle>
-              <CardDescription>Recent team management activities</CardDescription>
+              <CardDescription>Recent organization activities and actions</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {auditLogs.map((log) => (
-                  <div key={log.id} className="flex items-start gap-4 p-4 border rounded-lg">
-                    <Activity className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium">{log.action}</span>
-                        <span className="text-sm text-muted-foreground">•</span>
-                        <span className="text-sm text-muted-foreground">{log.timestamp}</span>
+              {auditQuery.isLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Loading audit logs...</div>
+              ) : auditLogs.length > 0 ? (
+                <div className="space-y-4">
+                  {auditLogs.map((log: any) => (
+                    <div key={log.id} className="flex items-start gap-4 p-4 border rounded-lg">
+                      <Activity className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium">{log.action}</span>
+                          {log.resourceType && (
+                            <Badge variant="secondary" className="text-xs">
+                              {log.resourceType}
+                            </Badge>
+                          )}
+                          <span className="text-sm text-muted-foreground">•</span>
+                          <span className="text-sm text-muted-foreground">
+                            {new Date(log.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        {log.resourceName && (
+                          <div className="text-sm text-muted-foreground">
+                            Resource: {log.resourceName}
+                          </div>
+                        )}
+                        {log.metadata && typeof log.metadata === 'object' && Object.keys(log.metadata).length > 0 && (
+                          <div className="text-xs text-muted-foreground mt-1 font-mono bg-muted/50 p-2 rounded">
+                            {JSON.stringify(log.metadata, null, 0).slice(0, 200)}
+                          </div>
+                        )}
                       </div>
-                      <div className="text-sm text-muted-foreground mb-1">
-                        {log.actor} → {log.target}
-                      </div>
-                      <div className="text-sm">{log.details}</div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Activity className="h-12 w-12 mx-auto mb-2 opacity-30" />
+                  <p>No audit logs found</p>
+                  <p className="text-xs mt-1">Actions will appear here as they occur</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

@@ -4,6 +4,16 @@ import { createTRPCRouter, protectedProcedure } from "../trpc/trpc";
 import { applications, projects, members, deployments } from "@guildserver/database";
 import { eq, and, desc } from "drizzle-orm";
 import { deploymentQueue } from "../queues/deployment";
+import {
+  restartContainer,
+  getContainerLogs,
+  getContainerStats,
+  getAppContainerInfo,
+  removeExistingContainers,
+  stopContainer,
+} from "../services/docker";
+import { healthCheck } from "../services/container-manager";
+import { listGithubRepos, listGithubBranches } from "../services/git-provider";
 
 const createApplicationSchema = z.object({
   name: z.string().min(1),
@@ -12,9 +22,11 @@ const createApplicationSchema = z.object({
   sourceType: z.enum(["github", "gitlab", "bitbucket", "gitea", "docker", "git", "drop"]),
   repository: z.string().optional(),
   branch: z.string().default("main"),
+  buildPath: z.string().optional(), // Subdirectory for monorepo builds
   buildType: z.enum(["dockerfile", "nixpacks", "heroku", "paketo", "static", "railpack"]),
   dockerImage: z.string().optional(),
   dockerTag: z.string().default("latest"),
+  containerPort: z.number().optional(),
   environment: z.record(z.string()).default({}),
   memoryLimit: z.number().optional(),
   cpuLimit: z.number().optional(),
@@ -70,6 +82,9 @@ export const applicationRouter = createTRPCRouter({
       const projectApplications = await ctx.db.query.applications.findMany({
         where: eq(applications.projectId, input.projectId),
         orderBy: [desc(applications.createdAt)],
+        with: {
+          domains: true,
+        },
       });
 
       return projectApplications;
@@ -190,6 +205,58 @@ export const applicationRouter = createTRPCRouter({
       return updatedApplication;
     }),
 
+  // Toggle preview deployments and update main branch
+  updatePreviewSettings: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        previewDeployments: z.boolean(),
+        mainBranch: z.string().optional(),
+        previewTtlHours: z.number().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const app = await ctx.db.query.applications.findFirst({
+        where: eq(applications.id, input.id),
+        with: {
+          project: {
+            with: {
+              organization: {
+                with: {
+                  members: {
+                    where: eq(members.userId, ctx.user.id),
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!app) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Application not found" });
+      }
+
+      if (app.project.organization.members.length === 0) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+      }
+
+      const updateData: any = {
+        previewDeployments: input.previewDeployments,
+        updatedAt: new Date(),
+      };
+      if (input.mainBranch) updateData.mainBranch = input.mainBranch;
+      if (input.previewTtlHours) updateData.previewTtlHours = input.previewTtlHours;
+
+      const [updated] = await ctx.db
+        .update(applications)
+        .set(updateData)
+        .where(eq(applications.id, input.id))
+        .returning();
+
+      return updated;
+    }),
+
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
@@ -216,6 +283,14 @@ export const applicationRouter = createTRPCRouter({
           code: "NOT_FOUND",
           message: "Application not found or access denied",
         });
+      }
+
+      // Stop and remove Docker containers for this application
+      try {
+        await removeExistingContainers(input.id);
+      } catch (error: any) {
+        // Log but don't block deletion if container cleanup fails
+        console.warn(`Failed to clean up containers for app ${input.id}: ${error.message}`);
       }
 
       await ctx.db.delete(applications).where(eq(applications.id, input.id));
@@ -316,15 +391,28 @@ export const applicationRouter = createTRPCRouter({
         });
       }
 
-      // TODO: Implement real log fetching from Docker/Kubernetes
-      // For now, return mock logs
-      const mockLogs = [
-        { timestamp: new Date(), level: "info", message: "Application starting..." },
-        { timestamp: new Date(), level: "info", message: "Server listening on port 3000" },
-        { timestamp: new Date(), level: "info", message: "Health check passed" },
-      ];
+      // Fetch real logs from Docker container
+      try {
+        const rawLogs = await getContainerLogs(input.id, input.lines);
 
-      return mockLogs;
+        if (rawLogs.length === 0) {
+          return [{ timestamp: new Date(), level: "info", message: "No logs available. Container may not be running." }];
+        }
+
+        return rawLogs.map((line, index) => {
+          // Try to parse timestamp from Docker log format
+          const timestampMatch = line.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s*(.*)/);
+          const timestamp = timestampMatch ? new Date(timestampMatch[1]) : new Date();
+          const message = timestampMatch ? timestampMatch[2] : line;
+          const level = message.toLowerCase().includes("error") ? "error"
+            : message.toLowerCase().includes("warn") ? "warning"
+            : "info";
+
+          return { timestamp, level, message };
+        });
+      } catch (error: any) {
+        return [{ timestamp: new Date(), level: "error", message: `Failed to fetch logs: ${error.message}` }];
+      }
     }),
 
   getMetrics: protectedProcedure
@@ -360,39 +448,44 @@ export const applicationRouter = createTRPCRouter({
         });
       }
 
-      // TODO: Implement real metrics fetching from monitoring system
-      // For now, return mock metrics
-      const mockMetrics = {
+      // Fetch real metrics from Docker container stats
+      const stats = await getContainerStats(input.id);
+      const containerInfo = await getAppContainerInfo(input.id);
+      const health = await healthCheck(input.id);
+
+      if (!stats) {
+        // Container not running - return empty metrics with status info
+        return {
+          status: health.status,
+          container: containerInfo,
+          cpu: { current: 0, average: 0, max: 0, data: [] },
+          memory: { current: 0, average: 0, max: 0, data: [] },
+          network: { rxBytes: 0, txBytes: 0 },
+        };
+      }
+
+      return {
+        status: health.status,
+        uptime: health.uptime,
+        container: containerInfo,
         cpu: {
-          current: 45.5,
-          average: 42.3,
-          max: 67.8,
-          data: Array.from({ length: 24 }, (_, i) => ({
-            timestamp: new Date(Date.now() - (23 - i) * 60 * 60 * 1000),
-            value: Math.random() * 70 + 20,
-          })),
+          current: stats.cpuPercent,
+          average: stats.cpuPercent,
+          max: stats.cpuPercent,
+          data: [{ timestamp: new Date(), value: stats.cpuPercent }],
         },
         memory: {
-          current: 234.5,
-          average: 198.7,
-          max: 387.2,
-          data: Array.from({ length: 24 }, (_, i) => ({
-            timestamp: new Date(Date.now() - (23 - i) * 60 * 60 * 1000),
-            value: Math.random() * 300 + 150,
-          })),
+          current: stats.memoryUsageMb,
+          average: stats.memoryUsageMb,
+          max: stats.memoryLimitMb,
+          percent: stats.memoryPercent,
+          data: [{ timestamp: new Date(), value: stats.memoryUsageMb }],
         },
-        requests: {
-          current: 125,
-          average: 98,
-          max: 234,
-          data: Array.from({ length: 24 }, (_, i) => ({
-            timestamp: new Date(Date.now() - (23 - i) * 60 * 60 * 1000),
-            value: Math.floor(Math.random() * 200 + 50),
-          })),
+        network: {
+          rxBytes: stats.networkRxBytes,
+          txBytes: stats.networkTxBytes,
         },
       };
-
-      return mockMetrics;
     }),
 
   restart: protectedProcedure
@@ -423,9 +516,22 @@ export const applicationRouter = createTRPCRouter({
         });
       }
 
-      // TODO: Implement real application restart
-      // For now, just return success
-      return { success: true, message: "Application restart initiated" };
+      // Restart Docker container
+      const restarted = await restartContainer(input.id);
+      if (!restarted) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "No running container found for this application. Deploy it first.",
+        });
+      }
+
+      // Update application status
+      await ctx.db
+        .update(applications)
+        .set({ status: "running", updatedAt: new Date() })
+        .where(eq(applications.id, input.id));
+
+      return { success: true, message: "Application restarted successfully" };
     }),
 
   scale: protectedProcedure
@@ -473,7 +579,32 @@ export const applicationRouter = createTRPCRouter({
         .where(eq(applications.id, id))
         .returning();
 
-      // TODO: Implement real scaling logic
+      // Handle scaling: if scaled to 0, stop the container
+      if (replicas === 0) {
+        try {
+          await stopContainer(id);
+          await ctx.db
+            .update(applications)
+            .set({ status: "stopped", updatedAt: new Date() })
+            .where(eq(applications.id, id));
+        } catch {
+          // Container may not exist
+        }
+      }
+
       return updatedApplication;
+    }),
+
+  // Git integration endpoints
+  listGithubRepos: protectedProcedure
+    .input(z.object({ token: z.string() }))
+    .query(async ({ input }) => {
+      return await listGithubRepos(input.token);
+    }),
+
+  listGithubBranches: protectedProcedure
+    .input(z.object({ token: z.string(), owner: z.string(), repo: z.string() }))
+    .query(async ({ input }) => {
+      return await listGithubBranches(input.token, input.owner, input.repo);
     }),
 });

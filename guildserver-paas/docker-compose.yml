@@ -1,6 +1,36 @@
-version: '3.8'
-
 services:
+  # Traefik Reverse Proxy - Routes traffic to deployed containers by hostname
+  # e.g., http://my-app.localhost → container on "guildserver" network
+  traefik:
+    image: traefik:v3.6
+    container_name: guildserver-traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=guildserver"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # ACME (Let's Encrypt) certificate resolver for automatic SSL
+      # Certificates are auto-provisioned for non-localhost custom domains
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@guildserver.com}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      # Note: HTTP→HTTPS redirect is NOT global (would break *.localhost)
+      # Instead, TLS + redirect is configured per-router via container labels
+      - "--log.level=INFO"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"   # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data/letsencrypt:/letsencrypt
+    networks:
+      - default
+      - guildserver
+    restart: unless-stopped
+
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
@@ -89,3 +119,6 @@ volumes:
 networks:
   default:
     name: guildserver-network
+  guildserver:
+    external: true
+    name: guildserver

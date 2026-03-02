@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+.next/
+.turbo/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.sw?
+.DS_Store
+
+# Build artifacts
+apps/api/.builds/
+*.tsbuildinfo
+
+# Logs
+*.log
+
+# OS
+Thumbs.db

@@ -10,6 +10,10 @@ import { kubernetesRouter } from "../routers/kubernetes";
 import { workflowRouter } from "../routers/workflow";
 import { monitoringRouter } from "../routers/monitoring";
 import { auditRouter } from "../routers/audit";
+import { environmentRouter } from "../routers/environment";
+import { domainRouter } from "../routers/domain";
+import { webhookRouter } from "../routers/webhook";
+import { notificationRouter } from "../routers/notification";
 
 export const appRouter = createTRPCRouter({
   auth: authRouter,
@@ -23,6 +27,10 @@ export const appRouter = createTRPCRouter({
   workflow: workflowRouter,
   monitoring: monitoringRouter,
   audit: auditRouter,
+  environment: environmentRouter,
+  domain: domainRouter,
+  webhook: webhookRouter,
+  notification: notificationRouter,
 });
 
 export type AppRouter = typeof appRouter;

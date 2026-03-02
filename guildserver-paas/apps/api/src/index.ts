@@ -1,5 +1,5 @@
-import dotenv from "dotenv";
-dotenv.config();
+// Load env vars BEFORE any other imports (import hoisting workaround)
+import "dotenv/config";
 
 import express from "express";
 import helmet from "helmet";
@@ -12,6 +12,8 @@ import { appRouter } from "./trpc/router";
 import { logger } from "./utils/logger";
 import { createWebSocketServer } from "./websocket/server";
 import { initializeQueues } from "./queues/setup";
+import { setupSwagger } from "./swagger";
+import { webhookRouter } from "./routes/webhooks";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -34,6 +36,9 @@ app.use(morgan("combined"));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
+// Swagger API docs
+setupSwagger(app);
+
 // Health check endpoint
 app.get("/health", (req, res) => {
   res.json({
@@ -43,6 +48,9 @@ app.get("/health", (req, res) => {
     environment: process.env.NODE_ENV || "development",
   });
 });
+
+// Webhook routes (before tRPC, these are plain Express routes)
+app.use("/webhooks", webhookRouter);
 
 // tRPC middleware
 app.use(
@@ -96,6 +104,7 @@ async function startServer() {
       logger.info(`🚀 GuildServer API running on port ${PORT}`);
       logger.info(`📚 tRPC endpoint: http://localhost:${PORT}/trpc`);
       logger.info(`🔍 Health check: http://localhost:${PORT}/health`);
+      logger.info(`📖 Swagger docs: http://localhost:${PORT}/api-docs`);
     });
 
     // Initialize WebSocket server

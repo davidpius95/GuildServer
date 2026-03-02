@@ -1,29 +1,39 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { 
-  LayoutDashboard, 
-  Rocket, 
-  Database, 
-  Settings, 
-  Users, 
-  BarChart3, 
+import { useAuth } from "@/hooks/use-auth"
+import { ThemeToggle } from "@/components/theme-toggle"
+import { trpc } from "@/components/trpc-provider"
+import {
+  LayoutDashboard,
+  Rocket,
+  Database,
+  Settings,
+  Users,
+  BarChart3,
   Workflow,
   Shield,
   Menu,
   LogOut,
-  Bell
+  Bell,
+  Loader2,
+  Boxes,
+  History,
+  Check,
+  CheckCheck,
 } from "lucide-react"
 
 const navigation = [
   { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { name: "Applications", href: "/dashboard/applications", icon: Rocket },
+  { name: "Deployments", href: "/dashboard/deployments", icon: History },
   { name: "Databases", href: "/dashboard/databases", icon: Database },
+  { name: "Templates", href: "/dashboard/templates", icon: Boxes },
   { name: "Workflows", href: "/dashboard/workflows", icon: Workflow },
   { name: "Monitoring", href: "/dashboard/monitoring", icon: BarChart3 },
   { name: "Team", href: "/dashboard/team", icon: Users },
@@ -37,12 +47,56 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [notifOpen, setNotifOpen] = useState(false)
+  const notifRef = useRef<HTMLDivElement>(null)
   const pathname = usePathname()
-  const router = useRouter()
+  const { isReady, isAuthenticated, logout } = useAuth({ redirect: true })
 
-  const handleLogout = () => {
-    localStorage.removeItem('guildserver-token')
-    router.push('/auth/login')
+  // Notification queries
+  const unreadCountQuery = trpc.notification.getUnreadCount.useQuery(undefined, {
+    refetchInterval: 30000,
+    enabled: isAuthenticated,
+  })
+  const notificationsQuery = trpc.notification.list.useQuery(
+    { limit: 10, offset: 0 },
+    { enabled: notifOpen && isAuthenticated }
+  )
+  const markReadMutation = trpc.notification.markRead.useMutation({
+    onSuccess: () => {
+      unreadCountQuery.refetch()
+      notificationsQuery.refetch()
+    },
+  })
+  const markAllReadMutation = trpc.notification.markAllRead.useMutation({
+    onSuccess: () => {
+      unreadCountQuery.refetch()
+      notificationsQuery.refetch()
+    },
+  })
+
+  const unreadCount = unreadCountQuery.data?.count ?? 0
+
+  // Close notification dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setNotifOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  // Show loading while checking auth
+  if (!isReady || !isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -60,14 +114,15 @@ export default function DashboardLayout({
             </div>
             <span className="text-xl font-bold">GuildServer</span>
             <Badge variant="secondary" className="ml-auto text-xs">
-              Enterprise
+              PaaS
             </Badge>
           </div>
 
           {/* Navigation */}
           <nav className="flex-1 space-y-2 p-4">
             {navigation.map((item) => {
-              const isActive = pathname === item.href
+              const isActive = pathname === item.href ||
+                (item.href !== "/dashboard" && pathname.startsWith(item.href))
               return (
                 <Link
                   key={item.name}
@@ -91,7 +146,7 @@ export default function DashboardLayout({
             <Button
               variant="ghost"
               className="w-full justify-start gap-3"
-              onClick={handleLogout}
+              onClick={logout}
             >
               <LogOut className="h-4 w-4" />
               Sign Out
@@ -114,10 +169,112 @@ export default function DashboardLayout({
               <Menu className="h-5 w-5" />
             </Button>
 
-            <div className="flex items-center gap-4 ml-auto">
-              <Button variant="ghost" size="icon">
-                <Bell className="h-5 w-5" />
-              </Button>
+            <div className="flex items-center gap-2 ml-auto">
+              <ThemeToggle />
+              {/* Notification Bell */}
+              <div className="relative" ref={notifRef}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setNotifOpen(!notifOpen)}
+                  className="relative"
+                >
+                  <Bell className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-red-500 text-[10px] font-bold text-white flex items-center justify-center">
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
+                </Button>
+
+                {/* Notification Dropdown */}
+                {notifOpen && (
+                  <div className="absolute right-0 mt-2 w-96 max-h-[480px] overflow-hidden rounded-lg border bg-popover shadow-lg z-50">
+                    <div className="flex items-center justify-between px-4 py-3 border-b">
+                      <h3 className="text-sm font-semibold">Notifications</h3>
+                      <div className="flex items-center gap-2">
+                        {unreadCount > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs gap-1"
+                            onClick={() => markAllReadMutation.mutate()}
+                            disabled={markAllReadMutation.isPending}
+                          >
+                            <CheckCheck className="h-3 w-3" />
+                            Mark all read
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="overflow-y-auto max-h-[380px]">
+                      {notificationsQuery.isLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : !notificationsQuery.data || notificationsQuery.data.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <Bell className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                          <p className="text-sm">No notifications yet</p>
+                        </div>
+                      ) : (
+                        notificationsQuery.data.map((notif: any) => (
+                          <div
+                            key={notif.id}
+                            className={cn(
+                              "px-4 py-3 border-b last:border-0 hover:bg-accent/50 transition-colors cursor-pointer",
+                              !notif.read && "bg-primary/5"
+                            )}
+                            onClick={() => {
+                              if (!notif.read) {
+                                markReadMutation.mutate({ id: notif.id })
+                              }
+                            }}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className={cn("text-sm truncate", !notif.read && "font-semibold")}>
+                                    {notif.title}
+                                  </p>
+                                  {!notif.read && (
+                                    <span className="h-2 w-2 rounded-full bg-primary flex-shrink-0" />
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                                  {notif.message}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {(() => {
+                                    const d = new Date(notif.createdAt)
+                                    const now = new Date()
+                                    const diffMs = now.getTime() - d.getTime()
+                                    const diffMins = Math.floor(diffMs / 60000)
+                                    if (diffMins < 1) return "just now"
+                                    if (diffMins < 60) return `${diffMins}m ago`
+                                    const diffHrs = Math.floor(diffMins / 60)
+                                    if (diffHrs < 24) return `${diffHrs}h ago`
+                                    return `${Math.floor(diffHrs / 24)}d ago`
+                                  })()}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div className="border-t px-4 py-2">
+                      <Link
+                        href="/dashboard/notifications"
+                        className="text-xs text-primary hover:underline"
+                        onClick={() => setNotifOpen(false)}
+                      >
+                        View all notifications
+                      </Link>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </header>
