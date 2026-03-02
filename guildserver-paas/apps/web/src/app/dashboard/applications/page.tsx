@@ -169,7 +169,7 @@ export default function ApplicationsPage() {
     const repos = githubReposQuery.data ?? []
     if (!repoSearch.trim()) return repos.slice(0, 20)
     return repos.filter((r: any) =>
-      r.full_name?.toLowerCase().includes(repoSearch.toLowerCase()) ||
+      r.fullName?.toLowerCase().includes(repoSearch.toLowerCase()) ||
       r.name?.toLowerCase().includes(repoSearch.toLowerCase())
     ).slice(0, 20)
   }, [githubReposQuery.data, repoSearch])
@@ -511,28 +511,24 @@ export default function ApplicationsPage() {
                             ) : (
                               filteredRepos.map((repo: any) => (
                                 <button
-                                  key={repo.id || repo.full_name}
+                                  key={repo.fullName}
                                   type="button"
                                   className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-accent text-left transition-colors border-b last:border-b-0"
                                   onClick={() => {
-                                    const [owner, name] = (repo.full_name || "").split("/")
                                     setSelectedRepo({
-                                      owner,
-                                      name,
-                                      fullName: repo.full_name,
-                                      url: repo.clone_url || repo.html_url || `https://github.com/${repo.full_name}`,
-                                      defaultBranch: repo.default_branch || "main",
+                                      owner: repo.owner,
+                                      name: repo.name,
+                                      fullName: repo.fullName,
+                                      url: repo.url || `https://github.com/${repo.fullName}`,
+                                      defaultBranch: repo.defaultBranch || "main",
                                     })
-                                    setRepository(repo.clone_url || repo.html_url || `https://github.com/${repo.full_name}`)
-                                    setBranch(repo.default_branch || "main")
+                                    setRepository(repo.url || `https://github.com/${repo.fullName}`)
+                                    setBranch(repo.defaultBranch || "main")
                                   }}
                                 >
                                   <GitBranch className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                                   <div className="min-w-0 flex-1">
-                                    <div className="text-sm font-medium truncate">{repo.full_name}</div>
-                                    {repo.description && (
-                                      <div className="text-xs text-muted-foreground truncate">{repo.description}</div>
-                                    )}
+                                    <div className="text-sm font-medium truncate">{repo.fullName}</div>
                                   </div>
                                   {repo.private && (
                                     <Badge variant="secondary" className="text-xs flex-shrink-0">Private</Badge>
@@ -600,20 +596,20 @@ export default function ApplicationsPage() {
                                       <p className="text-xs mt-1">You may need to grant repo access in Settings.</p>
                                     </div>
                                   ) : (
-                                    (githubBranchesQuery.data ?? []).map((b: any) => (
+                                    (githubBranchesQuery.data ?? []).map((branchName: string) => (
                                       <button
-                                        key={b.name}
+                                        key={branchName}
                                         type="button"
                                         className={`w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors ${
-                                          b.name === branch ? "bg-accent font-medium" : ""
+                                          branchName === branch ? "bg-accent font-medium" : ""
                                         }`}
                                         onClick={() => {
-                                          setBranch(b.name)
+                                          setBranch(branchName)
                                           setShowBranchDropdown(false)
                                         }}
                                       >
-                                        {b.name}
-                                        {b.name === selectedRepo.defaultBranch && (
+                                        {branchName}
+                                        {branchName === selectedRepo.defaultBranch && (
                                           <span className="ml-2 text-xs text-muted-foreground">(default)</span>
                                         )}
                                       </button>

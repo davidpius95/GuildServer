@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { eq, and } from "drizzle-orm";
-import { db, users, oauthAccounts, organizations, members } from "@guildserver/database";
+import { db, users, oauthAccounts, organizations, members, projects } from "@guildserver/database";
 import { logger } from "../utils/logger";
 import crypto from "crypto";
 
@@ -360,7 +360,13 @@ async function findOrCreateOAuthUser(params: {
     },
   });
 
-  logger.info(`Created default organization '${orgName}' for new OAuth user ${params.email}`);
+  // Create a default project within the organization
+  await db.insert(projects).values({
+    name: "Default Project",
+    organizationId: newOrg.id,
+  });
+
+  logger.info(`Created default organization '${orgName}' with default project for new OAuth user ${params.email}`);
 
   return { user: newUser, isNew: true };
 }
