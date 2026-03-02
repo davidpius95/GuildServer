@@ -29,10 +29,34 @@ import {
   Users,
   Loader2,
   Send,
+  Link2,
+  Unplug,
+  ExternalLink,
 } from "lucide-react"
 import { trpc } from "@/components/trpc-provider"
 import { useOrganization } from "@/hooks/use-auth"
 import { toast } from "sonner"
+
+const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000"
+
+function GitHubIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+    </svg>
+  )
+}
+
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24">
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+    </svg>
+  )
+}
 
 // Map notification events to human-readable labels and icons
 const NOTIFICATION_EVENT_CONFIG: Record<string, { label: string; description: string; icon: React.ReactNode; category: string }> = {
@@ -172,11 +196,25 @@ export default function SettingsPage() {
     },
   })
 
+  // Connected OAuth accounts
+  const githubStatusQuery = trpc.github.getConnectionStatus.useQuery()
+  const connectedAccountsQuery = trpc.github.getConnectedAccounts.useQuery()
+  const disconnectMutation = trpc.github.disconnect.useMutation({
+    onSuccess: () => {
+      toast.success("Account disconnected")
+      githubStatusQuery.refetch()
+      connectedAccountsQuery.refetch()
+    },
+    onError: (err: any) => toast.error(err.message),
+  })
+
   const org = orgQuery.data
   const members = membersQuery.data ?? []
   const auditStats = auditStatsQuery.data
   const prefs = prefsQuery.data ?? {}
   const slackConfig = slackConfigQuery.data
+  const githubStatus = githubStatusQuery.data
+  const connectedAccounts = connectedAccountsQuery.data ?? []
 
   const memberCount = members.length
   const projectCount = org?.projects?.length ?? 0
@@ -240,6 +278,10 @@ export default function SettingsPage() {
             Notifications
           </TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
+          <TabsTrigger value="integrations">
+            <Link2 className="h-3.5 w-3.5 mr-1.5" />
+            Integrations
+          </TabsTrigger>
         </TabsList>
 
         {/* ======================== ORGANIZATION TAB ======================== */}
@@ -667,6 +709,172 @@ export default function SettingsPage() {
                   <Trash2 className="mr-2 h-4 w-4" />
                   Delete Organization
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ======================== INTEGRATIONS TAB ======================== */}
+        <TabsContent value="integrations" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Link2 className="h-5 w-5" />
+                Connected Accounts
+              </CardTitle>
+              <CardDescription>
+                Manage your OAuth connections. Link GitHub to browse and deploy repositories like Vercel.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {connectedAccountsQuery.isLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <>
+                  {/* GitHub Connection */}
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center gap-4">
+                      <div className="h-10 w-10 rounded-full bg-gray-900 dark:bg-white flex items-center justify-center">
+                        <GitHubIcon className="h-5 w-5 text-white dark:text-gray-900" />
+                      </div>
+                      <div>
+                        <div className="font-medium flex items-center gap-2">
+                          GitHub
+                          {githubStatus?.connected && (
+                            <Badge variant="outline" className="bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-400 text-xs">
+                              <CheckCircle className="w-3 h-3 mr-1" />
+                              Connected
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {githubStatus?.connected
+                            ? githubStatus.hasRepoScope
+                              ? "Full access — can browse and deploy from your repositories"
+                              : "Login only — grant repo access to browse repositories"
+                            : "Connect to sign in with GitHub and browse your repositories"
+                          }
+                        </p>
+                        {githubStatus?.connected && githubStatus.scope && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Scopes: {githubStatus.scope}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {githubStatus?.connected ? (
+                        <>
+                          {!githubStatus.hasRepoScope && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                window.location.href = `${API_URL}/auth/github?scope=repo`
+                              }}
+                            >
+                              <ExternalLink className="mr-2 h-3.5 w-3.5" />
+                              Grant Repo Access
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => disconnectMutation.mutate({ provider: "github" })}
+                            disabled={disconnectMutation.isPending}
+                          >
+                            <Unplug className="mr-2 h-3.5 w-3.5" />
+                            Disconnect
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          onClick={() => {
+                            window.location.href = `${API_URL}/auth/github?scope=repo`
+                          }}
+                        >
+                          <GitHubIcon className="mr-2 h-4 w-4" />
+                          Connect GitHub
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Google Connection */}
+                  {(() => {
+                    const googleAccount = connectedAccounts.find((a: any) => a.provider === "google")
+                    return (
+                      <div className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="flex items-center gap-4">
+                          <div className="h-10 w-10 rounded-full bg-white dark:bg-gray-800 border flex items-center justify-center">
+                            <GoogleIcon className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <div className="font-medium flex items-center gap-2">
+                              Google
+                              {googleAccount && (
+                                <Badge variant="outline" className="bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-400 text-xs">
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                  Connected
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {googleAccount
+                                ? "Connected for sign-in"
+                                : "Connect to sign in with your Google account"
+                              }
+                            </p>
+                          </div>
+                        </div>
+                        <div>
+                          {googleAccount ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => disconnectMutation.mutate({ provider: "google" })}
+                              disabled={disconnectMutation.isPending}
+                            >
+                              <Unplug className="mr-2 h-3.5 w-3.5" />
+                              Disconnect
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                window.location.href = `${API_URL}/auth/google`
+                              }}
+                            >
+                              <GoogleIcon className="mr-2 h-4 w-4" />
+                              Connect Google
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Info Card */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-3 text-sm text-muted-foreground">
+                <Shield className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-medium text-foreground mb-1">About Connected Accounts</p>
+                  <p>
+                    OAuth connections allow you to sign in quickly and securely. Connecting GitHub with repo access
+                    enables you to browse and select repositories when creating new applications — just like Vercel.
+                    You can disconnect at any time.
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>

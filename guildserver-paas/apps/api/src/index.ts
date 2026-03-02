@@ -14,6 +14,7 @@ import { createWebSocketServer } from "./websocket/server";
 import { initializeQueues } from "./queues/setup";
 import { setupSwagger } from "./swagger";
 import { webhookRouter } from "./routes/webhooks";
+import { oauthRouter } from "./routes/oauth";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -51,6 +52,9 @@ app.get("/health", (req, res) => {
 
 // Webhook routes (before tRPC, these are plain Express routes)
 app.use("/webhooks", webhookRouter);
+
+// OAuth routes (GitHub + Google login)
+app.use("/auth", oauthRouter);
 
 // tRPC middleware
 app.use(

@@ -50,19 +50,23 @@ const getStatusBadge = (status: string) => {
   return colors[status] || "bg-gray-50 text-gray-700"
 }
 
+// Validate UUID format to prevent invalid API calls
+const isValidUUID = (s: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
+
 export default function DashboardPage() {
   const { currentOrg, orgId, isLoading: orgLoading } = useOrganization()
   const { projects, projectId, isLoading: projLoading } = useProjects(orgId)
 
-  // Real data queries
+  // Real data queries - only fetch when we have valid UUIDs
   const appsQuery = trpc.application.list.useQuery(
     { projectId },
-    { enabled: !!projectId }
+    { enabled: isValidUUID(projectId) }
   )
 
   const deploymentsQuery = trpc.deployment.list.useQuery(
     { applicationId: appsQuery.data?.[0]?.id ?? "" },
-    { enabled: !!appsQuery.data?.[0]?.id }
+    { enabled: isValidUUID(appsQuery.data?.[0]?.id ?? "") }
   )
 
   // Get all apps for all projects
