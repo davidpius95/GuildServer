@@ -46,6 +46,7 @@ import {
   ChevronRight,
 } from "lucide-react"
 import { useDeploymentStream } from "@/hooks/useDeploymentStream"
+import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog"
 
 const getStatusColor = (status: string) => {
   const colors: Record<string, string> = {
@@ -81,6 +82,7 @@ export default function ApplicationDetailPage() {
   const router = useRouter()
   const appId = params.id as string
   const [selectedDeployment, setSelectedDeployment] = useState<string | null>(null)
+  const { confirm: showConfirm, dialogProps: confirmDialogProps } = useConfirmDialog()
 
   // Env var state
   const [newEnvKey, setNewEnvKey] = useState("")
@@ -377,9 +379,13 @@ export default function ApplicationDetailPage() {
             variant="outline"
             className="text-red-600"
             onClick={() => {
-              if (confirm(`Delete "${app.appName}"?`)) {
-                deleteApp.mutate({ id: appId })
-              }
+              showConfirm({
+                title: `Delete "${app.appName}"?`,
+                description: "This will permanently stop and remove the container. This action cannot be undone.",
+                confirmLabel: "Delete",
+                variant: "danger",
+                onConfirm: () => deleteApp.mutate({ id: appId }),
+              })
             }}
           >
             <Trash2 className="mr-2 h-4 w-4" />
@@ -510,9 +516,13 @@ export default function ApplicationDetailPage() {
                             disabled={rollbackMutation.isPending}
                             onClick={(e) => {
                               e.stopPropagation()
-                              if (confirm("Roll back to this deployment?")) {
-                                rollbackMutation.mutate({ deploymentId: deploy.id })
-                              }
+                              showConfirm({
+                                title: "Roll back to this deployment?",
+                                description: "This will redeploy the previous version. The current deployment will be replaced.",
+                                confirmLabel: "Roll Back",
+                                variant: "warning",
+                                onConfirm: () => rollbackMutation.mutate({ deploymentId: deploy.id }),
+                              })
                             }}
                           >
                             <RotateCcw className="h-3 w-3" />
@@ -1414,6 +1424,9 @@ export default function ApplicationDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog {...confirmDialogProps} />
     </div>
   )
 }

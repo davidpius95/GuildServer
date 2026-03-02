@@ -13,6 +13,7 @@ import { useOrganization, useProjects } from "@/hooks/use-auth"
 import { formatDateTime } from "@/lib/utils"
 import { toast } from "sonner"
 import { EnvVarEditor, type EnvVarEntry } from "@/components/env-var-editor"
+import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog"
 import {
   Plus,
   Search,
@@ -96,6 +97,8 @@ export default function ApplicationsPage() {
   const [repoSearch, setRepoSearch] = useState("")
   const [selectedRepo, setSelectedRepo] = useState<{ owner: string; name: string; fullName: string; url: string; defaultBranch: string } | null>(null)
   const [showBranchDropdown, setShowBranchDropdown] = useState(false)
+
+  const { confirm: showConfirm, dialogProps: confirmDialogProps } = useConfirmDialog()
 
   const { orgId } = useOrganization()
   const { projectId } = useProjects(orgId)
@@ -230,9 +233,13 @@ export default function ApplicationsPage() {
   }
 
   const handleDelete = (appId: string, appName: string) => {
-    if (confirm(`Delete "${appName}"? This will stop and remove the container.`)) {
-      deleteApp.mutate({ id: appId })
-    }
+    showConfirm({
+      title: `Delete "${appName}"?`,
+      description: "This will permanently stop and remove the container. This action cannot be undone.",
+      confirmLabel: "Delete",
+      variant: "danger",
+      onConfirm: () => deleteApp.mutate({ id: appId }),
+    })
   }
 
   const allApps = appsQuery.data ?? []
@@ -404,6 +411,9 @@ export default function ApplicationsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog {...confirmDialogProps} />
 
       {/* Create Modal */}
       {showCreateModal && (

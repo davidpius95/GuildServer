@@ -11,7 +11,7 @@ import {
 import { syncContainerStatuses } from "../services/container-manager";
 import { broadcastToUser } from "../websocket/server";
 import { cloneRepository, cleanupClone } from "../services/git-provider";
-import { buildImage } from "../services/builder";
+import { buildImage, getPortForBuildType } from "../services/builder";
 import { startMetricsCollection, stopMetricsCollection, collectAndStoreMetrics } from "../services/metrics-collector";
 import { notify } from "../services/notification";
 import crypto from "crypto";
@@ -95,6 +95,7 @@ const deploymentWorker = new Worker(
       let dockerImage = app.dockerImage || "";
       let dockerTag = app.dockerTag || "latest";
       let resolvedImageTag = ""; // Track the full image:tag for rollback support
+      let detectedPort = 0; // Port detected from build type (for git-built images)
       const isGitBased = app.repository && app.sourceType !== "docker";
 
       // === ROLLBACK FAST PATH ===
@@ -208,6 +209,12 @@ const deploymentWorker = new Worker(
         // Use the built image
         dockerImage = buildResult.imageTag;
         dockerTag = ""; // imageTag already includes the tag
+
+        // Derive the container port from the build result or fall back to build type mapping
+        detectedPort = buildResult.containerPort || getPortForBuildType(buildResult.detectedType);
+        if (detectedPort > 0) {
+          allBuildLogs.push(`Detected container port: ${detectedPort} (from ${buildResult.detectedType} project)`);
+        }
 
         // Clean up cloned source
         cleanupClone(deploymentId);
@@ -344,7 +351,7 @@ const deploymentWorker = new Worker(
         environment: mergedEnv,
         memoryLimit: app.memoryLimit,
         cpuLimit: app.cpuLimit,
-        containerPort: app.containerPort || undefined,
+        containerPort: app.containerPort || detectedPort || undefined,
         replicas: app.replicas || 1,
         sourceType: app.sourceType || "docker",
         domains: domainList.length > 0 ? domainList : undefined,

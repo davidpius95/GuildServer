@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { trpc } from "@/components/trpc-provider"
 import { formatDateTime } from "@/lib/utils"
 import { toast } from "sonner"
+import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog"
 import {
   CheckCircle,
   XCircle,
@@ -85,6 +86,7 @@ export default function DeploymentsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [page, setPage] = useState(0)
   const limit = 20
+  const { confirm: showConfirm, dialogProps: confirmDialogProps } = useConfirmDialog()
 
   const utils = trpc.useUtils()
   const rollbackMutation = trpc.deployment.rollback.useMutation({
@@ -316,9 +318,13 @@ export default function DeploymentsPage() {
                           disabled={rollbackMutation.isPending}
                           onClick={(e) => {
                             e.stopPropagation()
-                            if (confirm(`Roll back to deployment from ${timeAgo(deploy.createdAt)}?`)) {
-                              rollbackMutation.mutate({ deploymentId: deploy.id })
-                            }
+                            showConfirm({
+                              title: "Roll back to this deployment?",
+                              description: `This will redeploy the version from ${timeAgo(deploy.createdAt)}. The current deployment will be replaced.`,
+                              confirmLabel: "Roll Back",
+                              variant: "warning",
+                              onConfirm: () => rollbackMutation.mutate({ deploymentId: deploy.id }),
+                            })
                           }}
                         >
                           <RotateCcw className="h-3 w-3" />
@@ -407,6 +413,9 @@ export default function DeploymentsPage() {
           </div>
         </div>
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog {...confirmDialogProps} />
     </div>
   )
 }
