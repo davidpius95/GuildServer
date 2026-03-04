@@ -1,5 +1,6 @@
-import { ComputeProvider, ProviderType, ProviderConfig, DockerLocalConfig } from "./types";
+import { ComputeProvider, ProviderType, ProviderConfig, DockerLocalConfig, ProxmoxConfig } from "./types";
 import { DockerLocalProvider } from "./docker-local";
+import { ProxmoxProvider } from "./proxmox";
 import { db, computeProviders } from "@guildserver/database";
 import { eq } from "drizzle-orm";
 
@@ -42,8 +43,7 @@ export function createProviderFromConfig(
       throw new Error("Docker Remote provider is not yet implemented. Coming in Phase 3.");
 
     case "proxmox":
-      // Phase 2 implementation
-      throw new Error("Proxmox provider is not yet implemented. Coming in Phase 2.");
+      return new ProxmoxProvider(config as ProxmoxConfig);
 
     case "kubernetes":
       // Phase 4 implementation
