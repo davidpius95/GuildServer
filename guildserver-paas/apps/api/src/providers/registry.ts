@@ -180,7 +180,7 @@ export function listAvailableProviders(): ProviderPluginMeta[] {
  * Check if a provider type is implemented (has a working backend)
  */
 export function isProviderImplemented(type: ProviderType): boolean {
-  // Only docker-local is fully implemented in Phase 1
-  const implemented: ProviderType[] = ["docker-local"];
+  // docker-local (Phase 1) and proxmox (Phase 2) are implemented
+  const implemented: ProviderType[] = ["docker-local", "proxmox"];
   return implemented.includes(type);
 }
