@@ -8,6 +8,7 @@ import {
   testDockerConnection,
   ensureNetwork,
 } from "../services/docker";
+import { getProvider } from "../providers/factory";
 import { syncContainerStatuses } from "../services/container-manager";
 import { broadcastToUser } from "../websocket/server";
 import { cloneRepository, cleanupClone } from "../services/git-provider";
@@ -64,6 +65,7 @@ const deploymentWorker = new Worker(
 
     const { deploymentId, applicationId, userId, isRollback, sourceDeploymentId, isPreview, previewBranch } = job.data;
     const allBuildLogs: string[] = [];
+    let app: any = null; // Declared outside try so it's accessible in catch for error notifications
 
     try {
       // 1. Update deployment status to "building"
@@ -89,7 +91,7 @@ const deploymentWorker = new Worker(
       });
 
       // 2. Fetch application config from DB
-      const app = await db.query.applications.findFirst({
+      app = await db.query.applications.findFirst({
         where: eq(applications.id, applicationId),
       });
 
@@ -440,7 +442,11 @@ const deploymentWorker = new Worker(
         ? `${app.appName}-preview-${previewBranch.replace(/[^a-z0-9-]/gi, "-").toLowerCase()}`
         : app.appName;
 
-      const result = await deployContainer({
+      // Resolve the compute provider (uses provider abstraction for multi-cloud)
+      // Falls back to local Docker if no provider is configured for this app
+      const computeProvider = await getProvider((app as any).providerId || null);
+
+      const deployConfig = {
         deploymentId,
         applicationId,
         appName: containerAppName,
@@ -455,7 +461,9 @@ const deploymentWorker = new Worker(
         replicas: app.replicas || 1,
         sourceType: app.sourceType || "docker",
         domains: domainList.length > 0 ? domainList : undefined,
-      });
+      };
+
+      const result = await computeProvider.deploy(deployConfig);
 
       // Mark deploy complete, start health check
       broadcastToUser(userId, {
