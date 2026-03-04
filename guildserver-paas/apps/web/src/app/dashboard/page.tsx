@@ -4,9 +4,9 @@ import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { trpc } from "@/components/trpc-provider"
 import { useOrganization, useProjects } from "@/hooks/use-auth"
-import { formatDateTime } from "@/lib/utils"
 import {
   Rocket,
   Database,
@@ -18,8 +18,14 @@ import {
   XCircle,
   Clock,
   GitBranch,
-  Loader2
+  Loader2,
+  BarChart3,
 } from "lucide-react"
+import { DashboardSkeleton } from "@/components/skeletons/dashboard-skeleton"
+import { EmptyState } from "@/components/empty-state"
+import { AnimatedList, AnimatedItem } from "@/components/motion/animated-list"
+import { FadeIn } from "@/components/motion/fade-in"
+import { DeploymentActivity } from "@/components/charts/deployment-activity"
 
 const getStatusIcon = (status: string) => {
   switch (status) {
@@ -50,6 +56,32 @@ const getStatusBadge = (status: string) => {
   return colors[status] || "bg-gray-50 text-gray-700"
 }
 
+const getHealthStatusIcon = (status: string) => {
+  switch (status) {
+    case "healthy":
+      return <CheckCircle className="h-4 w-4 text-green-500" />
+    case "warning":
+      return <AlertTriangle className="h-4 w-4 text-yellow-500" />
+    case "critical":
+      return <XCircle className="h-4 w-4 text-red-500" />
+    default:
+      return <Clock className="h-4 w-4 text-muted-foreground" />
+  }
+}
+
+const getHealthBadgeColor = (status: string) => {
+  switch (status) {
+    case "healthy":
+      return "bg-green-50 text-green-700"
+    case "warning":
+      return "bg-yellow-50 text-yellow-700"
+    case "critical":
+      return "bg-red-50 text-red-700"
+    default:
+      return "bg-gray-50 text-gray-700"
+  }
+}
+
 // Validate UUID format to prevent invalid API calls
 const isValidUUID = (s: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
@@ -64,9 +96,14 @@ export default function DashboardPage() {
     { enabled: isValidUUID(projectId) }
   )
 
-  const deploymentsQuery = trpc.deployment.list.useQuery(
-    { applicationId: appsQuery.data?.[0]?.id ?? "" },
-    { enabled: isValidUUID(appsQuery.data?.[0]?.id ?? "") }
+  // Real system health from Docker/API/WebSocket
+  const healthQuery = trpc.monitoring.getSystemHealth.useQuery(
+    { organizationId: orgId },
+    {
+      enabled: isValidUUID(orgId),
+      refetchInterval: 30000, // Refresh every 30s
+      retry: 1,
+    }
   )
 
   // Get all apps for all projects
@@ -77,11 +114,7 @@ export default function DashboardPage() {
   const isLoading = orgLoading || projLoading
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
+    return <DashboardSkeleton />
   }
 
   // If no org exists, show onboarding prompt
@@ -111,6 +144,9 @@ export default function DashboardPage() {
     )
   }
 
+  const healthData = healthQuery.data
+  const overallHealth = healthData?.overall ?? (failedApps.length === 0 ? "healthy" : "warning")
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -122,68 +158,100 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <AnimatedList className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <AnimatedItem>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Applications</CardTitle>
+              <Rocket className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{allApps.length}</div>
+              <p className="text-xs text-muted-foreground">
+                <span className="text-green-600">{runningApps.length} running</span>
+                {failedApps.length > 0 && (
+                  <span className="text-red-600 ml-2">{failedApps.length} failed</span>
+                )}
+              </p>
+            </CardContent>
+          </Card>
+        </AnimatedItem>
+
+        <AnimatedItem>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Projects</CardTitle>
+              <GitBranch className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{projects.length}</div>
+              <p className="text-xs text-muted-foreground">
+                In {currentOrg.name}
+              </p>
+            </CardContent>
+          </Card>
+        </AnimatedItem>
+
+        <AnimatedItem>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Running</CardTitle>
+              <Activity className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">{runningApps.length}</div>
+              <p className="text-xs text-muted-foreground">
+                {healthData?.containers
+                  ? `${healthData.containers.running}/${healthData.containers.total} containers`
+                  : "Active containers"}
+              </p>
+            </CardContent>
+          </Card>
+        </AnimatedItem>
+
+        <AnimatedItem>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Status</CardTitle>
+              {getHealthStatusIcon(overallHealth)}
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${
+                overallHealth === "healthy" ? "text-green-600" :
+                overallHealth === "warning" ? "text-yellow-600" : "text-red-600"
+              }`}>
+                {overallHealth === "healthy" ? "Healthy" :
+                 overallHealth === "warning" ? "Warning" : "Critical"}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {overallHealth === "healthy"
+                  ? "All systems operational"
+                  : overallHealth === "warning"
+                  ? `${failedApps.length} issue(s) detected`
+                  : "Infrastructure issues"}
+              </p>
+            </CardContent>
+          </Card>
+        </AnimatedItem>
+      </AnimatedList>
+
+      {/* Deployment Activity Chart */}
+      <FadeIn delay={0.1}>
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Applications</CardTitle>
-            <Rocket className="h-4 w-4 text-muted-foreground" />
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4" />
+              Deployment Activity
+            </CardTitle>
+            <CardDescription>Deployments over the last 7 days</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{allApps.length}</div>
-            <p className="text-xs text-muted-foreground">
-              <span className="text-green-600">{runningApps.length} running</span>
-              {failedApps.length > 0 && (
-                <span className="text-red-600 ml-2">{failedApps.length} failed</span>
-              )}
-            </p>
+            <DeploymentActivity days={7} />
           </CardContent>
         </Card>
+      </FadeIn>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Projects</CardTitle>
-            <GitBranch className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{projects.length}</div>
-            <p className="text-xs text-muted-foreground">
-              In {currentOrg.name}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Running</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{runningApps.length}</div>
-            <p className="text-xs text-muted-foreground">
-              Active containers
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Status</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {failedApps.length === 0 ? "Healthy" : "Issues"}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {failedApps.length === 0
-                ? "All systems operational"
-                : `${failedApps.length} app(s) need attention`}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-8 md:grid-cols-2">
+      <FadeIn delay={0.15} className="grid gap-8 md:grid-cols-2">
         {/* Recent Applications */}
         <Card>
           <CardHeader>
@@ -192,15 +260,17 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {allApps.length === 0 ? (
-              <div className="text-center py-6">
-                <p className="text-sm text-muted-foreground mb-3">No applications yet</p>
-                <Link href="/dashboard/applications">
-                  <Button size="sm">
-                    <Plus className="mr-2 h-3 w-3" />
-                    Deploy your first app
-                  </Button>
-                </Link>
-              </div>
+              <EmptyState
+                icon={Rocket}
+                title="No applications yet"
+                description="Deploy your first application to get started"
+                action={{
+                  label: "Deploy your first app",
+                  onClick: () => window.location.href = "/dashboard/applications",
+                  icon: Plus,
+                }}
+                className="py-6"
+              />
             ) : (
               <div className="space-y-4">
                 {allApps.slice(0, 5).map((app: any) => (
@@ -237,59 +307,75 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* System Status */}
+        {/* System Status — now powered by real data */}
         <Card>
           <CardHeader>
             <CardTitle>System Status</CardTitle>
             <CardDescription>Infrastructure health</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span className="text-sm font-medium">API Server</span>
-                </div>
-                <Badge variant="secondary" className="bg-green-50 text-green-700">
-                  Healthy
-                </Badge>
+            {healthQuery.isLoading ? (
+              <div className="space-y-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="h-4 w-4 rounded-full" />
+                      <Skeleton className="h-4 w-24" />
+                    </div>
+                    <Skeleton className="h-5 w-16 rounded-full" />
+                  </div>
+                ))}
               </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span className="text-sm font-medium">Docker Engine</span>
+            ) : healthQuery.isError ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                    <span className="text-sm font-medium">Health Check</span>
+                  </div>
+                  <Badge variant="secondary" className="bg-yellow-50 text-yellow-700">
+                    Unavailable
+                  </Badge>
                 </div>
-                <Badge variant="secondary" className="bg-green-50 text-green-700">
-                  Connected
-                </Badge>
+                <p className="text-xs text-muted-foreground">
+                  Unable to fetch health data. The API may be starting up.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => healthQuery.refetch()}
+                  className="w-full"
+                >
+                  Retry
+                </Button>
               </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span className="text-sm font-medium">Database</span>
-                </div>
-                <Badge variant="secondary" className="bg-green-50 text-green-700">
-                  Healthy
-                </Badge>
+            ) : (
+              <div className="space-y-4">
+                {(healthData?.services ?? []).map((service: any) => (
+                  <div key={service.name} className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {getHealthStatusIcon(service.status)}
+                      <div>
+                        <span className="text-sm font-medium">{service.name}</span>
+                        {service.uptime && (
+                          <p className="text-xs text-muted-foreground">{service.uptime}</p>
+                        )}
+                      </div>
+                    </div>
+                    <Badge variant="secondary" className={getHealthBadgeColor(service.status)}>
+                      {service.status === "healthy" ? "Healthy" :
+                       service.status === "warning" ? "Warning" : "Down"}
+                    </Badge>
+                  </div>
+                ))}
               </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span className="text-sm font-medium">Redis Queue</span>
-                </div>
-                <Badge variant="secondary" className="bg-green-50 text-green-700">
-                  Connected
-                </Badge>
-              </div>
-            </div>
+            )}
           </CardContent>
         </Card>
-      </div>
+      </FadeIn>
 
       {/* Quick Actions */}
+      <FadeIn delay={0.25}>
       <Card>
         <CardHeader>
           <CardTitle>Quick Actions</CardTitle>
@@ -329,6 +415,7 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+      </FadeIn>
     </div>
   )
 }

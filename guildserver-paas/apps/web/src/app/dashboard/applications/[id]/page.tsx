@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -47,6 +47,8 @@ import {
 } from "lucide-react"
 import { useDeploymentStream } from "@/hooks/useDeploymentStream"
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog"
+import { AppDetailSkeleton } from "@/components/skeletons/app-detail-skeleton"
+import { DeployStepper } from "@/components/deploy-stepper"
 
 const getStatusColor = (status: string) => {
   const colors: Record<string, string> = {
@@ -124,11 +126,13 @@ export default function ApplicationDetailPage() {
 
   // Mutations
   const deployApp = trpc.application.deploy.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success("Deployment started!")
-      utils.application.getById.invalidate()
-      // Auto-switch to build logs tab and clear previous stream
+      // Clear previous stream and immediately connect to the new deployment's WS
       deploymentStream.clearLogs()
+      setStreamingDeploymentId(data.id)
+      utils.application.getById.invalidate()
+      // Auto-switch to build logs tab
       setActiveTab("build-logs")
       setFollowLogs(true)
     },
@@ -286,10 +290,21 @@ export default function ApplicationDetailPage() {
     ["pending", "building", "deploying", "running"].includes(latestDeployment.status)
   const activeDeploymentId = isDeploymentActive ? latestDeployment.id : null
 
-  // Real-time build log streaming via WebSocket
+  // Track the streaming deployment ID so stepper/logs persist after completion.
+  // Set when a deployment becomes active; cleared only when a NEW deploy starts.
+  const [streamingDeploymentId, setStreamingDeploymentId] = useState<string | null>(null)
+  useEffect(() => {
+    if (activeDeploymentId && activeDeploymentId !== streamingDeploymentId) {
+      setStreamingDeploymentId(activeDeploymentId)
+    }
+  }, [activeDeploymentId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Real-time build log streaming via WebSocket.
+  // WS stays connected persistently so it's ready when a deploy fires.
+  // The deploymentId controls which events are processed (not whether WS connects).
   const deploymentStream = useDeploymentStream({
-    deploymentId: activeDeploymentId,
-    enabled: !!activeDeploymentId,
+    deploymentId: streamingDeploymentId,
+    enabled: true,
   })
 
   // Auto-scroll build logs when following
@@ -307,11 +322,7 @@ export default function ApplicationDetailPage() {
   }, [deploymentStream.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (appQuery.isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
+    return <AppDetailSkeleton />
   }
 
   if (!app) {
@@ -1042,34 +1053,34 @@ export default function ApplicationDetailPage() {
                   <CardTitle className="flex items-center gap-2">
                     <Terminal className="h-4 w-4" />
                     Build Logs
-                    {activeDeploymentId && deploymentStream.isConnected && (
+                    {streamingDeploymentId && deploymentStream.isConnected && (
                       <span className="flex items-center gap-1.5 text-xs font-normal text-green-500">
                         <Radio className="h-3 w-3 animate-pulse" />
                         Live
                       </span>
                     )}
-                    {selectedDeploy && (
+                    {(deploymentStream.status || selectedDeploy) && (
                       <Badge variant="outline" className={getStatusColor(
-                        activeDeploymentId && deploymentStream.status
-                          ? deploymentStream.status
-                          : selectedDeploy.status
+                        deploymentStream.status || selectedDeploy?.status || ""
                       )}>
-                        {activeDeploymentId && deploymentStream.status
-                          ? deploymentStream.status
-                          : selectedDeploy.status}
+                        {deploymentStream.status || selectedDeploy?.status}
                       </Badge>
                     )}
                   </CardTitle>
                   <CardDescription>
-                    {activeDeploymentId
-                      ? "Streaming build output in real-time..."
+                    {streamingDeploymentId && deploymentStream.status
+                      ? deploymentStream.status === "completed"
+                        ? "Deployment completed successfully"
+                        : deploymentStream.status === "failed"
+                          ? "Deployment failed"
+                          : "Streaming build output in real-time..."
                       : selectedDeploy
                         ? `Deployment from ${formatDateTime(selectedDeploy.createdAt)}`
                         : "Select a deployment to view build logs"
                     }
                   </CardDescription>
                 </div>
-                {activeDeploymentId && (
+                {streamingDeploymentId && (
                   <Button
                     variant={followLogs ? "default" : "outline"}
                     size="sm"
@@ -1081,8 +1092,16 @@ export default function ApplicationDetailPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {/* Live streaming logs (when deployment is active) */}
-              {activeDeploymentId && deploymentStream.logs.length > 0 ? (
+              {/* Deployment phase stepper — persists after completion */}
+              {deploymentStream.phases.length > 0 && (
+                <DeployStepper
+                  phases={deploymentStream.phases}
+                  className="mb-4 p-4 rounded-lg border bg-card"
+                />
+              )}
+
+              {/* Live streaming logs (persists after completion until next deploy) */}
+              {streamingDeploymentId && deploymentStream.logs.length > 0 ? (
                 <div
                   ref={buildLogsRef}
                   className="bg-gray-950 text-green-400 rounded-lg p-4 font-mono text-xs max-h-[500px] overflow-y-auto whitespace-pre-wrap"
@@ -1135,8 +1154,8 @@ export default function ApplicationDetailPage() {
                   )}
                 </div>
               )}
-              {/* Deployment info section (for completed deployments) */}
-              {!activeDeploymentId && selectedDeploy?.deploymentLogs && (
+              {/* Deployment info section (for completed deployments, when no stream active) */}
+              {!streamingDeploymentId && selectedDeploy?.deploymentLogs && (
                 <div className="mt-4 bg-gray-950 text-cyan-400 rounded-lg p-4 font-mono text-xs">
                   <p className="text-gray-500 mb-2">Deployment Info:</p>
                   {selectedDeploy.deploymentLogs.split("\n").map((line: string, i: number) => (

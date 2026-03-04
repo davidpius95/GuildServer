@@ -36,6 +36,10 @@ import {
   Link2,
   ChevronDown,
 } from "lucide-react"
+import { AppListSkeleton } from "@/components/skeletons/app-list-skeleton"
+import { EmptyState } from "@/components/empty-state"
+import { AnimatedList, AnimatedItem } from "@/components/motion/animated-list"
+import { ResponsiveModal } from "@/components/ui/responsive-modal"
 
 const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000"
 
@@ -127,11 +131,23 @@ export default function ApplicationsPage() {
   })
 
   const deployApp = trpc.application.deploy.useMutation({
+    // Optimistic: immediately show "deploying" status
+    onMutate: async ({ id }) => {
+      await utils.application.list.cancel()
+      const previous = utils.application.list.getData({ projectId })
+      utils.application.list.setData({ projectId }, (old: any) =>
+        old?.map((a: any) => (a.id === id ? { ...a, status: "deploying" } : a))
+      )
+      return { previous }
+    },
     onSuccess: () => {
       toast.success("Deployment started!")
-      utils.application.list.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err, _vars, ctx: any) => {
+      if (ctx?.previous) utils.application.list.setData({ projectId }, ctx.previous)
+      toast.error(err.message)
+    },
+    onSettled: () => utils.application.list.invalidate(),
   })
 
   const restartApp = trpc.application.restart.useMutation({
@@ -143,11 +159,23 @@ export default function ApplicationsPage() {
   })
 
   const deleteApp = trpc.application.delete.useMutation({
+    // Optimistic: remove from list immediately
+    onMutate: async ({ id }) => {
+      await utils.application.list.cancel()
+      const previous = utils.application.list.getData({ projectId })
+      utils.application.list.setData({ projectId }, (old: any) =>
+        old?.filter((a: any) => a.id !== id)
+      )
+      return { previous }
+    },
     onSuccess: () => {
       toast.success("Application deleted!")
-      utils.application.list.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err, _vars, ctx: any) => {
+      if (ctx?.previous) utils.application.list.setData({ projectId }, ctx.previous)
+      toast.error(err.message)
+    },
+    onSettled: () => utils.application.list.invalidate(),
   })
 
   // GitHub integration queries
@@ -274,18 +302,23 @@ export default function ApplicationsPage() {
         />
       </div>
 
-      {/* Loading - only show spinner when actually fetching, not when query is disabled */}
+      {/* Loading skeleton */}
       {appsQuery.isLoading && appsQuery.isFetching && (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
+        <AppListSkeleton />
       )}
 
       {/* Applications Grid */}
       {!(appsQuery.isLoading && appsQuery.isFetching) && (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <AnimatedList className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {filteredApps.map((app: any) => (
-            <Card key={app.id} className="relative group hover:shadow-md transition-shadow">
+            <AnimatedItem key={app.id}>
+            <Card
+              className="relative group hover:shadow-md transition-shadow"
+              onMouseEnter={() => {
+                // Prefetch app detail data on hover
+                utils.application.getById.prefetch({ id: app.id })
+              }}
+            >
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <Link
@@ -388,26 +421,29 @@ export default function ApplicationsPage() {
                 </div>
               </CardContent>
             </Card>
+            </AnimatedItem>
           ))}
-        </div>
+        </AnimatedList>
       )}
 
       {/* Empty State */}
       {!(appsQuery.isLoading && appsQuery.isFetching) && filteredApps.length === 0 && (
-        <Card className="text-center py-12">
-          <CardContent>
-            <Rocket className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No applications found</h3>
-            <p className="text-muted-foreground mb-4">
-              {searchQuery
-                ? "No applications match your search criteria"
-                : "Get started by deploying your first application"
+        <Card>
+          <CardContent className="p-0">
+            <EmptyState
+              icon={Rocket}
+              title={searchQuery ? "No applications found" : "No applications yet"}
+              description={
+                searchQuery
+                  ? "No applications match your search criteria. Try a different search term."
+                  : "Get started by deploying your first application from Docker or Git."
               }
-            </p>
-            <Button onClick={() => setShowCreateModal(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              New Application
-            </Button>
+              action={
+                searchQuery
+                  ? { label: "Clear search", onClick: () => setSearchQuery(""), icon: Search }
+                  : { label: "New Application", onClick: () => setShowCreateModal(true), icon: Plus }
+              }
+            />
           </CardContent>
         </Card>
       )}
@@ -415,23 +451,13 @@ export default function ApplicationsPage() {
       {/* Confirm Dialog */}
       <ConfirmDialog {...confirmDialogProps} />
 
-      {/* Create Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <Card className="w-full max-w-lg mx-4">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>New Application</CardTitle>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => { setShowCreateModal(false); resetForm() }}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
+      {/* Create Modal — responsive: drawer on mobile, modal on desktop */}
+      <ResponsiveModal
+        open={showCreateModal}
+        onClose={() => { setShowCreateModal(false); resetForm() }}
+        title="New Application"
+      >
+        <div className="space-y-6">
               {/* App Name */}
               <div className="space-y-2">
                 <Label htmlFor="appName">Application Name</Label>
@@ -708,10 +734,8 @@ export default function ApplicationsPage() {
                   Create Application
                 </Button>
               </div>
-            </CardContent>
-          </Card>
         </div>
-      )}
+      </ResponsiveModal>
     </div>
   )
 }

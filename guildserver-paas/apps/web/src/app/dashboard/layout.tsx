@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, memo } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -21,12 +21,16 @@ import {
   Menu,
   LogOut,
   Bell,
-  Loader2,
   Boxes,
   History,
   Check,
   CheckCheck,
+  CreditCard,
+  Loader2,
 } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { PageTransition } from "@/components/motion/page-transition"
+import { AnimatePresence, motion } from "framer-motion"
 
 const navigation = [
   { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
@@ -38,8 +42,37 @@ const navigation = [
   { name: "Monitoring", href: "/dashboard/monitoring", icon: BarChart3 },
   { name: "Team", href: "/dashboard/team", icon: Users },
   { name: "Security", href: "/dashboard/security", icon: Shield },
+  { name: "Billing", href: "/dashboard/billing", icon: CreditCard },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ]
+
+// Memoized sidebar navigation to prevent re-renders
+const SidebarNav = memo(function SidebarNav({ pathname }: { pathname: string }) {
+  return (
+    <nav className="flex-1 space-y-2 p-4">
+      {navigation.map((item) => {
+        const isActive = pathname === item.href ||
+          (item.href !== "/dashboard" && pathname.startsWith(item.href))
+        return (
+          <Link
+            key={item.name}
+            href={item.href}
+            prefetch={true}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              isActive
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            )}
+          >
+            <item.icon className="h-4 w-4" />
+            {item.name}
+          </Link>
+        )
+      })}
+    </nav>
+  )
+})
 
 export default function DashboardLayout({
   children,
@@ -87,13 +120,43 @@ export default function DashboardLayout({
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
-  // Show loading while checking auth
+  // Show loading skeleton while checking auth
   if (!isReady || !isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Loading...</p>
+      <div className="min-h-screen bg-background flex">
+        {/* Sidebar skeleton */}
+        <div className="hidden lg:flex w-64 flex-col border-r bg-card">
+          <div className="flex h-16 items-center gap-2 border-b px-6">
+            <Skeleton className="h-8 w-8 rounded-lg" />
+            <Skeleton className="h-5 w-28" />
+          </div>
+          <div className="flex-1 p-4 space-y-2">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Skeleton key={i} className="h-9 w-full rounded-lg" />
+            ))}
+          </div>
+        </div>
+        {/* Main content skeleton */}
+        <div className="flex-1">
+          <div className="h-16 border-b flex items-center justify-end px-6 gap-2">
+            <Skeleton className="h-8 w-8 rounded-full" />
+            <Skeleton className="h-8 w-8 rounded-full" />
+          </div>
+          <div className="p-8 space-y-6">
+            <div>
+              <Skeleton className="h-9 w-48 mb-2" />
+              <Skeleton className="h-5 w-72" />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="rounded-xl border bg-card p-6 space-y-3">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-8 w-16" />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -101,13 +164,12 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Sidebar */}
-      <div className={cn(
-        "fixed inset-y-0 left-0 z-50 w-64 sidebar transform transition-transform duration-200 ease-in-out lg:translate-x-0",
-        sidebarOpen ? "translate-x-0" : "-translate-x-full"
-      )}>
+      {/* Sidebar — desktop: always visible; mobile: animated slide-in */}
+      <aside
+        aria-label="Main navigation"
+        className="fixed inset-y-0 left-0 z-50 w-64 sidebar hidden lg:flex flex-col"
+      >
         <div className="flex h-full flex-col">
-          {/* Logo */}
           <div className="flex h-16 items-center gap-2 border-b px-6">
             <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
               <span className="text-primary-foreground font-bold text-sm">G</span>
@@ -117,31 +179,7 @@ export default function DashboardLayout({
               PaaS
             </Badge>
           </div>
-
-          {/* Navigation */}
-          <nav className="flex-1 space-y-2 p-4">
-            {navigation.map((item) => {
-              const isActive = pathname === item.href ||
-                (item.href !== "/dashboard" && pathname.startsWith(item.href))
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                  )}
-                >
-                  <item.icon className="h-4 w-4" />
-                  {item.name}
-                </Link>
-              )
-            })}
-          </nav>
-
-          {/* User section */}
+          <SidebarNav pathname={pathname} />
           <div className="border-t p-4">
             <Button
               variant="ghost"
@@ -153,7 +191,55 @@ export default function DashboardLayout({
             </Button>
           </div>
         </div>
-      </div>
+      </aside>
+
+      {/* Mobile sidebar — animated with Framer Motion */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+              onClick={() => setSidebarOpen(false)}
+              aria-hidden="true"
+            />
+            <motion.aside
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="fixed inset-y-0 left-0 z-50 w-64 sidebar flex flex-col lg:hidden"
+              aria-label="Main navigation"
+            >
+              <div className="flex h-full flex-col">
+                <div className="flex h-16 items-center gap-2 border-b px-6">
+                  <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+                    <span className="text-primary-foreground font-bold text-sm">G</span>
+                  </div>
+                  <span className="text-xl font-bold">GuildServer</span>
+                  <Badge variant="secondary" className="ml-auto text-xs">
+                    PaaS
+                  </Badge>
+                </div>
+                <SidebarNav pathname={pathname} />
+                <div className="border-t p-4">
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start gap-3"
+                    onClick={logout}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign Out
+                  </Button>
+                </div>
+              </div>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Main content */}
       <div className="lg:pl-64">
@@ -165,6 +251,8 @@ export default function DashboardLayout({
               size="icon"
               className="lg:hidden"
               onClick={() => setSidebarOpen(!sidebarOpen)}
+              aria-label={sidebarOpen ? "Close navigation menu" : "Open navigation menu"}
+              aria-expanded={sidebarOpen}
             >
               <Menu className="h-5 w-5" />
             </Button>
@@ -281,17 +369,15 @@ export default function DashboardLayout({
 
         {/* Page content */}
         <main className="p-4 sm:p-6 lg:p-8">
-          {children}
+          <AnimatePresence mode="wait">
+            <PageTransition key={pathname}>
+              {children}
+            </PageTransition>
+          </AnimatePresence>
         </main>
       </div>
 
-      {/* Mobile sidebar overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+      {/* Mobile sidebar overlay is handled by AnimatePresence above */}
     </div>
   )
 }

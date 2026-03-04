@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { createTRPCRouter, protectedProcedure } from "../trpc/trpc";
+import { createTRPCRouter, protectedProcedure, enforcePlanLimit } from "../trpc/trpc";
 import { applications, projects, members, deployments } from "@guildserver/database";
 import { eq, and, desc } from "drizzle-orm";
 import { deploymentQueue } from "../queues/deployment";
@@ -147,6 +147,9 @@ export const applicationRouter = createTRPCRouter({
           message: "You don't have access to this project",
         });
       }
+
+      // Enforce plan limit on applications
+      await enforcePlanLimit(project.organization.id, "applications");
 
       // Generate app name from name (lowercase, replace spaces with hyphens)
       const appName = input.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");

@@ -14,6 +14,8 @@ import { cloneRepository, cleanupClone } from "../services/git-provider";
 import { buildImage, getPortForBuildType } from "../services/builder";
 import { startMetricsCollection, stopMetricsCollection, collectAndStoreMetrics } from "../services/metrics-collector";
 import { notify } from "../services/notification";
+import { trackDeployment, trackBuildMinutes } from "../services/usage-meter";
+import { checkSpendLimit, checkSpendThresholds } from "../services/spend-manager";
 import crypto from "crypto";
 import path from "path";
 
@@ -76,6 +78,16 @@ const deploymentWorker = new Worker(
         message: "Preparing deployment...",
       });
 
+      // === Phase: validate ===
+      broadcastToUser(userId, {
+        type: "deployment_phase",
+        deploymentId,
+        phase: "validate",
+        status: "running",
+        message: "Validating configuration...",
+        timestamp: new Date().toISOString(),
+      });
+
       // 2. Fetch application config from DB
       const app = await db.query.applications.findFirst({
         where: eq(applications.id, applicationId),
@@ -85,11 +97,34 @@ const deploymentWorker = new Worker(
         throw new Error(`Application ${applicationId} not found`);
       }
 
+      // 2b. Check spend limit for Pro+ plans (reject early if over hard cap)
+      if (app.projectId) {
+        const appProject = await db.query.projects.findFirst({
+          where: eq(projects.id, app.projectId),
+        });
+        if (appProject?.organizationId) {
+          const spendCheck = await checkSpendLimit(appProject.organizationId);
+          if (!spendCheck.allowed) {
+            throw new Error(spendCheck.reason || "Spend limit reached. Deployment blocked.");
+          }
+        }
+      }
+
       // 3. Check Docker connectivity
       const dockerAvailable = await testDockerConnection();
       if (!dockerAvailable) {
         throw new Error("Docker daemon is not available. Please ensure Docker is running.");
       }
+
+      // Mark validate complete
+      broadcastToUser(userId, {
+        type: "deployment_phase",
+        deploymentId,
+        phase: "validate",
+        status: "completed",
+        message: "Configuration validated",
+        timestamp: new Date().toISOString(),
+      });
 
       // 4. Determine Docker image - either pre-built or build from git
       let dockerImage = app.dockerImage || "";
@@ -148,6 +183,17 @@ const deploymentWorker = new Worker(
         });
       } else if (isGitBased) {
         // === GIT-BASED BUILD PIPELINE ===
+
+        // Phase: clone
+        broadcastToUser(userId, {
+          type: "deployment_phase",
+          deploymentId,
+          phase: "clone",
+          status: "running",
+          message: `Cloning ${app.repository}...`,
+          timestamp: new Date().toISOString(),
+        });
+
         broadcastToUser(userId, {
           type: "deployment_status",
           deploymentId,
@@ -180,6 +226,24 @@ const deploymentWorker = new Worker(
           .set({ gitCommitSha: cloneResult.commitSha })
           .where(eq(deployments.id, deploymentId));
 
+        // Mark clone phase complete, start build phase
+        broadcastToUser(userId, {
+          type: "deployment_phase",
+          deploymentId,
+          phase: "clone",
+          status: "completed",
+          message: "Repository cloned",
+          timestamp: new Date().toISOString(),
+        });
+        broadcastToUser(userId, {
+          type: "deployment_phase",
+          deploymentId,
+          phase: "build",
+          status: "running",
+          message: "Building Docker image...",
+          timestamp: new Date().toISOString(),
+        });
+
         // Build Docker image from cloned source
         broadcastToUser(userId, {
           type: "deployment_status",
@@ -193,6 +257,7 @@ const deploymentWorker = new Worker(
           ? path.join(cloneResult.localPath, app.buildPath)
           : cloneResult.localPath;
 
+        const buildStartTime = Date.now();
         const buildResult = await buildImage({
           localPath: buildDir,
           appName: app.appName,
@@ -203,6 +268,7 @@ const deploymentWorker = new Worker(
           buildArgs: (app.buildArgs as Record<string, string>) || {},
           environment: (app.environment as Record<string, string>) || {},
         });
+        const buildDurationMinutes = (Date.now() - buildStartTime) / 60000;
 
         allBuildLogs.push(...buildResult.buildLogs);
 
@@ -216,8 +282,32 @@ const deploymentWorker = new Worker(
           allBuildLogs.push(`Detected container port: ${detectedPort} (from ${buildResult.detectedType} project)`);
         }
 
+        // Track build minutes for billing
+        const project = await db.query.projects.findFirst({
+          where: eq(projects.id, app.projectId || ""),
+        });
+        if (project?.organizationId) {
+          trackBuildMinutes(project.organizationId, Math.ceil(buildDurationMinutes)).catch(
+            (err) => logger.warn("Usage tracking error (build):", err.message)
+          );
+          // Check spend thresholds after build minutes tracked
+          checkSpendThresholds(project.organizationId).catch(
+            (err) => logger.warn("Spend threshold check error:", err.message)
+          );
+        }
+
         // Clean up cloned source
         cleanupClone(deploymentId);
+
+        // Mark build phase complete
+        broadcastToUser(userId, {
+          type: "deployment_phase",
+          deploymentId,
+          phase: "build",
+          status: "completed",
+          message: "Image built successfully",
+          timestamp: new Date().toISOString(),
+        });
       } else if (!dockerImage) {
         if (app.sourceType === "docker") {
           throw new Error("No Docker image specified for Docker-type application");
@@ -242,6 +332,16 @@ const deploymentWorker = new Worker(
           message: "Deploying container...",
         });
       }
+
+      // Phase: deploy
+      broadcastToUser(userId, {
+        type: "deployment_phase",
+        deploymentId,
+        phase: "deploy",
+        status: "running",
+        message: "Deploying container...",
+        timestamp: new Date().toISOString(),
+      });
 
       // 5b. Merge scoped environment variables from DB
       const scopedEnvVars = await db.query.environmentVariables.findMany({
@@ -357,6 +457,24 @@ const deploymentWorker = new Worker(
         domains: domainList.length > 0 ? domainList : undefined,
       });
 
+      // Mark deploy complete, start health check
+      broadcastToUser(userId, {
+        type: "deployment_phase",
+        deploymentId,
+        phase: "deploy",
+        status: "completed",
+        message: "Container deployed",
+        timestamp: new Date().toISOString(),
+      });
+      broadcastToUser(userId, {
+        type: "deployment_phase",
+        deploymentId,
+        phase: "health_check",
+        status: "running",
+        message: "Verifying container health...",
+        timestamp: new Date().toISOString(),
+      });
+
       // 7. Update deployment status to "completed"
       allBuildLogs.push(...result.logs);
       const allLogs = allBuildLogs.join("\n");
@@ -385,6 +503,16 @@ const deploymentWorker = new Worker(
       // 8. Update application status to "running"
       await updateApplicationStatus(applicationId, "running");
 
+      // Mark health check complete
+      broadcastToUser(userId, {
+        type: "deployment_phase",
+        deploymentId,
+        phase: "health_check",
+        status: "completed",
+        message: "Container is healthy",
+        timestamp: new Date().toISOString(),
+      });
+
       // 9. Notify user with friendly URL
       broadcastToUser(userId, {
         type: "deployment_status",
@@ -410,6 +538,17 @@ const deploymentWorker = new Worker(
         branch: previewBranch || app.branch || "main",
         previewUrl: isPreview ? accessUrl : undefined,
       }).catch((err) => logger.warn("Notification error:", err.message));
+
+      // 11. Track usage metrics (billing)
+      if (orgId) {
+        trackDeployment(orgId).catch((err) =>
+          logger.warn("Usage tracking error (deployment):", err.message)
+        );
+        // Check spend thresholds and send alerts if needed
+        checkSpendThresholds(orgId).catch((err) =>
+          logger.warn("Spend threshold check error:", err.message)
+        );
+      }
 
       logger.info("Deployment completed successfully", {
         deploymentId,

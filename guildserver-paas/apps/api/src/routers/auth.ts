@@ -3,8 +3,9 @@ import { TRPCError } from "@trpc/server";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { createTRPCRouter, publicProcedure, protectedProcedure } from "../trpc/trpc";
-import { users } from "@guildserver/database";
+import { users, organizations, members, projects, plans, subscriptions } from "@guildserver/database";
 import { eq } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -60,6 +61,65 @@ export const authRouter = createTRPCRouter({
           role: users.role,
           createdAt: users.createdAt,
         });
+
+      // Create a default organization for the new user (like Vercel's personal team)
+      const orgName = `${name}'s Team`;
+      const orgSlug = email
+        .split("@")[0]
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-")
+        .replace(/-+/g, "-");
+
+      const [newOrg] = await ctx.db
+        .insert(organizations)
+        .values({
+          name: orgName,
+          slug: orgSlug,
+          ownerId: newUser.id,
+        })
+        .returning();
+
+      await ctx.db.insert(members).values({
+        userId: newUser.id,
+        organizationId: newOrg.id,
+        role: "owner",
+        permissions: {
+          admin: true,
+          projects: ["create", "read", "update", "delete"],
+          applications: ["create", "read", "update", "delete", "deploy"],
+          databases: ["create", "read", "update", "delete"],
+          workflows: ["create", "read", "update", "delete", "execute"],
+          kubernetes: ["create", "read", "update", "delete"],
+        },
+      });
+
+      // Create a default project within the organization
+      await ctx.db.insert(projects).values({
+        name: "Default Project",
+        organizationId: newOrg.id,
+      });
+
+      // Auto-assign Hobby (free) plan to the new organization
+      const hobbyPlan = await ctx.db.query.plans.findFirst({
+        where: eq(plans.slug, "hobby"),
+      });
+
+      if (hobbyPlan) {
+        const now = new Date();
+        const periodEnd = new Date(now);
+        periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+        await ctx.db.insert(subscriptions).values({
+          organizationId: newOrg.id,
+          planId: hobbyPlan.id,
+          status: "active",
+          currentPeriodStart: now,
+          currentPeriodEnd: periodEnd,
+          seats: 1,
+        });
+      }
+
+      logger.info(`Created default organization '${orgName}' with Hobby plan for new user ${email}`);
 
       // Generate JWT token
       const token = jwt.sign(

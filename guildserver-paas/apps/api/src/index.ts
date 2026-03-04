@@ -15,6 +15,7 @@ import { initializeQueues } from "./queues/setup";
 import { setupSwagger } from "./swagger";
 import { webhookRouter } from "./routes/webhooks";
 import { oauthRouter } from "./routes/oauth";
+import { stripeWebhookRouter } from "./routes/stripe-webhooks";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -34,6 +35,10 @@ app.use(cors({
 // General middleware
 app.use(compression());
 app.use(morgan("combined"));
+
+// Stripe webhook route MUST come before json() middleware — needs raw body for signature verification
+app.use("/webhooks/stripe", express.raw({ type: "application/json" }), stripeWebhookRouter);
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 

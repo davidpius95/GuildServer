@@ -77,8 +77,26 @@ export const executionStatusEnum = pgEnum("execution_status", [
 export const approvalStatusEnum = pgEnum("approval_status", [
   "pending",
   "approved",
-  "rejected", 
+  "rejected",
   "expired"
+]);
+
+// Billing enums
+export const planSlugEnum = pgEnum("plan_slug", ["hobby", "pro", "enterprise"]);
+export const subscriptionStatusEnum = pgEnum("subscription_status", [
+  "active",
+  "trialing",
+  "past_due",
+  "canceled",
+  "paused",
+  "incomplete"
+]);
+export const invoiceStatusEnum = pgEnum("invoice_status", [
+  "draft",
+  "open",
+  "paid",
+  "void",
+  "uncollectible"
 ]);
 
 // =====================
@@ -94,6 +112,7 @@ export const organizations = pgTable("organizations", {
   description: text("description"),
   metadata: jsonb("metadata").default({}),
   ownerId: uuid("owner_id").notNull(),
+  stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -486,6 +505,109 @@ export const k8sDeployments = pgTable("k8s_deployments", {
 });
 
 // =====================
+// BILLING & SUBSCRIPTIONS
+// =====================
+
+// Plans (pricing tiers — seeded, not user-created)
+export const plans = pgTable("plans", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  slug: planSlugEnum("slug").notNull().unique(),
+  description: text("description"),
+  priceMonthly: integer("price_monthly"), // cents (0 = free, null = custom/enterprise)
+  priceYearly: integer("price_yearly"),   // cents
+  stripePriceIdMonthly: varchar("stripe_price_id_monthly", { length: 255 }),
+  stripePriceIdYearly: varchar("stripe_price_id_yearly", { length: 255 }),
+  limits: jsonb("limits").default({}).notNull(),
+  // { maxApps, maxDatabases, maxDeployments, maxBandwidthGb, maxBuildMinutes, maxMemoryMb, maxCpuCores, maxDomainsPerApp, maxTeamMembers, auditRetentionDays }
+  features: jsonb("features").default({}).notNull(),
+  // { previewDeployments, teamCollaboration, customDomains, prioritySupport, sso, spendManagement, webhooks, apiAccess }
+  sortOrder: integer("sort_order").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Subscriptions (links an organization to a plan)
+export const subscriptions = pgTable("subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  planId: uuid("plan_id").notNull().references(() => plans.id),
+  status: subscriptionStatusEnum("status").default("active").notNull(),
+  stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+  stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
+  currentPeriodStart: timestamp("current_period_start"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false),
+  trialStart: timestamp("trial_start"),
+  trialEnd: timestamp("trial_end"),
+  seats: integer("seats").default(1),
+  usageCreditCents: integer("usage_credit_cents").default(0), // monthly credit (e.g. 1000 = $10)
+  spendLimitCents: integer("spend_limit_cents"), // nullable = unlimited
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("subscriptions_org_id_idx").on(table.organizationId),
+  stripeSubIdx: index("subscriptions_stripe_sub_idx").on(table.stripeSubscriptionId),
+}));
+
+// Invoices (mirrors Stripe invoices locally)
+export const invoices = pgTable("invoices", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  subscriptionId: uuid("subscription_id").references(() => subscriptions.id),
+  stripeInvoiceId: varchar("stripe_invoice_id", { length: 255 }),
+  number: varchar("number", { length: 100 }),
+  status: invoiceStatusEnum("status").default("draft"),
+  amountDueCents: integer("amount_due_cents").default(0),
+  amountPaidCents: integer("amount_paid_cents").default(0),
+  currency: varchar("currency", { length: 10 }).default("usd"),
+  periodStart: timestamp("period_start"),
+  periodEnd: timestamp("period_end"),
+  invoiceUrl: text("invoice_url"),
+  pdfUrl: text("pdf_url"),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("invoices_org_id_idx").on(table.organizationId),
+  stripeInvIdx: index("invoices_stripe_inv_idx").on(table.stripeInvoiceId),
+  createdAtIdx: index("invoices_created_at_idx").on(table.createdAt),
+}));
+
+// Usage Records (metered usage per org per billing period)
+export const usageRecords = pgTable("usage_records", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  metric: varchar("metric", { length: 100 }).notNull(), // "deployments" | "bandwidth_gb" | "build_minutes" | "storage_gb"
+  value: decimal("value").default("0").notNull(),
+  periodStart: date("period_start").notNull(),
+  periodEnd: date("period_end").notNull(),
+  reportedToStripe: boolean("reported_to_stripe").default(false),
+  stripeUsageRecordId: varchar("stripe_usage_record_id", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  orgMetricIdx: index("usage_records_org_metric_idx").on(table.organizationId, table.metric),
+  periodIdx: index("usage_records_period_idx").on(table.periodStart, table.periodEnd),
+}));
+
+// Payment Methods (cached card info from Stripe)
+export const paymentMethods = pgTable("payment_methods", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  stripePaymentMethodId: varchar("stripe_payment_method_id", { length: 255 }).notNull(),
+  type: varchar("type", { length: 50 }).default("card"),
+  cardBrand: varchar("card_brand", { length: 50 }),
+  cardLast4: varchar("card_last4", { length: 4 }),
+  cardExpMonth: integer("card_exp_month"),
+  cardExpYear: integer("card_exp_year"),
+  isDefault: boolean("is_default").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("payment_methods_org_id_idx").on(table.organizationId),
+}));
+
+// =====================
 // ENTERPRISE AUTHENTICATION
 // =====================
 
@@ -600,6 +722,10 @@ export const organizationsRelations = relations(organizations, ({ many, one }) =
   ssoProviders: many(ssoProviders),
   workflowTemplates: many(workflowTemplates),
   auditLogs: many(auditLogs),
+  subscriptions: many(subscriptions),
+  invoices: many(invoices),
+  usageRecords: many(usageRecords),
+  paymentMethods: many(paymentMethods),
   owner: one(users, {
     fields: [organizations.ownerId],
     references: [users.id],
@@ -786,6 +912,47 @@ export const notificationPreferencesRelations = relations(notificationPreference
 export const slackConfigsRelations = relations(slackConfigs, ({ one }) => ({
   organization: one(organizations, {
     fields: [slackConfigs.organizationId],
+    references: [organizations.id],
+  }),
+}));
+
+// Billing relations
+export const plansRelations = relations(plans, ({ many }) => ({
+  subscriptions: many(subscriptions),
+}));
+
+export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [subscriptions.organizationId],
+    references: [organizations.id],
+  }),
+  plan: one(plans, {
+    fields: [subscriptions.planId],
+    references: [plans.id],
+  }),
+}));
+
+export const invoicesRelations = relations(invoices, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [invoices.organizationId],
+    references: [organizations.id],
+  }),
+  subscription: one(subscriptions, {
+    fields: [invoices.subscriptionId],
+    references: [subscriptions.id],
+  }),
+}));
+
+export const usageRecordsRelations = relations(usageRecords, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [usageRecords.organizationId],
+    references: [organizations.id],
+  }),
+}));
+
+export const paymentMethodsRelations = relations(paymentMethods, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [paymentMethods.organizationId],
     references: [organizations.id],
   }),
 }));

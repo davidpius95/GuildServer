@@ -55,7 +55,7 @@ export default function HomePage() {
               <Link href="#infrastructure" className="text-muted-foreground hover:text-foreground transition-colors">
                 Infrastructure
               </Link>
-              <Link href="/dashboard/templates" className="text-muted-foreground hover:text-foreground transition-colors">
+              <Link href="/pricing" className="text-muted-foreground hover:text-foreground transition-colors">
                 Pricing
               </Link>
             </nav>

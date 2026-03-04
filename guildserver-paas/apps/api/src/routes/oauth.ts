@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { eq, and } from "drizzle-orm";
-import { db, users, oauthAccounts, organizations, members, projects } from "@guildserver/database";
+import { db, users, oauthAccounts, organizations, members, projects, plans, subscriptions } from "@guildserver/database";
 import { logger } from "../utils/logger";
 import crypto from "crypto";
 
@@ -365,6 +365,27 @@ async function findOrCreateOAuthUser(params: {
     name: "Default Project",
     organizationId: newOrg.id,
   });
+
+  // Auto-assign Hobby (free) plan to the new organization
+  const hobbyPlan = await db.query.plans.findFirst({
+    where: eq(plans.slug, "hobby"),
+  });
+
+  if (hobbyPlan) {
+    const now = new Date();
+    const periodEnd = new Date(now);
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+    await db.insert(subscriptions).values({
+      organizationId: newOrg.id,
+      planId: hobbyPlan.id,
+      status: "active",
+      currentPeriodStart: now,
+      currentPeriodEnd: periodEnd,
+      seats: 1,
+    });
+    logger.info(`Assigned Hobby plan to organization '${orgName}'`);
+  }
 
   logger.info(`Created default organization '${orgName}' with default project for new OAuth user ${params.email}`);
 

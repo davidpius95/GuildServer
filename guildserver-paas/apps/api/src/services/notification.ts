@@ -13,7 +13,12 @@ export type NotificationEvent =
   | "certificate_failed"
   | "webhook_failed"
   | "member_added"
-  | "member_removed";
+  | "member_removed"
+  | "spend_threshold_50"
+  | "spend_threshold_75"
+  | "spend_threshold_100"
+  | "spend_limit_reached"
+  | "trial_ending";
 
 interface NotifyData {
   appName?: string;
@@ -39,6 +44,11 @@ const EVENT_ICONS: Record<NotificationEvent, string> = {
   webhook_failed: "🔔",
   member_added: "👤",
   member_removed: "👤",
+  spend_threshold_50: "💰",
+  spend_threshold_75: "⚠️",
+  spend_threshold_100: "🚨",
+  spend_limit_reached: "🛑",
+  trial_ending: "⏳",
 };
 
 // Generate notification title/message based on event
@@ -97,6 +107,31 @@ function generateNotification(
       return {
         title: `${icon} Team member removed`,
         message: `${data.memberEmail} has been removed from the team.`,
+      };
+    case "spend_threshold_50":
+      return {
+        title: `${icon} 50% of spend limit used`,
+        message: `Your organization has used 50% of its monthly spend limit ($${data.currentSpend}/$${data.spendLimit}). Consider reviewing your usage.`,
+      };
+    case "spend_threshold_75":
+      return {
+        title: `${icon} 75% of spend limit used`,
+        message: `Your organization has used 75% of its monthly spend limit ($${data.currentSpend}/$${data.spendLimit}). You're approaching your limit.`,
+      };
+    case "spend_threshold_100":
+      return {
+        title: `${icon} Spend limit reached`,
+        message: `Your organization has reached 100% of its monthly spend limit ($${data.currentSpend}/$${data.spendLimit}).`,
+      };
+    case "spend_limit_reached":
+      return {
+        title: `${icon} Deployments paused — spend limit reached`,
+        message: `New deployments are paused because your organization has reached its $${data.spendLimit}/mo spend limit. Increase your limit or wait for the next billing period.`,
+      };
+    case "trial_ending":
+      return {
+        title: `${icon} Your Pro trial ends soon`,
+        message: `Your 14-day Pro trial ends on ${data.trialEndDate}. Add a payment method to keep Pro features, or you'll be downgraded to Hobby.`,
       };
     default:
       return {

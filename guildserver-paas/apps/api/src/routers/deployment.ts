@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc/trpc";
 import { deployments, applications, databases, members, projects } from "@guildserver/database";
-import { eq, desc, or, and, inArray, sql, gte, lte } from "drizzle-orm";
+import { eq, desc, or, and, inArray, sql, gte, lte, count } from "drizzle-orm";
 
 export const deploymentRouter = createTRPCRouter({
   // List all deployments the user has access to (across all projects/orgs)
@@ -576,5 +576,103 @@ export const deploymentRouter = createTRPCRouter({
       );
 
       return newDeployment;
+    }),
+
+  // Deployment activity for the last N days (for dashboard chart)
+  activity: protectedProcedure
+    .input(
+      z.object({
+        days: z.number().min(1).max(90).default(7),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      // Get all organizations the user is a member of
+      const userMembers = await ctx.db.query.members.findMany({
+        where: eq(members.userId, ctx.user.id),
+        columns: { organizationId: true },
+      });
+
+      if (userMembers.length === 0) {
+        return [];
+      }
+
+      const orgIds = userMembers.map((m) => m.organizationId);
+
+      // Get project IDs for those orgs
+      const orgProjects = await ctx.db.query.projects.findMany({
+        where: inArray(projects.organizationId, orgIds),
+        columns: { id: true },
+      });
+
+      if (orgProjects.length === 0) {
+        return [];
+      }
+
+      const projectIds = orgProjects.map((p) => p.id);
+
+      // Get application IDs for those projects
+      const orgApps = await ctx.db.query.applications.findMany({
+        where: inArray(applications.projectId, projectIds),
+        columns: { id: true },
+      });
+
+      if (orgApps.length === 0) {
+        return [];
+      }
+
+      const appIds = orgApps.map((a) => a.id);
+
+      // Query deployments grouped by day and status
+      const from = new Date();
+      from.setDate(from.getDate() - input.days);
+      from.setHours(0, 0, 0, 0);
+
+      const rows = await ctx.db
+        .select({
+          date: sql<string>`DATE(${deployments.createdAt})`.as("date"),
+          status: deployments.status,
+          count: count(),
+        })
+        .from(deployments)
+        .where(
+          and(
+            inArray(deployments.applicationId, appIds),
+            gte(deployments.createdAt, from)
+          )
+        )
+        .groupBy(sql`DATE(${deployments.createdAt})`, deployments.status)
+        .orderBy(sql`DATE(${deployments.createdAt})`);
+
+      // Build day-by-day result
+      const result: Array<{
+        date: string;
+        total: number;
+        completed: number;
+        failed: number;
+        building: number;
+      }> = [];
+
+      // Fill in all days (even zero-activity ones)
+      for (let i = 0; i < input.days; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() - (input.days - 1 - i));
+        const dateStr = d.toISOString().slice(0, 10);
+        result.push({ date: dateStr, total: 0, completed: 0, failed: 0, building: 0 });
+      }
+
+      // Populate from query results
+      for (const row of rows) {
+        const dateStr = typeof row.date === "string" ? row.date.slice(0, 10) : String(row.date).slice(0, 10);
+        const entry = result.find((r) => r.date === dateStr);
+        if (entry) {
+          const cnt = Number(row.count);
+          entry.total += cnt;
+          if (row.status === "completed") entry.completed += cnt;
+          else if (row.status === "failed") entry.failed += cnt;
+          else if (row.status === "building" || row.status === "deploying" || row.status === "pending") entry.building += cnt;
+        }
+      }
+
+      return result;
     }),
 });

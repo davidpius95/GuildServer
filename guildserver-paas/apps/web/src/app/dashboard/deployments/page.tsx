@@ -1,12 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, memo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { trpc } from "@/components/trpc-provider"
-import { formatDateTime } from "@/lib/utils"
+// formatDateTime removed — using timeAgo helper instead
 import { toast } from "sonner"
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog"
 import {
@@ -26,6 +26,9 @@ import {
   RefreshCw,
   RotateCcw,
 } from "lucide-react"
+import { DeploymentListSkeleton } from "@/components/skeletons/deployment-list-skeleton"
+import { EmptyState } from "@/components/empty-state"
+import { AnimatedList, AnimatedItem } from "@/components/motion/animated-list"
 
 const getStatusColor = (status: string) => {
   const colors: Record<string, string> = {
@@ -78,6 +81,155 @@ function timeAgo(date: string | Date) {
   const diffDays = Math.floor(diffHrs / 24)
   return `${diffDays}d ago`
 }
+
+// Memoized deployment row to prevent re-renders when other rows expand/collapse
+const DeploymentRow = memo(function DeploymentRow({
+  deploy,
+  isExpanded,
+  onToggle,
+  onRollback,
+  isRollbackPending,
+}: {
+  deploy: any
+  isExpanded: boolean
+  onToggle: () => void
+  onRollback: () => void
+  isRollbackPending: boolean
+}) {
+  return (
+    <div>
+      <Card
+        className={`cursor-pointer transition-colors hover:bg-accent/50 ${
+          isExpanded ? "ring-1 ring-primary" : ""
+        }`}
+        onClick={onToggle}
+      >
+        <CardContent className="py-3 px-4">
+          <div className="grid grid-cols-[32px_1fr_120px_140px_80px_100px_80px] gap-3 items-center">
+            {/* Expand icon */}
+            <div className="text-muted-foreground">
+              {isExpanded ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </div>
+
+            {/* Application */}
+            <div className="min-w-0">
+              <p className="text-sm font-medium truncate">
+                {deploy.application?.appName || "Unknown"}
+              </p>
+              <p className="text-xs text-muted-foreground truncate">
+                {deploy.application?.project?.name || ""}
+              </p>
+            </div>
+
+            {/* Status */}
+            <div className="flex items-center gap-2">
+              {getStatusIcon(deploy.status)}
+              <Badge variant="outline" className={`text-xs ${getStatusColor(deploy.status)}`}>
+                {deploy.status}
+              </Badge>
+            </div>
+
+            {/* Commit / Source */}
+            <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+              {deploy.gitCommitSha ? (
+                <>
+                  <GitBranch className="h-3 w-3 flex-shrink-0" />
+                  <span className="font-mono">{deploy.gitCommitSha.slice(0, 8)}</span>
+                </>
+              ) : (
+                <>
+                  <Container className="h-3 w-3 flex-shrink-0" />
+                  <span>Docker</span>
+                </>
+              )}
+            </div>
+
+            {/* Duration */}
+            <div className="text-xs text-muted-foreground flex items-center gap-1">
+              <Timer className="h-3 w-3" />
+              {formatDuration(deploy.duration)}
+            </div>
+
+            {/* Time */}
+            <div className="text-xs text-muted-foreground">
+              {timeAgo(deploy.createdAt)}
+            </div>
+
+            {/* Actions */}
+            <div className="text-right">
+              {deploy.status === "completed" && deploy.imageTag && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  disabled={isRollbackPending}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onRollback()
+                  }}
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Rollback
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Expanded build logs */}
+      {isExpanded && (
+        <Card className="ml-8 mt-1 border-l-2 border-primary">
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Terminal className="h-4 w-4" />
+              Build Logs
+              {deploy.title && (
+                <span className="text-muted-foreground font-normal">— {deploy.title}</span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="bg-gray-950 text-green-400 rounded-lg p-3 font-mono text-xs max-h-64 overflow-y-auto whitespace-pre-wrap">
+              {deploy.buildLogs ? (
+                deploy.buildLogs.split("\n").map((line: string, i: number) => (
+                  <div
+                    key={i}
+                    className={`py-0.5 ${
+                      line.startsWith("ERROR") || line.includes("error")
+                        ? "text-red-400"
+                        : line.startsWith("Step") || line.startsWith("---")
+                        ? "text-blue-400"
+                        : line.startsWith("Successfully") || line.includes("completed")
+                        ? "text-green-400"
+                        : ""
+                    }`}
+                  >
+                    {line}
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-500">No build logs available</p>
+              )}
+            </div>
+            {deploy.deploymentLogs && (
+              <div className="mt-3 bg-gray-950 text-cyan-400 rounded-lg p-3 font-mono text-xs max-h-32 overflow-y-auto">
+                <p className="text-gray-500 mb-1">Deployment Info:</p>
+                {deploy.deploymentLogs.split("\n").map((line: string, i: number) => (
+                  <div key={i}>{line}</div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+})
 
 export default function DeploymentsPage() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined)
@@ -215,20 +367,24 @@ export default function DeploymentsPage() {
 
       {/* Deployment List */}
       {deploymentsQuery.isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
+        <DeploymentListSkeleton />
       ) : filteredDeployments.length === 0 ? (
-        <Card className="text-center py-12">
-          <CardContent>
-            <Rocket className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-            <h3 className="text-lg font-semibold mb-2">No deployments found</h3>
-            <p className="text-muted-foreground">
-              {statusFilter
-                ? `No ${statusFilter} deployments. Try changing your filters.`
-                : "Deploy your first application to see deployment history here."
+        <Card>
+          <CardContent className="p-0">
+            <EmptyState
+              icon={Rocket}
+              title="No deployments found"
+              description={
+                statusFilter
+                  ? `No ${statusFilter} deployments. Try changing your filters.`
+                  : "Deploy your first application to see deployment history here."
               }
-            </p>
+              action={
+                statusFilter
+                  ? { label: "Clear filters", onClick: () => { setStatusFilter(undefined); setTimeRange("all") } }
+                  : undefined
+              }
+            />
           </CardContent>
         </Card>
       ) : (
@@ -245,145 +401,27 @@ export default function DeploymentsPage() {
           </div>
 
           {/* Deployment rows */}
-          {filteredDeployments.map((deploy: any) => (
-            <div key={deploy.id}>
-              <Card
-                className={`cursor-pointer transition-colors hover:bg-accent/50 ${
-                  expandedId === deploy.id ? "ring-1 ring-primary" : ""
-                }`}
-                onClick={() => setExpandedId(expandedId === deploy.id ? null : deploy.id)}
-              >
-                <CardContent className="py-3 px-4">
-                  <div className="grid grid-cols-[32px_1fr_120px_140px_80px_100px_80px] gap-3 items-center">
-                    {/* Expand icon */}
-                    <div className="text-muted-foreground">
-                      {expandedId === deploy.id ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                    </div>
-
-                    {/* Application */}
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {deploy.application?.appName || "Unknown"}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {deploy.application?.project?.name || ""}
-                      </p>
-                    </div>
-
-                    {/* Status */}
-                    <div className="flex items-center gap-2">
-                      {getStatusIcon(deploy.status)}
-                      <Badge variant="outline" className={`text-xs ${getStatusColor(deploy.status)}`}>
-                        {deploy.status}
-                      </Badge>
-                    </div>
-
-                    {/* Commit / Source */}
-                    <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-                      {deploy.gitCommitSha ? (
-                        <>
-                          <GitBranch className="h-3 w-3 flex-shrink-0" />
-                          <span className="font-mono">{deploy.gitCommitSha.slice(0, 8)}</span>
-                        </>
-                      ) : (
-                        <>
-                          <Container className="h-3 w-3 flex-shrink-0" />
-                          <span>Docker</span>
-                        </>
-                      )}
-                    </div>
-
-                    {/* Duration */}
-                    <div className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Timer className="h-3 w-3" />
-                      {formatDuration(deploy.duration)}
-                    </div>
-
-                    {/* Time */}
-                    <div className="text-xs text-muted-foreground">
-                      {timeAgo(deploy.createdAt)}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="text-right">
-                      {deploy.status === "completed" && deploy.imageTag && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs gap-1"
-                          disabled={rollbackMutation.isPending}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            showConfirm({
-                              title: "Roll back to this deployment?",
-                              description: `This will redeploy the version from ${timeAgo(deploy.createdAt)}. The current deployment will be replaced.`,
-                              confirmLabel: "Roll Back",
-                              variant: "warning",
-                              onConfirm: () => rollbackMutation.mutate({ deploymentId: deploy.id }),
-                            })
-                          }}
-                        >
-                          <RotateCcw className="h-3 w-3" />
-                          Rollback
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Expanded build logs */}
-              {expandedId === deploy.id && (
-                <Card className="ml-8 mt-1 border-l-2 border-primary">
-                  <CardHeader className="py-3">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <Terminal className="h-4 w-4" />
-                      Build Logs
-                      {deploy.title && (
-                        <span className="text-muted-foreground font-normal">— {deploy.title}</span>
-                      )}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <div className="bg-gray-950 text-green-400 rounded-lg p-3 font-mono text-xs max-h-64 overflow-y-auto whitespace-pre-wrap">
-                      {deploy.buildLogs ? (
-                        deploy.buildLogs.split("\n").map((line: string, i: number) => (
-                          <div
-                            key={i}
-                            className={`py-0.5 ${
-                              line.startsWith("ERROR") || line.includes("error")
-                                ? "text-red-400"
-                                : line.startsWith("Step") || line.startsWith("---")
-                                ? "text-blue-400"
-                                : line.startsWith("Successfully") || line.includes("completed")
-                                ? "text-green-400"
-                                : ""
-                            }`}
-                          >
-                            {line}
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-gray-500">No build logs available</p>
-                      )}
-                    </div>
-                    {deploy.deploymentLogs && (
-                      <div className="mt-3 bg-gray-950 text-cyan-400 rounded-lg p-3 font-mono text-xs max-h-32 overflow-y-auto">
-                        <p className="text-gray-500 mb-1">Deployment Info:</p>
-                        {deploy.deploymentLogs.split("\n").map((line: string, i: number) => (
-                          <div key={i}>{line}</div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          ))}
+          <AnimatedList>
+            {filteredDeployments.map((deploy: any) => (
+              <AnimatedItem key={deploy.id}>
+                <DeploymentRow
+                  deploy={deploy}
+                  isExpanded={expandedId === deploy.id}
+                  onToggle={() => setExpandedId(expandedId === deploy.id ? null : deploy.id)}
+                  onRollback={() => {
+                    showConfirm({
+                      title: "Roll back to this deployment?",
+                      description: `This will redeploy the version from ${timeAgo(deploy.createdAt)}. The current deployment will be replaced.`,
+                      confirmLabel: "Roll Back",
+                      variant: "warning",
+                      onConfirm: () => rollbackMutation.mutate({ deploymentId: deploy.id }),
+                    })
+                  }}
+                  isRollbackPending={rollbackMutation.isPending}
+                />
+              </AnimatedItem>
+            ))}
+          </AnimatedList>
         </div>
       )}
 
