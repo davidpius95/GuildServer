@@ -30,6 +30,8 @@ import {
 } from "../services/docker";
 import type { DeployOptions } from "../services/docker";
 import { logger } from "../utils/logger";
+import { db, deployments } from "@guildserver/database";
+import { eq, desc, and, isNotNull } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -947,13 +949,12 @@ export class ProxmoxProvider implements ComputeProvider {
   /**
    * Find the VMID of the LXC container associated with a given application.
    *
-   * This uses a hostname-based lookup convention: GuildServer-managed LXC
-   * containers have hostnames prefixed with "gs-". The applicationId is
-   * matched by searching all LXCs on the configured node.
-   *
-   * **Note:** This is a temporary approach. In production, the VMID should be
-   * stored in the application's `providerMetadata` in the database, which
-   * would make this lookup a simple database read.
+   * Uses a two-tier lookup strategy:
+   * 1. **Database lookup** (preferred) — checks the latest deployment's
+   *    `lxcVmId` column for this application, which is stored during deploy.
+   * 2. **Hostname-based fallback** — scans all LXCs on the Proxmox node and
+   *    matches by the "gs-{appName}" hostname convention. This handles legacy
+   *    deployments or cases where the DB record was lost.
    */
   private async findVMIDForApp(
     applicationId: string,
@@ -961,9 +962,43 @@ export class ProxmoxProvider implements ComputeProvider {
     const node = this.config.node;
 
     try {
+      // Strategy 1: Database lookup — fastest and most reliable
+      const latestDeployment = await db.query.deployments.findFirst({
+        where: and(
+          eq(deployments.applicationId, applicationId),
+          isNotNull(deployments.lxcVmId),
+        ),
+        orderBy: [desc(deployments.createdAt)],
+        columns: { lxcVmId: true },
+      });
+
+      if (latestDeployment?.lxcVmId) {
+        // Verify the VMID still exists on the Proxmox node
+        try {
+          const status = await this.client.getLXCStatus(
+            node,
+            latestDeployment.lxcVmId,
+          );
+          if (status) {
+            logger.debug("Found VMID via database lookup", {
+              applicationId,
+              vmid: latestDeployment.lxcVmId,
+            });
+            return latestDeployment.lxcVmId;
+          }
+        } catch {
+          // VMID from DB doesn't exist on node anymore — fall through to scan
+          logger.debug("DB VMID no longer exists on Proxmox, falling back to scan", {
+            applicationId,
+            staleVmid: latestDeployment.lxcVmId,
+          });
+        }
+      }
+
+      // Strategy 2: Hostname-based scan (fallback for legacy deployments)
       const lxcs = await this.client.listLXCs(node);
 
-      // Strategy 1: Check if applicationId looks like "pve-{vmid}"
+      // Check if applicationId looks like "pve-{vmid}"
       if (applicationId.startsWith("pve-")) {
         const candidateVmid = parseInt(applicationId.slice(4), 10);
         if (!isNaN(candidateVmid)) {
@@ -972,7 +1007,7 @@ export class ProxmoxProvider implements ComputeProvider {
         }
       }
 
-      // Strategy 2: Match by hostname derived from applicationId
+      // Match by hostname derived from applicationId
       const expectedHostname = sanitizeHostname(applicationId);
       for (const lxc of lxcs) {
         if (lxc.name === expectedHostname) {
@@ -980,8 +1015,7 @@ export class ProxmoxProvider implements ComputeProvider {
         }
       }
 
-      // Strategy 3: Partial match — look for any GuildServer-prefixed
-      // hostname that contains the applicationId (or a sanitized form of it)
+      // Partial match — look for any GuildServer-prefixed hostname
       const sanitizedId = applicationId
         .toLowerCase()
         .replace(/[^a-z0-9]/g, "");

@@ -551,15 +551,30 @@ const deploymentWorker = new Worker(
       // Save the image tag for future rollbacks
       const finalImageTag = resolvedImageTag || `${effectiveImage}:${effectiveTag}`;
 
+      // Build deployment update with provider metadata (for Proxmox VMID lookup, etc.)
+      const deploymentUpdate: Record<string, unknown> = {
+        status: "completed",
+        buildLogs: allLogs,
+        deploymentLogs: `Container: ${result.containerName}\nPort: ${result.hostPort}\nContainer ID: ${result.containerId}\nURL: ${accessUrl}`,
+        completedAt: new Date(),
+        imageTag: finalImageTag,
+      };
+
+      // Store provider metadata for infrastructure tracking
+      if (resolvedProviderId) {
+        deploymentUpdate.providerId = resolvedProviderId;
+      }
+      if (result.providerMetadata) {
+        deploymentUpdate.providerMetadata = result.providerMetadata;
+        // Store LXC VMID directly for efficient lookups
+        if (typeof result.providerMetadata.vmid === "number") {
+          deploymentUpdate.lxcVmId = result.providerMetadata.vmid;
+        }
+      }
+
       await db
         .update(deployments)
-        .set({
-          status: "completed",
-          buildLogs: allLogs,
-          deploymentLogs: `Container: ${result.containerName}\nPort: ${result.hostPort}\nContainer ID: ${result.containerId}\nURL: ${accessUrl}`,
-          completedAt: new Date(),
-          imageTag: finalImageTag,
-        })
+        .set(deploymentUpdate)
         .where(eq(deployments.id, deploymentId));
 
       // 8. Update application status to "running"

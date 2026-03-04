@@ -1,5 +1,24 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
+// Mock the database module (used by findVMIDForApp for DB-based VMID lookup)
+const mockFindFirst = jest.fn().mockResolvedValue(null);
+jest.mock('@guildserver/database', () => ({
+  db: {
+    query: {
+      deployments: { findFirst: (...args: any[]) => mockFindFirst(...args) },
+    },
+  },
+  deployments: { applicationId: 'applicationId', lxcVmId: 'lxcVmId', createdAt: 'createdAt' },
+}));
+
+// Mock drizzle-orm operators
+jest.mock('drizzle-orm', () => ({
+  eq: jest.fn((...args: any[]) => ({ op: 'eq', args })),
+  desc: jest.fn((...args: any[]) => ({ op: 'desc', args })),
+  and: jest.fn((...args: any[]) => ({ op: 'and', args })),
+  isNotNull: jest.fn((...args: any[]) => ({ op: 'isNotNull', args })),
+}));
+
 // Mock the ProxmoxClient before importing ProxmoxProvider
 jest.mock('../../src/services/proxmox-client');
 
@@ -605,6 +624,130 @@ describe('ProxmoxProvider', () => {
       expect(result.details!.resources).toBeDefined();
       expect(result.details!.resources!.cpuCores).toBe(8);
       expect(result.details!.resources!.memoryMb).toBe(Math.round(17179869184 / (1024 * 1024)));
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // findVMIDForApp — DB-based VMID lookup
+  // -------------------------------------------------------------------------
+
+  describe('DB-based VMID lookup', () => {
+    it('should find VMID via database before scanning Proxmox', async () => {
+      const provider = new ProxmoxProvider(testConfig);
+      const mockClient = MockedProxmoxClient.mock.instances[0] as any;
+
+      // DB returns a stored VMID
+      mockFindFirst.mockResolvedValueOnce({ lxcVmId: 200 });
+
+      // getLXCStatus confirms the VMID exists on the node
+      mockClient.getLXCStatus = jest.fn().mockResolvedValue({
+        status: 'running',
+        name: 'gs-my-app',
+      });
+
+      // listLXCs should NOT be called (DB lookup should short-circuit)
+      mockClient.listLXCs = jest.fn().mockResolvedValue([]);
+      mockClient.getLXCInterfaces = jest.fn().mockRejectedValue(new Error('no IP'));
+      mockClient.stopLXC = jest.fn().mockResolvedValue('UPID:pve:stop');
+      mockClient.waitForTask = jest.fn().mockResolvedValue({ status: 'OK' });
+
+      // Call stop() which internally uses findVMIDForApp
+      await provider.stop('my-app');
+
+      // DB was queried
+      expect(mockFindFirst).toHaveBeenCalled();
+
+      // getLXCStatus was called to verify VMID exists
+      expect(mockClient.getLXCStatus).toHaveBeenCalledWith('pve', 200);
+
+      // stopLXC was called with the DB-provided VMID
+      expect(mockClient.stopLXC).toHaveBeenCalledWith('pve', 200);
+
+      // listLXCs was NOT called — DB lookup was sufficient
+      expect(mockClient.listLXCs).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to hostname scan when DB VMID is stale', async () => {
+      const provider = new ProxmoxProvider(testConfig);
+      const mockClient = MockedProxmoxClient.mock.instances[0] as any;
+
+      // DB returns a VMID that no longer exists
+      mockFindFirst.mockResolvedValueOnce({ lxcVmId: 999 });
+
+      // getLXCStatus throws (VMID doesn't exist anymore)
+      mockClient.getLXCStatus = jest.fn().mockRejectedValue(new Error('VM 999 not found'));
+
+      // Hostname scan finds the correct container
+      mockClient.listLXCs = jest.fn().mockResolvedValue([
+        { vmid: 101, name: 'gs-my-app', status: 'running', mem: 0, maxmem: 0, disk: 0, maxdisk: 0, cpu: 0, maxcpu: 0, uptime: 0 },
+      ]);
+      mockClient.getLXCInterfaces = jest.fn().mockRejectedValue(new Error('no IP'));
+      mockClient.stopLXC = jest.fn().mockResolvedValue('UPID:pve:stop');
+      mockClient.waitForTask = jest.fn().mockResolvedValue({ status: 'OK' });
+
+      await provider.stop('my-app');
+
+      // Fell through to hostname scan
+      expect(mockClient.listLXCs).toHaveBeenCalled();
+
+      // Used the hostname-found VMID
+      expect(mockClient.stopLXC).toHaveBeenCalledWith('pve', 101);
+    });
+
+    it('should fall back to hostname scan when DB has no VMID', async () => {
+      const provider = new ProxmoxProvider(testConfig);
+      const mockClient = MockedProxmoxClient.mock.instances[0] as any;
+
+      // DB returns nothing
+      mockFindFirst.mockResolvedValueOnce(null);
+
+      // Hostname scan
+      mockClient.listLXCs = jest.fn().mockResolvedValue([
+        { vmid: 105, name: 'gs-my-app', status: 'running', mem: 0, maxmem: 0, disk: 0, maxdisk: 0, cpu: 0, maxcpu: 0, uptime: 0 },
+      ]);
+      mockClient.getLXCInterfaces = jest.fn().mockRejectedValue(new Error('no IP'));
+      mockClient.stopLXC = jest.fn().mockResolvedValue('UPID:pve:stop');
+      mockClient.waitForTask = jest.fn().mockResolvedValue({ status: 'OK' });
+
+      await provider.stop('my-app');
+
+      expect(mockClient.listLXCs).toHaveBeenCalled();
+      expect(mockClient.stopLXC).toHaveBeenCalledWith('pve', 105);
+    });
+
+    it('should store providerMetadata with VMID in deploy result', async () => {
+      const provider = new ProxmoxProvider(testConfig);
+      const mockClient = MockedProxmoxClient.mock.instances[0] as any;
+
+      mockClient.listTemplates = jest.fn().mockResolvedValue([
+        { volid: 'local:vztmpl/ubuntu-22.04-standard.tar.zst', format: 'tar.zst', size: 100000 },
+      ]);
+      mockClient.getNextVMID = jest.fn().mockResolvedValue(150);
+      mockClient.createLXC = jest.fn().mockResolvedValue('UPID:pve:create');
+      mockClient.waitForTask = jest.fn().mockResolvedValue({ status: 'OK' });
+      mockClient.startLXC = jest.fn().mockResolvedValue('UPID:pve:start');
+      mockClient.getLXCInterfaces = jest.fn().mockResolvedValue([
+        {
+          name: 'eth0',
+          hwaddr: '00:11:22:33:44:55',
+          'ip-addresses': [
+            { 'ip-address': '10.0.0.50', 'ip-address-type': 'inet', prefix: 24 },
+          ],
+        },
+      ]);
+
+      const result = await provider.deploy(deployConfig);
+
+      // providerMetadata should contain the VMID for DB storage
+      expect(result.providerMetadata).toBeDefined();
+      expect(result.providerMetadata!.vmid).toBe(150);
+      expect(typeof result.providerMetadata!.vmid).toBe('number');
+
+      // Should also include other useful metadata
+      expect(result.providerMetadata!.provider).toBe('proxmox');
+      expect(result.providerMetadata!.node).toBe('pve');
+      expect(result.providerMetadata!.hostname).toBe('gs-my-test-app');
+      expect(result.providerMetadata!.lxcIp).toBe('10.0.0.50');
     });
   });
 });
