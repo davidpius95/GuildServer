@@ -5,7 +5,7 @@ import { computeProviders, applications } from "@guildserver/database";
 import { eq, and, count } from "drizzle-orm";
 import { createProviderFromConfig } from "../providers/factory";
 import { listAvailableProviders, isProviderImplemented } from "../providers/registry";
-import { removeClient } from "../services/node-docker";
+import { removeClientByHost } from "../services/node-docker";
 import type { ProviderType, ProviderConfig } from "../providers/types";
 
 const providerTypeValues = [
@@ -187,12 +187,25 @@ export const providerRouter = createTRPCRouter({
         });
       }
 
+      // Look up the provider config BEFORE deleting so we can clean up
+      // cached Docker clients keyed by host:port (not by UUID).
+      const provider = await ctx.db.query.computeProviders.findFirst({
+        where: eq(computeProviders.id, input.id),
+      });
+
       await ctx.db
         .delete(computeProviders)
         .where(eq(computeProviders.id, input.id));
 
-      // Clean up any cached Docker client associated with this provider
-      removeClient(input.id);
+      // Clean up any cached Docker client associated with this provider.
+      // The client pool keys by `host:port`, so we extract the host from
+      // the provider config rather than using the UUID.
+      if (provider?.type === "proxmox" && provider.config) {
+        const config = provider.config as { host?: string };
+        if (config.host) {
+          removeClientByHost(config.host);
+        }
+      }
 
       return { success: true };
     }),

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import {
   ComputeProvider,
   DeployConfig,
@@ -67,6 +68,17 @@ const DOCKER_TCP_PORT = 2375;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Generate a random password for the LXC root user.
+ *
+ * This allows admins to SSH into the LXC for manual Docker setup or debugging.
+ * The password is stored in the deployment's providerMetadata so it can be
+ * retrieved from the DB if needed.
+ */
+function generateLxcPassword(): string {
+  return randomBytes(16).toString("base64url");
+}
 
 /**
  * Sanitize an application name into a valid LXC hostname.
@@ -215,6 +227,11 @@ export class ProxmoxProvider implements ComputeProvider {
       `Creating LXC: vmid=${vmid}, memory=${memoryMb}MB, cores=${cores}, rootfs=${rootfs}`,
     );
 
+    // Generate a root password for the LXC so admins can SSH in
+    // to set up Docker or debug. Stored in providerMetadata.
+    const lxcPassword = generateLxcPassword();
+    logs.push(`LXC root password generated (stored in deployment metadata)`);
+
     const createUpid = await this.client.createLXC(node, {
       vmid,
       hostname,
@@ -225,6 +242,7 @@ export class ProxmoxProvider implements ComputeProvider {
       swap: Math.round(memoryMb / 2),
       cores,
       net0,
+      password: lxcPassword,
       start: false,
       unprivileged: true,
       features: "nesting=1",
@@ -349,8 +367,28 @@ export class ProxmoxProvider implements ComputeProvider {
       } catch (dockerErr) {
         const msg = dockerErr instanceof Error ? dockerErr.message : String(dockerErr);
         logs.push(
-          `Warning: Docker deployment inside LXC failed: ${msg}. ` +
-          "The LXC is running and ready for manual Docker setup.",
+          `Warning: Docker deployment inside LXC failed: ${msg}`,
+        );
+        logs.push(
+          "The LXC is running but Docker is not available on TCP port 2375.",
+        );
+        logs.push(
+          "To set up Docker manually, SSH into the LXC and run:",
+        );
+        logs.push(
+          `  ssh root@${lxcIp}  (password is stored in deployment metadata)`,
+        );
+        logs.push(
+          "  apt-get update && apt-get install -y docker.io",
+        );
+        logs.push(
+          '  echo \'{"hosts":["unix:///var/run/docker.sock","tcp://0.0.0.0:2375"]}\' > /etc/docker/daemon.json',
+        );
+        logs.push(
+          "  systemctl restart docker",
+        );
+        logs.push(
+          "Or use a Docker-ready LXC template for zero-config deployments.",
         );
         logger.warn("Docker deployment inside LXC failed", {
           vmid,
@@ -362,8 +400,22 @@ export class ProxmoxProvider implements ComputeProvider {
       }
     } else {
       logs.push(
-        "Note: Could not deploy Docker container — no LXC IP address available. " +
-        "The LXC is running and ready for manual Docker setup.",
+        "Note: Could not deploy Docker container — no LXC IP address available.",
+      );
+      logs.push(
+        "The LXC is running. Check the Proxmox web UI for its IP, then set up Docker:",
+      );
+      logs.push(
+        `  From Proxmox host: pct exec ${vmid} -- bash`,
+      );
+      logs.push(
+        "  apt-get update && apt-get install -y docker.io",
+      );
+      logs.push(
+        '  echo \'{"hosts":["unix:///var/run/docker.sock","tcp://0.0.0.0:2375"]}\' > /etc/docker/daemon.json',
+      );
+      logs.push(
+        "  systemctl restart docker",
       );
     }
 
@@ -389,11 +441,13 @@ export class ProxmoxProvider implements ComputeProvider {
         node,
         hostname,
         lxcIp: lxcIp || null,
+        lxcPassword,
         storage,
         bridge,
         dockerContainerId: dockerContainerId || null,
         dockerContainerName: dockerContainerName || null,
         dockerHostPort,
+        dockerReady: !!dockerContainerId,
         dockerConfig: {
           image: config.dockerImage,
           tag: config.dockerTag,
