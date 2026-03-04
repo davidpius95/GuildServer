@@ -164,7 +164,9 @@ export const applicationRouter = createTRPCRouter({
           ...input,
           appName,
           environment: input.environment || {},
-        })
+          // Convert cpuLimit from number to string (DB column is decimal)
+          cpuLimit: input.cpuLimit != null ? String(input.cpuLimit) : undefined,
+        } as any)
         .returning();
 
       return newApplication;
