@@ -9,6 +9,7 @@ import {
   ensureNetwork,
 } from "../services/docker";
 import { getProvider } from "../providers/factory";
+import { selectNode } from "../services/node-scheduler";
 import { syncContainerStatuses } from "../services/container-manager";
 import { broadcastToUser } from "../websocket/server";
 import { cloneRepository, cleanupClone } from "../services/git-provider";
@@ -112,10 +113,62 @@ const deploymentWorker = new Worker(
         }
       }
 
-      // 3. Check Docker connectivity
-      const dockerAvailable = await testDockerConnection();
-      if (!dockerAvailable) {
-        throw new Error("Docker daemon is not available. Please ensure Docker is running.");
+      // 3. Resolve deployment target and provider
+      //    The deploymentTarget field determines where to deploy:
+      //    - "docker-local" (default): deploy to local Docker
+      //    - "proxmox": deploy to a Proxmox node (uses provider abstraction)
+      const deploymentTarget = (app as any).deploymentTarget || "docker-local";
+      let resolvedProviderId: string | null = (app as any).providerId || null;
+
+      if (deploymentTarget === "proxmox" && !resolvedProviderId) {
+        // Auto-select a Proxmox node using the scheduler
+        broadcastToUser(userId, {
+          type: "deployment_log",
+          deploymentId,
+          log: "Selecting optimal Proxmox node for deployment...",
+          phase: "validate",
+        });
+
+        const appProject = app.projectId
+          ? await db.query.projects.findFirst({ where: eq(projects.id, app.projectId) })
+          : null;
+
+        const schedulerResult = await selectNode(appProject?.organizationId);
+
+        if (schedulerResult.fallbackToLocal) {
+          // No Proxmox nodes available — fall back to local Docker
+          logger.warn("No Proxmox nodes available, falling back to local Docker", {
+            reason: schedulerResult.reason,
+            deploymentId,
+          });
+          allBuildLogs.push(`⚠️ No Proxmox nodes available: ${schedulerResult.reason}`);
+          allBuildLogs.push("Falling back to local Docker deployment");
+          broadcastToUser(userId, {
+            type: "deployment_log",
+            deploymentId,
+            log: "⚠️ No Proxmox nodes available, falling back to local Docker",
+            phase: "validate",
+          });
+        } else {
+          resolvedProviderId = schedulerResult.provider!.providerId;
+          allBuildLogs.push(`Selected Proxmox node: ${schedulerResult.provider!.providerName}`);
+          allBuildLogs.push(schedulerResult.reason);
+          broadcastToUser(userId, {
+            type: "deployment_log",
+            deploymentId,
+            log: `Selected Proxmox node: ${schedulerResult.provider!.providerName}`,
+            phase: "validate",
+          });
+        }
+      }
+
+      // 3b. Check Docker connectivity (only for local Docker deploys)
+      const isLocalDeploy = !resolvedProviderId || deploymentTarget === "docker-local";
+      if (isLocalDeploy) {
+        const dockerAvailable = await testDockerConnection();
+        if (!dockerAvailable) {
+          throw new Error("Docker daemon is not available. Please ensure Docker is running.");
+        }
       }
 
       // Mark validate complete
@@ -443,8 +496,9 @@ const deploymentWorker = new Worker(
         : app.appName;
 
       // Resolve the compute provider (uses provider abstraction for multi-cloud)
+      // Uses the resolved provider ID (which may have been auto-selected by the scheduler)
       // Falls back to local Docker if no provider is configured for this app
-      const computeProvider = await getProvider((app as any).providerId || null);
+      const computeProvider = await getProvider(resolvedProviderId);
 
       const deployConfig = {
         deploymentId,
