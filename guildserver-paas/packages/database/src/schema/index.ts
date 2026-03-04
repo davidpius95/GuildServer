@@ -328,6 +328,11 @@ export const deployments = pgTable("deployments", {
   isPreview: boolean("is_preview").default(false),
   previewBranch: varchar("preview_branch", { length: 255 }),
 
+  // Infrastructure provider (multi-cloud)
+  providerId: uuid("provider_id").references(() => computeProviders.id, { onDelete: "set null" }),
+  lxcVmId: integer("lxc_vm_id"),
+  providerMetadata: jsonb("provider_metadata"),
+
   // Timing
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
