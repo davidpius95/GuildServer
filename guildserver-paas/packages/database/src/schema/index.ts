@@ -81,6 +81,25 @@ export const approvalStatusEnum = pgEnum("approval_status", [
   "expired"
 ]);
 
+// Infrastructure provider enums
+export const providerTypeEnum = pgEnum("provider_type", [
+  "docker-local",
+  "docker-remote",
+  "proxmox",
+  "kubernetes",
+  "aws-ecs",
+  "gcp-cloudrun",
+  "azure-aci",
+  "hetzner",
+  "digitalocean",
+]);
+export const providerStatusEnum = pgEnum("provider_status", [
+  "pending",
+  "connected",
+  "error",
+  "disabled",
+]);
+
 // Billing enums
 export const planSlugEnum = pgEnum("plan_slug", ["hobby", "pro", "enterprise"]);
 export const subscriptionStatusEnum = pgEnum("subscription_status", [
@@ -235,6 +254,10 @@ export const applications = pgTable("applications", {
   mainBranch: varchar("main_branch", { length: 255 }).default("main"),
   previewTtlHours: integer("preview_ttl_hours").default(72),
 
+  // Infrastructure provider (multi-cloud)
+  providerId: uuid("provider_id").references(() => computeProviders.id, { onDelete: "set null" }),
+  deploymentTarget: varchar("deployment_target", { length: 50 }).default("docker-local"),
+
   // Status
   status: varchar("status", { length: 50 }).default("inactive"),
 
@@ -243,6 +266,7 @@ export const applications = pgTable("applications", {
 }, (table) => ({
   projectIdIdx: index("applications_project_id_idx").on(table.projectId),
   statusIdx: index("applications_status_idx").on(table.status),
+  providerIdIdx: index("applications_provider_id_idx").on(table.providerId),
 }));
 
 // Databases
@@ -505,6 +529,41 @@ export const k8sDeployments = pgTable("k8s_deployments", {
 });
 
 // =====================
+// COMPUTE PROVIDERS (Multi-Cloud Infrastructure)
+// =====================
+
+export const computeProviders = pgTable("compute_providers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: providerTypeEnum("type").notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+
+  // Connection config (encrypted JSON — credentials stored here)
+  config: jsonb("config").default({}).notNull(),
+
+  // Location / region info
+  region: varchar("region", { length: 100 }),
+
+  // Default provider for the org (auto-selected for new apps)
+  isDefault: boolean("is_default").default(false),
+
+  // Connection status
+  status: providerStatusEnum("status").default("pending"),
+  lastHealthCheck: timestamp("last_health_check"),
+  healthMessage: text("health_message"),
+
+  // Extra metadata (e.g., node info, capacity, version)
+  metadata: jsonb("metadata").default({}),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  organizationIdIdx: index("compute_providers_organization_id_idx").on(table.organizationId),
+  typeIdx: index("compute_providers_type_idx").on(table.type),
+  defaultIdx: index("compute_providers_default_idx").on(table.organizationId, table.isDefault),
+}));
+
+// =====================
 // BILLING & SUBSCRIPTIONS
 // =====================
 
@@ -719,6 +778,7 @@ export const organizationsRelations = relations(organizations, ({ many, one }) =
   members: many(members),
   projects: many(projects),
   clusters: many(kubernetesClusters),
+  computeProviders: many(computeProviders),
   ssoProviders: many(ssoProviders),
   workflowTemplates: many(workflowTemplates),
   auditLogs: many(auditLogs),
@@ -771,6 +831,10 @@ export const applicationsRelations = relations(applications, ({ one, many }) => 
   project: one(projects, {
     fields: [applications.projectId],
     references: [projects.id],
+  }),
+  provider: one(computeProviders, {
+    fields: [applications.providerId],
+    references: [computeProviders.id],
   }),
   deployments: many(deployments),
   k8sDeployments: many(k8sDeployments),
@@ -948,6 +1012,14 @@ export const usageRecordsRelations = relations(usageRecords, ({ one }) => ({
     fields: [usageRecords.organizationId],
     references: [organizations.id],
   }),
+}));
+
+export const computeProvidersRelations = relations(computeProviders, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [computeProviders.organizationId],
+    references: [organizations.id],
+  }),
+  applications: many(applications),
 }));
 
 export const paymentMethodsRelations = relations(paymentMethods, ({ one }) => ({

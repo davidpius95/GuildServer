@@ -27,6 +27,7 @@ import {
   CheckCheck,
   CreditCard,
   Loader2,
+  Server,
 } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageTransition } from "@/components/motion/page-transition"
@@ -43,6 +44,7 @@ const navigation = [
   { name: "Team", href: "/dashboard/team", icon: Users },
   { name: "Security", href: "/dashboard/security", icon: Shield },
   { name: "Billing", href: "/dashboard/billing", icon: CreditCard },
+  { name: "Infrastructure", href: "/dashboard/settings/infrastructure", icon: Server },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ]
 
