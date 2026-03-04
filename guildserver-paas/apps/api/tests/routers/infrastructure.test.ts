@@ -2,8 +2,9 @@
  * Infrastructure Router Tests
  *
  * Tests for the Proxmox infrastructure management tRPC router.
- * All procedures are admin-only and operate against a Proxmox VE API
- * (mocked in tests).
+ * Read procedures use protectedProcedure (any authenticated user).
+ * Mutations (setMaintenance) use adminProcedure (admin only).
+ * All procedures operate against a Proxmox VE API (mocked in tests).
  */
 
 // ---------------------------------------------------------------------------
@@ -268,12 +269,11 @@ describe("Infrastructure Router", () => {
       );
     });
 
-    it("should reject non-admin users", async () => {
+    it("should allow non-admin authenticated users (read-only)", async () => {
       const provider = await createProxmoxProvider();
 
-      await expect(userCaller.getNodeResources({ id: provider.id })).rejects.toThrow(
-        /UNAUTHORIZED|FORBIDDEN/,
-      );
+      const result = await userCaller.getNodeResources({ id: provider.id });
+      expect(result.providerId).toBe(provider.id);
     });
   });
 
@@ -331,12 +331,11 @@ describe("Infrastructure Router", () => {
       );
     });
 
-    it("should reject non-admin users", async () => {
+    it("should allow non-admin authenticated users (read-only)", async () => {
       const provider = await createProxmoxProvider();
 
-      await expect(userCaller.listLxcContainers({ id: provider.id })).rejects.toThrow(
-        /UNAUTHORIZED|FORBIDDEN/,
-      );
+      const result = await userCaller.listLxcContainers({ id: provider.id });
+      expect(result.providerId).toBe(provider.id);
     });
   });
 
@@ -368,12 +367,11 @@ describe("Infrastructure Router", () => {
       expect(local.content).toContain("vztmpl");
     });
 
-    it("should reject non-admin users", async () => {
+    it("should allow non-admin authenticated users (read-only)", async () => {
       const provider = await createProxmoxProvider();
 
-      await expect(userCaller.listStorages({ id: provider.id })).rejects.toThrow(
-        /UNAUTHORIZED|FORBIDDEN/,
-      );
+      const result = await userCaller.listStorages({ id: provider.id });
+      expect(result.providerId).toBe(provider.id);
     });
 
     it("should throw NOT_FOUND for non-existent provider", async () => {
@@ -427,12 +425,11 @@ describe("Infrastructure Router", () => {
       expect(result.templates).toHaveLength(0);
     });
 
-    it("should reject non-admin users", async () => {
+    it("should allow non-admin authenticated users (read-only)", async () => {
       const provider = await createProxmoxProvider();
 
-      await expect(userCaller.listTemplates({ id: provider.id })).rejects.toThrow(
-        /UNAUTHORIZED|FORBIDDEN/,
-      );
+      const result = await userCaller.listTemplates({ id: provider.id });
+      expect(result.providerId).toBe(provider.id);
     });
   });
 
@@ -572,8 +569,11 @@ describe("Infrastructure Router", () => {
       expect(result).toHaveLength(0);
     });
 
-    it("should reject non-admin users", async () => {
-      await expect(userCaller.overview()).rejects.toThrow(/UNAUTHORIZED|FORBIDDEN/);
+    it("should allow non-admin authenticated users (read-only)", async () => {
+      await createProxmoxProvider();
+
+      const result = await userCaller.overview();
+      expect(result).toBeInstanceOf(Array);
     });
   });
 
