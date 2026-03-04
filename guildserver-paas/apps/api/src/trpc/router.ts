@@ -17,6 +17,7 @@ import { notificationRouter } from "../routers/notification";
 import { githubRouter } from "../routers/github";
 import { billingRouter } from "../routers/billing";
 import { providerRouter } from "../routers/provider";
+import { infrastructureRouter } from "../routers/infrastructure";
 
 export const appRouter = createTRPCRouter({
   auth: authRouter,
@@ -37,6 +38,7 @@ export const appRouter = createTRPCRouter({
   github: githubRouter,
   billing: billingRouter,
   provider: providerRouter,
+  infrastructure: infrastructureRouter,
 });
 
 export type AppRouter = typeof appRouter;
