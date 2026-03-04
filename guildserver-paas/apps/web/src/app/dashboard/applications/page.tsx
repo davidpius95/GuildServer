@@ -35,6 +35,9 @@ import {
   AlertTriangle,
   Link2,
   ChevronDown,
+  Server,
+  Monitor,
+  Info,
 } from "lucide-react"
 import { AppListSkeleton } from "@/components/skeletons/app-list-skeleton"
 import { EmptyState } from "@/components/empty-state"
@@ -96,6 +99,8 @@ export default function ApplicationsPage() {
   const [repository, setRepository] = useState("")
   const [branch, setBranch] = useState("main")
   const [createEnvVars, setCreateEnvVars] = useState<EnvVarEntry[]>([{ key: "", value: "" }])
+  const [deployTarget, setDeployTarget] = useState<"docker-local" | "proxmox">("docker-local")
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
 
   // GitHub repo browser state
   const [repoSearch, setRepoSearch] = useState("")
@@ -195,6 +200,14 @@ export default function ApplicationsPage() {
 
   const githubConnected = githubConnectedWithScope
 
+  // Proxmox providers query — fetch available compute providers for deploy target
+  const providersQuery = trpc.provider.list.useQuery(undefined, {
+    enabled: showCreateModal,
+  })
+  const proxmoxProviders = useMemo(() => {
+    return (providersQuery.data ?? []).filter((p: any) => p.type === "proxmox" && p.status === "connected")
+  }, [providersQuery.data])
+
   // Filter repos by search
   const filteredRepos = useMemo(() => {
     const repos = githubReposQuery.data ?? []
@@ -216,6 +229,8 @@ export default function ApplicationsPage() {
     setSelectedRepo(null)
     setRepoSearch("")
     setShowBranchDropdown(false)
+    setDeployTarget("docker-local")
+    setSelectedProviderId(null)
   }
 
   const handleCreate = () => {
@@ -237,6 +252,11 @@ export default function ApplicationsPage() {
       projectId,
       buildType: "dockerfile",
       environment: envRecord,
+      deploymentTarget: deployTarget,
+    }
+
+    if (deployTarget === "proxmox" && selectedProviderId) {
+      data.providerId = selectedProviderId
     }
 
     if (createMode === "docker") {
@@ -343,6 +363,11 @@ export default function ApplicationsPage() {
                       <><GitBranch className="mr-1 h-3 w-3" />{app.sourceType}</>
                     )}
                   </Badge>
+                  {app.deploymentTarget === "proxmox" && (
+                    <Badge variant="secondary" className="text-orange-600 border-orange-200">
+                      <Server className="mr-1 h-3 w-3" />Proxmox
+                    </Badge>
+                  )}
                 </div>
               </CardHeader>
 
@@ -703,6 +728,115 @@ export default function ApplicationsPage() {
                   )}
                 </div>
               )}
+
+              {/* Deploy Target */}
+              <div className="space-y-3">
+                <Label>Deploy Target</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    className={`flex items-center gap-3 p-3 border rounded-lg transition-colors text-left ${
+                      deployTarget === "docker-local"
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "hover:bg-accent"
+                    }`}
+                    onClick={() => {
+                      setDeployTarget("docker-local")
+                      setSelectedProviderId(null)
+                    }}
+                  >
+                    <Monitor className="h-5 w-5 text-blue-500 flex-shrink-0" />
+                    <div>
+                      <div className="text-sm font-medium">Local Docker</div>
+                      <div className="text-xs text-muted-foreground">Deploy on this server</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex items-center gap-3 p-3 border rounded-lg transition-colors text-left ${
+                      deployTarget === "proxmox"
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "hover:bg-accent"
+                    } ${proxmoxProviders.length === 0 ? "opacity-50" : ""}`}
+                    onClick={() => {
+                      if (proxmoxProviders.length > 0) {
+                        setDeployTarget("proxmox")
+                      }
+                    }}
+                    disabled={proxmoxProviders.length === 0}
+                  >
+                    <Server className="h-5 w-5 text-orange-500 flex-shrink-0" />
+                    <div>
+                      <div className="text-sm font-medium">Proxmox Node</div>
+                      <div className="text-xs text-muted-foreground">
+                        {proxmoxProviders.length > 0
+                          ? `${proxmoxProviders.length} node${proxmoxProviders.length > 1 ? "s" : ""} available`
+                          : "No nodes configured"
+                        }
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Proxmox node selector */}
+                {deployTarget === "proxmox" && proxmoxProviders.length > 0 && (
+                  <div className="space-y-2 pl-1">
+                    <Label className="text-xs text-muted-foreground">Select a node</Label>
+                    <div className="space-y-1.5">
+                      <button
+                        type="button"
+                        className={`w-full flex items-center gap-2 px-3 py-2 border rounded-md text-sm transition-colors text-left ${
+                          selectedProviderId === null
+                            ? "border-primary bg-primary/5"
+                            : "hover:bg-accent"
+                        }`}
+                        onClick={() => setSelectedProviderId(null)}
+                      >
+                        <Rocket className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                        <span className="flex-1">Auto (best available)</span>
+                        {selectedProviderId === null && (
+                          <CheckCircle className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                        )}
+                      </button>
+                      {proxmoxProviders.map((provider: any) => (
+                        <button
+                          key={provider.id}
+                          type="button"
+                          className={`w-full flex items-center gap-2 px-3 py-2 border rounded-md text-sm transition-colors text-left ${
+                            selectedProviderId === provider.id
+                              ? "border-primary bg-primary/5"
+                              : "hover:bg-accent"
+                          }`}
+                          onClick={() => setSelectedProviderId(provider.id)}
+                        >
+                          <Server className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                          <span className="flex-1">{provider.name}</span>
+                          {provider.region && (
+                            <span className="text-xs text-muted-foreground">{provider.region}</span>
+                          )}
+                          {selectedProviderId === provider.id && (
+                            <CheckCircle className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* No Proxmox nodes hint */}
+                {deployTarget === "docker-local" && proxmoxProviders.length === 0 && (
+                  <div className="flex items-start gap-2 p-2.5 rounded-md bg-muted/50 text-xs text-muted-foreground">
+                    <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                    <span>
+                      Want to deploy on remote infrastructure?{" "}
+                      <Link href="/dashboard/settings/infrastructure" className="text-primary hover:underline">
+                        Add a Proxmox node
+                      </Link>{" "}
+                      in Settings to unlock multi-node deployments.
+                    </span>
+                  </div>
+                )}
+              </div>
 
               {/* Environment Variables */}
               <EnvVarEditor

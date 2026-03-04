@@ -44,6 +44,7 @@ import {
   Send,
   ChevronDown,
   ChevronRight,
+  Server,
 } from "lucide-react"
 import { useDeploymentStream } from "@/hooks/useDeploymentStream"
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -359,12 +360,20 @@ export default function ApplicationDetailPage() {
               {app.status}
             </Badge>
           </div>
-          <p className="text-muted-foreground">
-            {app.sourceType === "docker"
-              ? `Docker: ${app.dockerImage}:${app.dockerTag || "latest"}`
-              : app.repository || "No source configured"
-            }
-          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-muted-foreground">
+              {app.sourceType === "docker"
+                ? `Docker: ${app.dockerImage}:${app.dockerTag || "latest"}`
+                : app.repository || "No source configured"
+              }
+            </p>
+            {(app as any).deploymentTarget === "proxmox" && (
+              <Badge variant="secondary" className="text-xs">
+                <Server className="mr-1 h-3 w-3" />
+                Proxmox
+              </Badge>
+            )}
+          </div>
         </div>
         <div className="flex gap-2">
           <Button
@@ -460,6 +469,17 @@ export default function ApplicationDetailPage() {
               <p className="text-xs text-muted-foreground">received</p>
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* Deploy Target Info */}
+      {(app as any).deploymentTarget === "proxmox" && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-orange-50 border border-orange-200 text-sm dark:bg-orange-950/20 dark:border-orange-800">
+          <Server className="h-4 w-4 text-orange-500 flex-shrink-0" />
+          <span className="text-orange-800 dark:text-orange-200">
+            Deployed on <span className="font-medium">Proxmox</span>
+            {(app as any).providerId ? " (specific node)" : " (auto-selected)"}
+          </span>
         </div>
       )}
 
