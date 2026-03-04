@@ -1,10 +1,29 @@
-import { beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
+// Jest globals are provided by @types/jest — no import needed
+
+// Mock ESM-only packages globally so all test files can import router modules
+jest.mock('superjson', () => ({
+  __esModule: true,
+  default: {
+    serialize: (v: any) => ({ json: v, meta: undefined }),
+    deserialize: (v: any) => v.json ?? v,
+    stringify: (v: any) => JSON.stringify(v),
+    parse: (v: any) => JSON.parse(v),
+    registerCustom: jest.fn(),
+    allowErrorProps: jest.fn(),
+  },
+  serialize: (v: any) => ({ json: v, meta: undefined }),
+  deserialize: (v: any) => v.json ?? v,
+}));
+
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '@guildserver/database';
 
-// Test database connection
-const testDb = postgres(process.env.TEST_DATABASE_URL || 'postgresql://test:test@localhost:5432/guildserver_test', {
+// Test database connection — use TEST_DATABASE_URL if set, else fallback to DATABASE_URL from .env
+const testDbUrl = process.env.TEST_DATABASE_URL
+  || process.env.DATABASE_URL
+  || 'postgresql://guildserver:password123@localhost:5433/guildserver';
+const testDb = postgres(testDbUrl, {
   max: 1,
 });
 
@@ -39,6 +58,7 @@ async function clearTestData() {
     'kubernetes_clusters',
     'deployments',
     'applications',
+    'compute_providers',
     'databases',
     'projects',
     'members',
@@ -57,7 +77,7 @@ async function clearTestData() {
 
 // Test utilities
 export const testUtils = {
-  createUser: async (overrides = {}) => {
+  createUser: async (overrides: Record<string, any> = {}) => {
     const defaultUser = {
       name: 'Test User',
       email: `test-${Date.now()}@example.com`,
@@ -65,31 +85,32 @@ export const testUtils = {
       ...overrides,
     };
 
-    const [user] = await db.insert(schema.users).values(defaultUser).returning();
+    const [user] = await db.insert(schema.users).values(defaultUser as any).returning();
     return user;
   },
 
-  createOrganization: async (overrides = {}) => {
+  createOrganization: async (ownerId: string, overrides: Record<string, any> = {}) => {
     const defaultOrg = {
       name: 'Test Organization',
       slug: `test-org-${Date.now()}`,
+      ownerId,
       ...overrides,
     };
 
-    const [org] = await db.insert(schema.organizations).values(defaultOrg).returning();
+    const [org] = await db.insert(schema.organizations).values(defaultOrg as any).returning();
     return org;
   },
 
-  createMember: async (userId: string, organizationId: string, role = 'developer') => {
+  createMember: async (userId: string, organizationId: string, role: 'owner' | 'admin' | 'member' = 'member') => {
     const [member] = await db.insert(schema.members).values({
       userId,
       organizationId,
       role,
-    }).returning();
+    } as any).returning();
     return member;
   },
 
-  createProject: async (organizationId: string, overrides = {}) => {
+  createProject: async (organizationId: string, overrides: Record<string, any> = {}) => {
     const defaultProject = {
       name: 'Test Project',
       description: 'Test project description',
@@ -97,11 +118,11 @@ export const testUtils = {
       ...overrides,
     };
 
-    const [project] = await db.insert(schema.projects).values(defaultProject).returning();
+    const [project] = await db.insert(schema.projects).values(defaultProject as any).returning();
     return project;
   },
 
-  createApplication: async (projectId: string, overrides = {}) => {
+  createApplication: async (projectId: string, overrides: Record<string, any> = {}) => {
     const defaultApp = {
       name: 'test-app',
       appName: 'Test Application',
@@ -111,14 +132,14 @@ export const testUtils = {
       ...overrides,
     };
 
-    const [app] = await db.insert(schema.applications).values(defaultApp).returning();
+    const [app] = await db.insert(schema.applications).values(defaultApp as any).returning();
     return app;
   },
 
   // Helper to create a complete test setup (user, org, project, app)
   createTestSetup: async () => {
     const user = await testUtils.createUser();
-    const org = await testUtils.createOrganization();
+    const org = await testUtils.createOrganization(user.id);
     const member = await testUtils.createMember(user.id, org.id, 'owner');
     const project = await testUtils.createProject(org.id);
     const app = await testUtils.createApplication(project.id);
@@ -147,5 +168,5 @@ export const mockServices = {
 // Environment setup
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-jwt-secret-key-for-testing-only';
-process.env.DATABASE_URL = process.env.TEST_DATABASE_URL || 'postgresql://test:test@localhost:5432/guildserver_test';
+process.env.DATABASE_URL = testDbUrl;
 process.env.REDIS_URL = 'redis://localhost:6379/1'; // Use different Redis DB for tests
