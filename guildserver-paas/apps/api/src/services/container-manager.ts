@@ -7,27 +7,31 @@ import {
   getContainerStats,
   GS_LABELS,
   testDockerConnection,
+  getDockerClient,
 } from "./docker";
 import Docker from "dockerode";
 
-const docker = new Docker({
-  socketPath: process.platform === "win32" ? "//./pipe/docker_engine" : "/var/run/docker.sock",
-});
+// Use the shared local Docker client from docker.ts instead of creating
+// a separate instance. This keeps connection management in one place and
+// allows container-manager functions to work with remote Docker clients
+// when an explicit `dockerClient` is passed.
+const getDefaultDocker = (): Docker => getDockerClient();
 
 /**
  * Sync container status to database
  * Polls Docker for running containers and updates application statuses
  */
-export async function syncContainerStatuses(): Promise<void> {
+export async function syncContainerStatuses(dockerClient?: Docker): Promise<void> {
+  const d = dockerClient || getDefaultDocker();
   try {
-    const isConnected = await testDockerConnection();
+    const isConnected = await testDockerConnection(d);
     if (!isConnected) {
       logger.warn("Docker not available, skipping container sync");
       return;
     }
 
     // Get all managed containers
-    const containers = await docker.listContainers({
+    const containers = await d.listContainers({
       all: true,
       filters: {
         label: [`${GS_LABELS.MANAGED}=true`, `${GS_LABELS.TYPE}=application`],
@@ -82,7 +86,7 @@ function dockerStateToAppStatus(dockerState: string): string {
 /**
  * Collect metrics from all running containers and return them
  */
-export async function collectAllMetrics(): Promise<
+export async function collectAllMetrics(dockerClient?: Docker): Promise<
   Array<{
     applicationId: string;
     stats: {
@@ -95,6 +99,7 @@ export async function collectAllMetrics(): Promise<
     };
   }>
 > {
+  const d = dockerClient || getDefaultDocker();
   const results: Array<{
     applicationId: string;
     stats: {
@@ -108,7 +113,7 @@ export async function collectAllMetrics(): Promise<
   }> = [];
 
   try {
-    const containers = await docker.listContainers({
+    const containers = await d.listContainers({
       filters: {
         label: [`${GS_LABELS.MANAGED}=true`, `${GS_LABELS.TYPE}=application`],
         status: ["running"],
@@ -119,7 +124,7 @@ export async function collectAllMetrics(): Promise<
       const appId = c.Labels[GS_LABELS.APP_ID];
       if (!appId) continue;
 
-      const stats = await getContainerStats(appId);
+      const stats = await getContainerStats(appId, d);
       if (stats) {
         results.push({ applicationId: appId, stats });
       }
@@ -135,13 +140,17 @@ export async function collectAllMetrics(): Promise<
  * Health check: verify a container is responsive
  * Returns true if the container is running
  */
-export async function healthCheck(applicationId: string): Promise<{
+export async function healthCheck(
+  applicationId: string,
+  dockerClient?: Docker,
+): Promise<{
   healthy: boolean;
   status: string;
   uptime?: number;
 }> {
+  const d = dockerClient || getDefaultDocker();
   try {
-    const containers = await docker.listContainers({
+    const containers = await d.listContainers({
       all: true,
       filters: {
         label: [`${GS_LABELS.APP_ID}=${applicationId}`],
@@ -153,7 +162,7 @@ export async function healthCheck(applicationId: string): Promise<{
     }
 
     const c = containers[0];
-    const container = docker.getContainer(c.Id);
+    const container = d.getContainer(c.Id);
     const inspection = await container.inspect();
 
     const isRunning = inspection.State.Running;
@@ -174,14 +183,14 @@ export async function healthCheck(applicationId: string): Promise<{
 /**
  * Get a summary of all managed containers
  */
-export async function getContainerSummary(): Promise<{
+export async function getContainerSummary(dockerClient?: Docker): Promise<{
   total: number;
   running: number;
   stopped: number;
   errored: number;
 }> {
   try {
-    const containers = await listManagedContainers();
+    const containers = await listManagedContainers(dockerClient);
 
     return {
       total: containers.length,

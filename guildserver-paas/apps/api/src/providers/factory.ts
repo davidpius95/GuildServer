@@ -23,16 +23,23 @@ export async function getProvider(providerId?: string | null): Promise<ComputePr
     throw new Error(`Provider ${providerId} not found`);
   }
 
-  return createProviderFromConfig(provider.type as ProviderType, provider.config as ProviderConfig);
+  return createProviderFromConfig(provider.type as ProviderType, provider.config as ProviderConfig, provider.id);
 }
 
 /**
  * Create a ComputeProvider instance from a type and config object.
  * Used for both DB-loaded providers and test connections.
+ *
+ * @param type       The provider type identifier.
+ * @param config     Provider-specific configuration.
+ * @param providerId Optional database ID — passed to providers that need it
+ *                   for cache-key purposes (e.g. ProxmoxProvider uses it to
+ *                   manage remote Docker client pool entries).
  */
 export function createProviderFromConfig(
   type: ProviderType,
-  config: ProviderConfig
+  config: ProviderConfig,
+  providerId?: string,
 ): ComputeProvider {
   switch (type) {
     case "docker-local":
@@ -43,7 +50,7 @@ export function createProviderFromConfig(
       throw new Error("Docker Remote provider is not yet implemented. Coming in Phase 3.");
 
     case "proxmox":
-      return new ProxmoxProvider(config as ProxmoxConfig);
+      return new ProxmoxProvider(config as ProxmoxConfig, providerId);
 
     case "kubernetes":
       // Phase 4 implementation
@@ -84,7 +91,8 @@ export async function getDefaultProvider(organizationId?: string): Promise<Compu
     if (defaultProvider) {
       return createProviderFromConfig(
         defaultProvider.type as ProviderType,
-        defaultProvider.config as ProviderConfig
+        defaultProvider.config as ProviderConfig,
+        defaultProvider.id,
       );
     }
   }

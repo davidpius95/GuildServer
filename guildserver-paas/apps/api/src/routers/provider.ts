@@ -5,6 +5,7 @@ import { computeProviders, applications } from "@guildserver/database";
 import { eq, and, count } from "drizzle-orm";
 import { createProviderFromConfig } from "../providers/factory";
 import { listAvailableProviders, isProviderImplemented } from "../providers/registry";
+import { removeClient } from "../services/node-docker";
 import type { ProviderType, ProviderConfig } from "../providers/types";
 
 const providerTypeValues = [
@@ -189,6 +190,9 @@ export const providerRouter = createTRPCRouter({
       await ctx.db
         .delete(computeProviders)
         .where(eq(computeProviders.id, input.id));
+
+      // Clean up any cached Docker client associated with this provider
+      removeClient(input.id);
 
       return { success: true };
     }),
