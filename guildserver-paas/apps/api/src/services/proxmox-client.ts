@@ -362,6 +362,40 @@ export class ProxmoxClient {
     );
   }
 
+  /**
+   * Modify the configuration of an existing LXC container.
+   *
+   * This can be used to update CPU, memory, network, mount points,
+   * or other LXC settings via the Proxmox API.
+   *
+   * The container should be stopped for most config changes to take effect,
+   * although some options (like `description`) can be changed while running.
+   */
+  async setLXCConfig(
+    node: string,
+    vmid: number,
+    config: Record<string, unknown>,
+  ): Promise<void> {
+    await this.request<null>(
+      "PUT",
+      `/nodes/${encodeURIComponent(node)}/lxc/${vmid}/config`,
+      config,
+    );
+  }
+
+  /**
+   * Get the current configuration of an LXC container.
+   */
+  async getLXCConfig(
+    node: string,
+    vmid: number,
+  ): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(
+      "GET",
+      `/nodes/${encodeURIComponent(node)}/lxc/${vmid}/config`,
+    );
+  }
+
   // -----------------------------------------------------------------------
   // Network
   // -----------------------------------------------------------------------

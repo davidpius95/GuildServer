@@ -324,6 +324,54 @@ export const infrastructureRouter = createTRPCRouter({
     }),
 
   /**
+   * Download a container template to a Proxmox node's storage.
+   *
+   * Templates are required for creating LXC containers. This endpoint
+   * triggers the download of an official template from the Proxmox
+   * appliance repository. The download happens on the Proxmox node
+   * itself (server-side), not on the GuildServer API server.
+   *
+   * For GuildServer deployments, you need an Ubuntu template with Docker
+   * pre-installed, or a standard Ubuntu template (Docker will need to be
+   * set up manually in the LXC).
+   */
+  downloadTemplate: adminProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        storage: z.string().optional(),
+        template: z.string(), // e.g. "ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { client, config, provider } = await resolveProxmoxProvider(ctx.db, input.id);
+      const storage = input.storage || config.storage;
+
+      try {
+        const upid = await client.downloadTemplate(
+          config.node,
+          storage,
+          input.template,
+        );
+
+        return {
+          providerId: input.id,
+          providerName: provider.name,
+          node: config.node,
+          storage,
+          template: input.template,
+          taskUpid: upid,
+          message: `Template download started on ${config.node}. This may take a few minutes.`,
+        };
+      } catch (err: any) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to download template: ${err.message}`,
+        });
+      }
+    }),
+
+  /**
    * Get a summary overview of all Proxmox providers with their live status.
    *
    * Unlike `provider.list`, this returns enriched data by querying each
