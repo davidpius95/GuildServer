@@ -32,6 +32,8 @@ const createApplicationSchema = z.object({
   cpuLimit: z.number().optional(),
   replicas: z.number().default(1),
   autoDeployment: z.boolean().default(false),
+  deploymentTarget: z.enum(["docker-local", "proxmox"]).default("docker-local"),
+  providerId: z.string().uuid().optional().nullable(),
 });
 
 const updateApplicationSchema = z.object({
@@ -47,6 +49,8 @@ const updateApplicationSchema = z.object({
   cpuLimit: z.number().optional(),
   replicas: z.number().optional(),
   autoDeployment: z.boolean().optional(),
+  deploymentTarget: z.enum(["docker-local", "proxmox"]).optional(),
+  providerId: z.string().uuid().optional().nullable(),
 });
 
 const deployApplicationSchema = z.object({
