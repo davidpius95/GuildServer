@@ -11,6 +11,24 @@ import {
 } from "./types";
 import { ProxmoxClient } from "../services/proxmox-client";
 import type { NetworkInterface } from "../services/proxmox-client";
+import {
+  getDockerClient,
+  removeClientByHost,
+  waitForDockerReady,
+  testDockerClient,
+} from "../services/node-docker";
+import {
+  deployContainer,
+  pullImage,
+  removeExistingContainers,
+  getAppContainer,
+  getAppContainerInfo,
+  getContainerLogs,
+  getContainerStats,
+  stopContainer,
+  restartContainer,
+} from "../services/docker";
+import type { DeployOptions } from "../services/docker";
 import { logger } from "../utils/logger";
 
 // ---------------------------------------------------------------------------
@@ -37,6 +55,12 @@ const IP_POLL_INTERVAL_MS = 2_000;
 
 /** Maximum time (ms) to wait for a Proxmox task to complete. */
 const TASK_TIMEOUT_MS = 120_000;
+
+/** Maximum time (ms) to wait for Docker daemon inside LXC to become ready. */
+const DOCKER_READY_TIMEOUT_MS = 60_000;
+
+/** Default Docker TCP port exposed inside the LXC. */
+const DOCKER_TCP_PORT = 2375;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -122,17 +146,19 @@ function extractIPv4(interfaces: NetworkInterface[]): string | null {
  *      bootstrapped).
  *   2. Enable `nesting=1` features on the LXC so Docker-in-LXC works.
  *   3. Start the LXC and wait for it to acquire an IP address via DHCP.
- *   4. Record the VMID and IP in provider metadata for future operations.
- *   5. (Follow-up) Execute `docker pull` + `docker run` inside the LXC via
- *      SSH or `pct exec` once the exec transport is implemented.
+ *   4. Connect to the Docker daemon inside the LXC via TCP (port 2375).
+ *   5. Pull the application image and run it as a Docker container.
+ *   6. Record the VMID, IP, and Docker container ID in provider metadata.
  */
 export class ProxmoxProvider implements ComputeProvider {
   readonly type: ProviderType = "proxmox";
   private client: ProxmoxClient;
   private config: ProxmoxConfig;
+  private providerId?: string;
 
-  constructor(config: ProxmoxConfig) {
+  constructor(config: ProxmoxConfig, providerId?: string) {
     this.config = config;
+    this.providerId = providerId;
     this.client = new ProxmoxClient({
       host: config.host,
       port: config.port || 8006,
@@ -260,36 +286,100 @@ export class ProxmoxProvider implements ComputeProvider {
     }
 
     // ------------------------------------------------------------------
-    // 6. (Future) Run docker pull + docker run inside the LXC
+    // 6. Deploy Docker container inside the LXC
     // ------------------------------------------------------------------
-    // The Proxmox REST API does not expose a direct exec endpoint for LXC.
-    // Once SSH-based exec is implemented, this is where we would run:
-    //   docker pull ${config.dockerImage}:${config.dockerTag}
-    //   docker run -d --name app \
-    //     -p ${config.containerPort || 3000}:${config.containerPort || 3000} \
-    //     ${envFlags} \
-    //     ${config.dockerImage}:${config.dockerTag}
-    //
-    // For now, we log a note and store the intended Docker config in metadata.
-    logs.push(
-      "Note: Docker container deployment inside LXC requires SSH exec (not yet implemented). " +
-        "The LXC is running and ready for manual Docker setup or SSH-based automation.",
-    );
-
     const containerPort = config.containerPort || 3000;
-    const containerName = `pve-${vmid}`;
+    let dockerContainerId: string | null = null;
+    let dockerContainerName: string | null = null;
+    let dockerHostPort = 0;
 
-    logger.info("Proxmox deploy completed (LXC ready, Docker step pending)", {
+    if (lxcIp) {
+      try {
+        // Connect to the Docker daemon inside the LXC via TCP
+        const remoteDocker = getDockerClient(lxcIp, DOCKER_TCP_PORT);
+
+        logs.push(`Connecting to Docker daemon at ${lxcIp}:${DOCKER_TCP_PORT}...`);
+        logger.info("Waiting for Docker daemon in LXC", { vmid, lxcIp });
+
+        await waitForDockerReady(remoteDocker, DOCKER_READY_TIMEOUT_MS);
+        logs.push("Docker daemon is ready inside LXC");
+
+        // Pull the image on the remote Docker daemon
+        const pullLogs = await pullImage(
+          config.dockerImage,
+          config.dockerTag,
+          config.userId,
+          config.deploymentId,
+          remoteDocker,
+        );
+        logs.push(...pullLogs);
+
+        // Deploy the application container inside the LXC
+        const deployOpts: DeployOptions = {
+          deploymentId: config.deploymentId,
+          applicationId: config.applicationId,
+          appName: config.appName,
+          projectId: config.projectId,
+          userId: config.userId,
+          dockerImage: config.dockerImage,
+          dockerTag: config.dockerTag,
+          environment: config.environment,
+          memoryLimit: config.memoryLimit,
+          cpuLimit: config.cpuLimit,
+          replicas: config.replicas,
+          sourceType: config.sourceType,
+          domains: config.domains,
+          containerPort: config.containerPort,
+        };
+
+        const deployResult = await deployContainer(deployOpts, remoteDocker);
+        dockerContainerId = deployResult.containerId;
+        dockerContainerName = deployResult.containerName;
+        dockerHostPort = deployResult.hostPort;
+        logs.push(...deployResult.logs);
+
+        logger.info("Docker container deployed inside LXC", {
+          vmid,
+          lxcIp,
+          containerId: dockerContainerId,
+          hostPort: dockerHostPort,
+        });
+      } catch (dockerErr) {
+        const msg = dockerErr instanceof Error ? dockerErr.message : String(dockerErr);
+        logs.push(
+          `Warning: Docker deployment inside LXC failed: ${msg}. ` +
+          "The LXC is running and ready for manual Docker setup.",
+        );
+        logger.warn("Docker deployment inside LXC failed", {
+          vmid,
+          lxcIp,
+          error: msg,
+        });
+        // Don't throw — the LXC is created and running, Docker can be
+        // set up manually or retried later.
+      }
+    } else {
+      logs.push(
+        "Note: Could not deploy Docker container — no LXC IP address available. " +
+        "The LXC is running and ready for manual Docker setup.",
+      );
+    }
+
+    const resultContainerName = dockerContainerName || `pve-${vmid}`;
+
+    logger.info("Proxmox deploy completed", {
       applicationId: config.applicationId,
       vmid,
       hostname,
       lxcIp,
+      dockerContainerId,
+      dockerHostPort,
     });
 
     return {
-      containerId: containerName,
-      containerName,
-      hostPort: 0, // Proxmox networking is different from Docker port mapping
+      containerId: dockerContainerId || resultContainerName,
+      containerName: resultContainerName,
+      hostPort: dockerHostPort,
       logs,
       providerMetadata: {
         provider: "proxmox",
@@ -299,7 +389,9 @@ export class ProxmoxProvider implements ComputeProvider {
         lxcIp: lxcIp || null,
         storage,
         bridge,
-        // Store the intended Docker container config for when exec is available
+        dockerContainerId: dockerContainerId || null,
+        dockerContainerName: dockerContainerName || null,
+        dockerHostPort,
         dockerConfig: {
           image: config.dockerImage,
           tag: config.dockerTag,
@@ -321,6 +413,10 @@ export class ProxmoxProvider implements ComputeProvider {
       );
     }
 
+    // Try to stop the Docker container inside the LXC first
+    await this.stopDockerContainer(applicationId, node, vmid);
+
+    // Then stop the LXC itself
     logger.info("Stopping LXC", { applicationId, vmid, node });
 
     const upid = await this.client.stopLXC(node, vmid);
@@ -353,7 +449,16 @@ export class ProxmoxProvider implements ComputeProvider {
       const status = await this.client.getLXCStatus(node, vmid);
 
       if (status.status === "running") {
-        // Stop first
+        // Try to restart the Docker container inside the LXC
+        const dockerRestarted = await this.restartDockerContainer(applicationId, node, vmid);
+        if (dockerRestarted) {
+          logger.info("Docker container restarted inside LXC (LXC stayed running)", {
+            applicationId, vmid,
+          });
+          return true;
+        }
+
+        // If Docker restart failed, fall back to full LXC restart
         const stopUpid = await this.client.stopLXC(node, vmid);
         const stopResult = await this.client.waitForTask(
           node,
@@ -411,6 +516,12 @@ export class ProxmoxProvider implements ComputeProvider {
 
     logger.info("Removing LXC", { applicationId, vmid, node });
 
+    // Clean up the cached Docker client for this LXC
+    const lxcIp = await this.getLXCIP(node, vmid);
+    if (lxcIp) {
+      removeClientByHost(lxcIp, DOCKER_TCP_PORT);
+    }
+
     try {
       // Ensure the container is stopped before destroying
       const status = await this.client.getLXCStatus(node, vmid);
@@ -450,7 +561,8 @@ export class ProxmoxProvider implements ComputeProvider {
   // Observability
   // -------------------------------------------------------------------------
 
-  async getLogs(applicationId: string, _lines?: number): Promise<string[]> {
+  async getLogs(applicationId: string, lines?: number): Promise<string[]> {
+    const node = this.config.node;
     const vmid = await this.findVMIDForApp(applicationId);
 
     if (!vmid) {
@@ -459,19 +571,34 @@ export class ProxmoxProvider implements ComputeProvider {
       ];
     }
 
-    // The Proxmox REST API does not provide a direct way to stream LXC
-    // console logs. Retrieving application logs (from the Docker container
-    // running inside the LXC) requires SSH exec, which is not yet implemented.
+    // Try to get logs from the Docker container inside the LXC
+    const lxcIp = await this.getLXCIP(node, vmid);
+    if (lxcIp) {
+      try {
+        const remoteDocker = getDockerClient(lxcIp, DOCKER_TCP_PORT);
+        const isReady = await testDockerClient(remoteDocker);
+        if (isReady) {
+          const dockerLogs = await getContainerLogs(applicationId, lines, remoteDocker);
+          if (dockerLogs.length > 0) {
+            return dockerLogs;
+          }
+        }
+      } catch (err) {
+        logger.debug("Failed to get Docker logs from LXC, falling back to info", {
+          vmid, error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // Fallback: informational message
     return [
       `Logs for LXC VMID ${vmid} on node ${this.config.node}:`,
       "",
-      "Direct log retrieval is not yet available for Proxmox-managed deployments.",
+      "Direct log retrieval is not available — Docker daemon inside LXC may not be reachable.",
       "To view logs, use one of the following methods:",
       `  1. Proxmox Web UI: https://${this.config.host}:${this.config.port || 8006}`,
       `  2. SSH into the LXC and run: docker logs app`,
       `  3. From the Proxmox host: pct exec ${vmid} -- docker logs app`,
-      "",
-      "Automated log retrieval via SSH will be available in a future update.",
     ];
   }
 
@@ -486,6 +613,33 @@ export class ProxmoxProvider implements ComputeProvider {
       return null;
     }
 
+    // Try to get Docker container metrics first (more accurate for the app)
+    const lxcIp = await this.getLXCIP(node, vmid);
+    if (lxcIp) {
+      try {
+        const remoteDocker = getDockerClient(lxcIp, DOCKER_TCP_PORT);
+        const isReady = await testDockerClient(remoteDocker);
+        if (isReady) {
+          const stats = await getContainerStats(applicationId, remoteDocker);
+          if (stats) {
+            return {
+              cpuPercent: stats.cpuPercent,
+              memoryUsageMb: stats.memoryUsageMb,
+              memoryLimitMb: stats.memoryLimitMb,
+              memoryPercent: stats.memoryPercent,
+              networkRxBytes: stats.networkRxBytes,
+              networkTxBytes: stats.networkTxBytes,
+            };
+          }
+        }
+      } catch (err) {
+        logger.debug("Failed to get Docker metrics from LXC, falling back to LXC metrics", {
+          vmid, error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // Fallback: LXC-level metrics from Proxmox API
     try {
       const status = await this.client.getLXCStatus(node, vmid);
 
@@ -533,17 +687,43 @@ export class ProxmoxProvider implements ComputeProvider {
     try {
       const status = await this.client.getLXCStatus(node, vmid);
 
-      // Attempt to get the LXC's IP address for port info
+      // Attempt to get the LXC's IP address
       let lxcIp: string | null = null;
       if (status.status === "running") {
+        lxcIp = await this.getLXCIP(node, vmid);
+      }
+
+      // Try to get Docker container info for richer details
+      if (lxcIp) {
         try {
-          const interfaces = await this.client.getLXCInterfaces(node, vmid);
-          lxcIp = extractIPv4(interfaces);
-        } catch {
-          // Interfaces may not be available; that's okay.
+          const remoteDocker = getDockerClient(lxcIp, DOCKER_TCP_PORT);
+          const isReady = await testDockerClient(remoteDocker);
+          if (isReady) {
+            const dockerInfo = await getAppContainerInfo(applicationId, remoteDocker);
+            if (dockerInfo) {
+              return {
+                ...dockerInfo,
+                providerMetadata: {
+                  provider: "proxmox",
+                  vmid,
+                  node,
+                  lxcIp,
+                  uptime: status.uptime,
+                  pid: status.pid,
+                  dockerContainerId: dockerInfo.containerId,
+                  dockerContainerName: dockerInfo.containerName,
+                },
+              };
+            }
+          }
+        } catch (err) {
+          logger.debug("Failed to get Docker info from LXC", {
+            vmid, error: err instanceof Error ? err.message : String(err),
+          });
         }
       }
 
+      // Fallback: LXC-level info
       return {
         containerId: `pve-${vmid}`,
         containerName: status.name || `pve-${vmid}`,
@@ -587,14 +767,49 @@ export class ProxmoxProvider implements ComputeProvider {
 
     try {
       const status = await this.client.getLXCStatus(node, vmid);
-      const isRunning = status.status === "running";
+      const lxcRunning = status.status === "running";
 
+      if (!lxcRunning) {
+        return {
+          healthy: false,
+          status: status.status,
+          message: `LXC ${vmid} (${status.name}) is ${status.status}`,
+          checkedAt: new Date(),
+        };
+      }
+
+      // LXC is running — also check Docker container inside it
+      const lxcIp = await this.getLXCIP(node, vmid);
+      if (lxcIp) {
+        try {
+          const remoteDocker = getDockerClient(lxcIp, DOCKER_TCP_PORT);
+          const isReady = await testDockerClient(remoteDocker);
+          if (isReady) {
+            const container = await getAppContainer(applicationId, remoteDocker);
+            if (container) {
+              const inspection = await container.inspect();
+              const dockerRunning = inspection.State.Running;
+
+              return {
+                healthy: dockerRunning,
+                status: dockerRunning ? "running" : inspection.State.Status,
+                message: dockerRunning
+                  ? `Docker container running inside LXC ${vmid} (uptime: ${formatUptime(status.uptime)})`
+                  : `Docker container ${inspection.State.Status} inside LXC ${vmid}`,
+                checkedAt: new Date(),
+              };
+            }
+          }
+        } catch {
+          // Docker check failed, fall back to LXC-level health
+        }
+      }
+
+      // LXC is running but we couldn't check Docker
       return {
-        healthy: isRunning,
+        healthy: lxcRunning,
         status: status.status,
-        message: isRunning
-          ? `LXC ${vmid} (${status.name}) is running (uptime: ${formatUptime(status.uptime)})`
-          : `LXC ${vmid} (${status.name}) is ${status.status}`,
+        message: `LXC ${vmid} (${status.name}) is running (uptime: ${formatUptime(status.uptime)})`,
         checkedAt: new Date(),
       };
     } catch (err) {
@@ -649,8 +864,85 @@ export class ProxmoxProvider implements ComputeProvider {
   }
 
   // -------------------------------------------------------------------------
-  // Private helpers
+  // Private helpers — Docker container management inside LXC
   // -------------------------------------------------------------------------
+
+  /**
+   * Try to stop the Docker container inside the LXC before stopping the LXC.
+   * This ensures a graceful shutdown of the application.
+   */
+  private async stopDockerContainer(
+    applicationId: string,
+    node: string,
+    vmid: number,
+  ): Promise<void> {
+    const lxcIp = await this.getLXCIP(node, vmid);
+    if (!lxcIp) return;
+
+    try {
+      const remoteDocker = getDockerClient(lxcIp, DOCKER_TCP_PORT);
+      const isReady = await testDockerClient(remoteDocker);
+      if (isReady) {
+        await stopContainer(applicationId, remoteDocker);
+        logger.info("Docker container stopped inside LXC", { applicationId, vmid });
+      }
+    } catch (err) {
+      logger.debug("Could not stop Docker container inside LXC (will be stopped with LXC)", {
+        applicationId,
+        vmid,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /**
+   * Try to restart the Docker container inside the LXC without restarting the LXC.
+   * Returns true if successful, false if Docker restart failed.
+   */
+  private async restartDockerContainer(
+    applicationId: string,
+    node: string,
+    vmid: number,
+  ): Promise<boolean> {
+    const lxcIp = await this.getLXCIP(node, vmid);
+    if (!lxcIp) return false;
+
+    try {
+      const remoteDocker = getDockerClient(lxcIp, DOCKER_TCP_PORT);
+      const isReady = await testDockerClient(remoteDocker);
+      if (isReady) {
+        const restarted = await restartContainer(applicationId, remoteDocker);
+        if (restarted) {
+          logger.info("Docker container restarted inside LXC", { applicationId, vmid });
+          return true;
+        }
+      }
+    } catch (err) {
+      logger.debug("Could not restart Docker container inside LXC", {
+        applicationId,
+        vmid,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    return false;
+  }
+
+  // -------------------------------------------------------------------------
+  // Private helpers — LXC management
+  // -------------------------------------------------------------------------
+
+  /**
+   * Get the IP address of an LXC container, or null if unavailable.
+   */
+  private async getLXCIP(node: string, vmid: number): Promise<string | null> {
+    try {
+      const interfaces = await this.client.getLXCInterfaces(node, vmid);
+      return extractIPv4(interfaces);
+    } catch {
+      return null;
+    }
+  }
 
   /**
    * Find the VMID of the LXC container associated with a given application.

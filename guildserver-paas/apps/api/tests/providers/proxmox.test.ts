@@ -13,8 +13,56 @@ jest.mock('../../src/utils/logger', () => ({
   },
 }));
 
+// Mock the node-docker module (Docker client pool)
+jest.mock('../../src/services/node-docker', () => ({
+  getDockerClient: jest.fn().mockReturnValue({
+    ping: jest.fn().mockResolvedValue('OK'),
+    listContainers: jest.fn().mockResolvedValue([]),
+    getContainer: jest.fn(),
+    createContainer: jest.fn(),
+    getNetwork: jest.fn().mockReturnValue({ inspect: jest.fn().mockResolvedValue({}) }),
+    createNetwork: jest.fn().mockResolvedValue({}),
+    pull: jest.fn(),
+    modem: { followProgress: jest.fn() },
+  }),
+  getLocalDockerClient: jest.fn(),
+  removeClient: jest.fn(),
+  removeClientByHost: jest.fn(),
+  clearPool: jest.fn(),
+  testDockerClient: jest.fn().mockResolvedValue(false),
+  waitForDockerReady: jest.fn().mockResolvedValue(undefined),
+}));
+
+// Mock the docker service functions used by ProxmoxProvider
+jest.mock('../../src/services/docker', () => ({
+  deployContainer: jest.fn().mockResolvedValue({
+    containerId: 'docker-abc123',
+    containerName: 'gs-my-test-app-deploy-1',
+    hostPort: 10001,
+    logs: ['Container deployed'],
+  }),
+  pullImage: jest.fn().mockResolvedValue(['Pulling image...', 'Done']),
+  removeExistingContainers: jest.fn().mockResolvedValue(undefined),
+  getAppContainer: jest.fn().mockResolvedValue(null),
+  getAppContainerInfo: jest.fn().mockResolvedValue(null),
+  getContainerLogs: jest.fn().mockResolvedValue(['log line 1', 'log line 2']),
+  getContainerStats: jest.fn().mockResolvedValue(null),
+  stopContainer: jest.fn().mockResolvedValue(true),
+  restartContainer: jest.fn().mockResolvedValue(true),
+  GS_LABELS: {
+    MANAGED: 'gs.managed',
+    APP_ID: 'gs.app.id',
+    APP_NAME: 'gs.app.name',
+    DEPLOYMENT_ID: 'gs.deployment.id',
+    PROJECT_ID: 'gs.project.id',
+    TYPE: 'gs.type',
+  },
+}));
+
 import { ProxmoxProvider } from '../../src/providers/proxmox';
 import { ProxmoxClient } from '../../src/services/proxmox-client';
+import { waitForDockerReady, testDockerClient } from '../../src/services/node-docker';
+import { deployContainer, pullImage, getContainerLogs, getContainerStats } from '../../src/services/docker';
 import type { DeployConfig } from '../../src/providers/types';
 
 const MockedProxmoxClient = ProxmoxClient as jest.MockedClass<typeof ProxmoxClient>;
@@ -46,6 +94,7 @@ const deployConfig: DeployConfig = {
 
 beforeEach(() => {
   MockedProxmoxClient.mockClear();
+  jest.clearAllMocks();
 });
 
 // ---------------------------------------------------------------------------
@@ -71,6 +120,11 @@ describe('ProxmoxProvider', () => {
         allowInsecure: true,
       });
     });
+
+    it('should accept an optional providerId', () => {
+      const provider = new ProxmoxProvider(testConfig, 'provider-abc');
+      expect(provider.type).toBe('proxmox');
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -78,7 +132,7 @@ describe('ProxmoxProvider', () => {
   // -------------------------------------------------------------------------
 
   describe('deploy()', () => {
-    it('should create an LXC, start it, wait for IP, and return a valid DeployResult', async () => {
+    it('should create an LXC, start it, wait for IP, deploy Docker, and return a valid DeployResult', async () => {
       const provider = new ProxmoxProvider(testConfig);
       const mockClient = MockedProxmoxClient.mock.instances[0] as any;
 
@@ -103,14 +157,17 @@ describe('ProxmoxProvider', () => {
 
       const result = await provider.deploy(deployConfig);
 
-      expect(result.containerId).toBe('pve-100');
-      expect(result.containerName).toBe('pve-100');
+      // With Docker deployment inside LXC, we get real Docker container info
+      expect(result.containerId).toBe('docker-abc123');
+      expect(result.containerName).toBe('gs-my-test-app-deploy-1');
+      expect(result.hostPort).toBe(10001);
       expect(result.logs).toBeInstanceOf(Array);
       expect(result.logs.length).toBeGreaterThan(0);
       expect(result.providerMetadata).toBeDefined();
       expect(result.providerMetadata!.vmid).toBe(100);
       expect(result.providerMetadata!.provider).toBe('proxmox');
       expect(result.providerMetadata!.lxcIp).toBe('192.168.1.50');
+      expect(result.providerMetadata!.dockerContainerId).toBe('docker-abc123');
 
       // Verify createLXC was called with nesting=1 and correct hostname
       expect(mockClient.createLXC).toHaveBeenCalledTimes(1);
@@ -118,6 +175,11 @@ describe('ProxmoxProvider', () => {
       expect(createArgs[0]).toBe('pve'); // node
       expect(createArgs[1].features).toBe('nesting=1');
       expect(createArgs[1].hostname).toBe('gs-my-test-app');
+
+      // Verify Docker deployment was attempted
+      expect(waitForDockerReady).toHaveBeenCalled();
+      expect(pullImage).toHaveBeenCalled();
+      expect(deployContainer).toHaveBeenCalled();
     });
 
     it('should throw when LXC creation fails', async () => {
@@ -172,7 +234,46 @@ describe('ProxmoxProvider', () => {
         l.toLowerCase().includes('ip')
       )).toBe(true);
 
+      // Docker deployment should NOT have been attempted (no IP)
+      expect(deployContainer).not.toHaveBeenCalled();
+
       waitSpy.mockRestore();
+    });
+
+    it('should succeed even if Docker deployment inside LXC fails', async () => {
+      const provider = new ProxmoxProvider(testConfig);
+      const mockClient = MockedProxmoxClient.mock.instances[0] as any;
+
+      mockClient.listTemplates = jest.fn().mockResolvedValue([
+        { volid: 'local:vztmpl/ubuntu-22.04-standard.tar.zst', format: 'tar.zst', size: 100000 },
+      ]);
+      mockClient.getNextVMID = jest.fn().mockResolvedValue(103);
+      mockClient.createLXC = jest.fn().mockResolvedValue('UPID:pve:create');
+      mockClient.waitForTask = jest.fn()
+        .mockResolvedValueOnce({ status: 'OK' })   // creation
+        .mockResolvedValueOnce({ status: 'OK' });   // start
+      mockClient.startLXC = jest.fn().mockResolvedValue('UPID:pve:start');
+      mockClient.getLXCInterfaces = jest.fn().mockResolvedValue([
+        {
+          name: 'eth0',
+          'ip-addresses': [{ 'ip-address': '192.168.1.51', 'ip-address-type': 'inet', prefix: 24 }],
+        },
+      ]);
+
+      // Make waitForDockerReady throw to simulate Docker not being available
+      (waitForDockerReady as jest.Mock).mockRejectedValueOnce(
+        new Error('Docker daemon did not become ready within 60000ms'),
+      );
+
+      const result = await provider.deploy(deployConfig);
+
+      // Deploy should succeed despite Docker failure — LXC is running
+      expect(result.containerId).toBe('pve-103');
+      expect(result.providerMetadata!.lxcIp).toBe('192.168.1.51');
+      // Warning should be in logs
+      expect(result.logs.some((l: string) =>
+        l.toLowerCase().includes('warning') || l.toLowerCase().includes('docker')
+      )).toBe(true);
     });
   });
 
@@ -188,6 +289,7 @@ describe('ProxmoxProvider', () => {
       mockClient.listLXCs = jest.fn().mockResolvedValue([
         { vmid: 100, name: 'gs-my-test-app', status: 'running', mem: 0, maxmem: 0, disk: 0, maxdisk: 0, cpu: 0, maxcpu: 0, uptime: 0 },
       ]);
+      mockClient.getLXCInterfaces = jest.fn().mockRejectedValue(new Error('no IP'));
       mockClient.stopLXC = jest.fn().mockResolvedValue('UPID:pve:stop');
       mockClient.waitForTask = jest.fn().mockResolvedValue({ status: 'OK' });
 
@@ -219,6 +321,7 @@ describe('ProxmoxProvider', () => {
         { vmid: 100, name: 'gs-my-test-app', status: 'running', mem: 0, maxmem: 0, disk: 0, maxdisk: 0, cpu: 0, maxcpu: 0, uptime: 0 },
       ]);
       mockClient.getLXCStatus = jest.fn().mockResolvedValue({ status: 'running', name: 'gs-my-test-app' });
+      mockClient.getLXCInterfaces = jest.fn().mockRejectedValue(new Error('no IP'));
       mockClient.stopLXC = jest.fn().mockResolvedValue('UPID:pve:stop');
       mockClient.startLXC = jest.fn().mockResolvedValue('UPID:pve:start');
       mockClient.waitForTask = jest.fn()
@@ -237,6 +340,7 @@ describe('ProxmoxProvider', () => {
         { vmid: 100, name: 'gs-my-test-app', status: 'running', mem: 0, maxmem: 0, disk: 0, maxdisk: 0, cpu: 0, maxcpu: 0, uptime: 0 },
       ]);
       mockClient.getLXCStatus = jest.fn().mockResolvedValue({ status: 'running', name: 'gs-my-test-app' });
+      mockClient.getLXCInterfaces = jest.fn().mockRejectedValue(new Error('no IP'));
       mockClient.stopLXC = jest.fn().mockResolvedValue('UPID:pve:stop');
       mockClient.waitForTask = jest.fn().mockResolvedValueOnce({
         status: 'Error',
@@ -260,6 +364,7 @@ describe('ProxmoxProvider', () => {
       mockClient.listLXCs = jest.fn().mockResolvedValue([
         { vmid: 100, name: 'gs-my-test-app', status: 'running', mem: 0, maxmem: 0, disk: 0, maxdisk: 0, cpu: 0, maxcpu: 0, uptime: 0 },
       ]);
+      mockClient.getLXCInterfaces = jest.fn().mockRejectedValue(new Error('no IP'));
       mockClient.getLXCStatus = jest.fn().mockResolvedValue({ status: 'running', name: 'gs-my-test-app' });
       mockClient.stopLXC = jest.fn().mockResolvedValue('UPID:pve:stop');
       mockClient.destroyLXC = jest.fn().mockResolvedValue('UPID:pve:destroy');
@@ -286,19 +391,44 @@ describe('ProxmoxProvider', () => {
   // -------------------------------------------------------------------------
 
   describe('getLogs()', () => {
-    it('should return placeholder messages indicating SSH is not implemented', async () => {
+    it('should return Docker logs when Docker is reachable inside LXC', async () => {
       const provider = new ProxmoxProvider(testConfig);
       const mockClient = MockedProxmoxClient.mock.instances[0] as any;
 
       mockClient.listLXCs = jest.fn().mockResolvedValue([
         { vmid: 100, name: 'gs-my-test-app', status: 'running', mem: 0, maxmem: 0, disk: 0, maxdisk: 0, cpu: 0, maxcpu: 0, uptime: 0 },
       ]);
+      mockClient.getLXCInterfaces = jest.fn().mockResolvedValue([
+        {
+          name: 'eth0',
+          'ip-addresses': [{ 'ip-address': '192.168.1.50', 'ip-address-type': 'inet', prefix: 24 }],
+        },
+      ]);
+
+      // Mock testDockerClient to return true (Docker reachable)
+      (testDockerClient as jest.Mock).mockResolvedValueOnce(true);
+
+      const logs = await provider.getLogs('my-test-app');
+
+      expect(Array.isArray(logs)).toBe(true);
+      expect(logs).toEqual(['log line 1', 'log line 2']);
+      expect(getContainerLogs).toHaveBeenCalled();
+    });
+
+    it('should return fallback messages when Docker is not reachable', async () => {
+      const provider = new ProxmoxProvider(testConfig);
+      const mockClient = MockedProxmoxClient.mock.instances[0] as any;
+
+      mockClient.listLXCs = jest.fn().mockResolvedValue([
+        { vmid: 100, name: 'gs-my-test-app', status: 'running', mem: 0, maxmem: 0, disk: 0, maxdisk: 0, cpu: 0, maxcpu: 0, uptime: 0 },
+      ]);
+      mockClient.getLXCInterfaces = jest.fn().mockRejectedValue(new Error('no IP'));
 
       const logs = await provider.getLogs('my-test-app');
 
       expect(Array.isArray(logs)).toBe(true);
       expect(logs.length).toBeGreaterThan(0);
-      expect(logs.some((l) => l.includes('not yet available'))).toBe(true);
+      expect(logs.some((l) => l.includes('not available'))).toBe(true);
     });
   });
 
@@ -307,13 +437,45 @@ describe('ProxmoxProvider', () => {
   // -------------------------------------------------------------------------
 
   describe('getMetrics()', () => {
-    it('should return WorkloadMetrics with converted values', async () => {
+    it('should return Docker container metrics when Docker is reachable', async () => {
       const provider = new ProxmoxProvider(testConfig);
       const mockClient = MockedProxmoxClient.mock.instances[0] as any;
 
       mockClient.listLXCs = jest.fn().mockResolvedValue([
         { vmid: 100, name: 'gs-my-test-app', status: 'running', mem: 0, maxmem: 0, disk: 0, maxdisk: 0, cpu: 0, maxcpu: 0, uptime: 0 },
       ]);
+      mockClient.getLXCInterfaces = jest.fn().mockResolvedValue([
+        {
+          name: 'eth0',
+          'ip-addresses': [{ 'ip-address': '192.168.1.50', 'ip-address-type': 'inet', prefix: 24 }],
+        },
+      ]);
+
+      (testDockerClient as jest.Mock).mockResolvedValueOnce(true);
+      (getContainerStats as jest.Mock).mockResolvedValueOnce({
+        cpuPercent: 5.5,
+        memoryUsageMb: 128,
+        memoryLimitMb: 512,
+        memoryPercent: 25,
+        networkRxBytes: 5000,
+        networkTxBytes: 3000,
+      });
+
+      const metrics = await provider.getMetrics('my-test-app');
+
+      expect(metrics).not.toBeNull();
+      expect(metrics!.cpuPercent).toBe(5.5);
+      expect(metrics!.memoryUsageMb).toBe(128);
+    });
+
+    it('should fall back to LXC metrics when Docker is not reachable', async () => {
+      const provider = new ProxmoxProvider(testConfig);
+      const mockClient = MockedProxmoxClient.mock.instances[0] as any;
+
+      mockClient.listLXCs = jest.fn().mockResolvedValue([
+        { vmid: 100, name: 'gs-my-test-app', status: 'running', mem: 0, maxmem: 0, disk: 0, maxdisk: 0, cpu: 0, maxcpu: 0, uptime: 0 },
+      ]);
+      mockClient.getLXCInterfaces = jest.fn().mockRejectedValue(new Error('no IP'));
       mockClient.getLXCStatus = jest.fn().mockResolvedValue({
         vmid: 100,
         name: 'gs-my-test-app',
@@ -369,6 +531,7 @@ describe('ProxmoxProvider', () => {
         name: 'gs-my-test-app',
         uptime: 3600,
       });
+      mockClient.getLXCInterfaces = jest.fn().mockRejectedValue(new Error('no IP'));
 
       const result = await provider.healthCheck('my-test-app');
       expect(result.healthy).toBe(true);

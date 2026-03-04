@@ -4,6 +4,7 @@ import path from "path";
 import { logger } from "../utils/logger";
 import { broadcastToUser } from "../websocket/server";
 
+// Default local Docker client — used when no explicit client is provided.
 const docker = new Docker({
   socketPath: process.platform === "win32" ? "//./pipe/docker_engine" : "/var/run/docker.sock",
 });
@@ -221,8 +222,16 @@ CMD ["nginx", "-g", "daemon off;"]
 
 /**
  * Build a Docker image from a project directory
+ *
+ * @param opts          Build options.
+ * @param dockerClient  Optional remote Docker client. When omitted, builds
+ *                      against the local Docker daemon (existing behaviour).
  */
-export async function buildImage(opts: BuildOptions): Promise<BuildResult> {
+export async function buildImage(
+  opts: BuildOptions,
+  dockerClient?: Docker,
+): Promise<BuildResult> {
+  const d = dockerClient || docker;
   const logs: string[] = [];
   const imageTag = `gs-${opts.appName}:${opts.deploymentId.slice(0, 8)}`;
 
@@ -292,7 +301,7 @@ __pycache__
       }
     }
 
-    const stream = await docker.buildImage(
+    const stream = await d.buildImage(
       {
         context: opts.localPath,
         src: ["."],
@@ -309,7 +318,7 @@ __pycache__
     await new Promise<void>((resolve, reject) => {
       let buildError: string | null = null;
 
-      docker.modem.followProgress(
+      d.modem.followProgress(
         stream,
         (err: Error | null, output: any[]) => {
           if (err) {
@@ -374,10 +383,17 @@ export function getPortForBuildType(buildType: DetectedBuildType): number {
 
 /**
  * Remove a built image (cleanup)
+ *
+ * @param imageTag     The image tag to remove.
+ * @param dockerClient Optional remote Docker client.
  */
-export async function removeImage(imageTag: string): Promise<void> {
+export async function removeImage(
+  imageTag: string,
+  dockerClient?: Docker,
+): Promise<void> {
+  const d = dockerClient || docker;
   try {
-    const image = docker.getImage(imageTag);
+    const image = d.getImage(imageTag);
     await image.remove({ force: true });
     logger.debug(`Removed image: ${imageTag}`);
   } catch {

@@ -59,13 +59,14 @@ export interface ContainerStats {
 /**
  * Ensure the GuildServer Docker network exists
  */
-export async function ensureNetwork(): Promise<void> {
+export async function ensureNetwork(dockerClient?: Docker): Promise<void> {
+  const d = dockerClient || docker;
   try {
-    const network = docker.getNetwork(NETWORK_NAME);
+    const network = d.getNetwork(NETWORK_NAME);
     await network.inspect();
   } catch {
     logger.info(`Creating Docker network: ${NETWORK_NAME}`);
-    await docker.createNetwork({
+    await d.createNetwork({
       Name: NETWORK_NAME,
       Driver: "bridge",
     });
@@ -150,13 +151,14 @@ function containerName(appName: string, deploymentId: string): string {
 /**
  * Find an available host port in the ephemeral range
  */
-async function findAvailablePort(): Promise<number> {
+async function findAvailablePort(dockerClient?: Docker): Promise<number> {
+  const d = dockerClient || docker;
   const MIN_PORT = 10000;
   const MAX_PORT = 60000;
   const usedPorts = new Set<number>();
 
   // Get ports used by existing containers
-  const containers = await docker.listContainers({ all: true });
+  const containers = await d.listContainers({ all: true });
   for (const c of containers) {
     if (c.Ports) {
       for (const p of c.Ports) {
@@ -181,8 +183,10 @@ export async function pullImage(
   image: string,
   tag: string,
   userId?: string,
-  deploymentId?: string
+  deploymentId?: string,
+  dockerClient?: Docker,
 ): Promise<string[]> {
+  const d = dockerClient || docker;
   // Sanitize image reference — trim whitespace and remove any double-tag
   const cleanImage = image.trim().replace(/:$/, ""); // remove trailing colon
   const cleanTag = tag.trim() || "latest";
@@ -205,10 +209,10 @@ export async function pullImage(
   log(`Pulling image ${fullImage}...`);
 
   try {
-    const stream = await docker.pull(fullImage);
+    const stream = await d.pull(fullImage);
 
     await new Promise<void>((resolve, reject) => {
-      docker.modem.followProgress(
+      d.modem.followProgress(
         stream,
         (err: Error | null) => {
           if (err) {
@@ -240,8 +244,10 @@ export async function pullImage(
  */
 export async function removeExistingContainers(
   applicationId: string,
-  options?: { appNameFilter?: string }
+  options?: { appNameFilter?: string },
+  dockerClient?: Docker,
 ): Promise<void> {
+  const d = dockerClient || docker;
   const filters: Record<string, string[]> = {
     label: [`${GS_LABELS.APP_ID}=${applicationId}`],
   };
@@ -252,13 +258,13 @@ export async function removeExistingContainers(
     filters.label.push(`${GS_LABELS.APP_NAME}=${options.appNameFilter}`);
   }
 
-  const containers = await docker.listContainers({
+  const containers = await d.listContainers({
     all: true,
     filters,
   });
 
   for (const containerInfo of containers) {
-    const container = docker.getContainer(containerInfo.Id);
+    const container = d.getContainer(containerInfo.Id);
     try {
       if (containerInfo.State === "running") {
         logger.info(`Stopping container ${containerInfo.Names[0]}`);
@@ -276,12 +282,16 @@ export async function removeExistingContainers(
  * Deploy an application as a Docker container
  * This is the main deployment function called by the queue worker
  */
-export async function deployContainer(opts: DeployOptions): Promise<{
+export async function deployContainer(
+  opts: DeployOptions,
+  dockerClient?: Docker,
+): Promise<{
   containerId: string;
   containerName: string;
   hostPort: number;
   logs: string[];
 }> {
+  const d = dockerClient || docker;
   const logs: string[] = [];
   const name = containerName(opts.appName, opts.deploymentId);
 
@@ -298,7 +308,7 @@ export async function deployContainer(opts: DeployOptions): Promise<{
 
   try {
     // 1. Ensure network exists
-    await ensureNetwork();
+    await ensureNetwork(d);
     log("Docker network ready");
 
     // 2. Pull the image (skip for locally built images)
@@ -308,7 +318,8 @@ export async function deployContainer(opts: DeployOptions): Promise<{
         opts.dockerImage,
         opts.dockerTag,
         opts.userId,
-        opts.deploymentId
+        opts.deploymentId,
+        d,
       );
       logs.push(...pullLogs);
     } else {
@@ -320,12 +331,14 @@ export async function deployContainer(opts: DeployOptions): Promise<{
     // to avoid taking down production
     const isPreviewContainer = opts.appName.includes("-preview-");
     log("Cleaning up previous containers...");
-    await removeExistingContainers(opts.applicationId,
-      isPreviewContainer ? { appNameFilter: opts.appName } : undefined
+    await removeExistingContainers(
+      opts.applicationId,
+      isPreviewContainer ? { appNameFilter: opts.appName } : undefined,
+      d,
     );
 
     // 4. Find an available port
-    const hostPort = await findAvailablePort();
+    const hostPort = await findAvailablePort(d);
     log(`Assigned host port: ${hostPort}`);
 
     // 5. Build container configuration
@@ -359,8 +372,8 @@ export async function deployContainer(opts: DeployOptions): Promise<{
       labels["traefik.enable"] = "true";
 
       // Separate localhost domains from real (TLS-eligible) domains
-      const localhostDomains = opts.domains.filter((d) => isLocalhostDomain(d));
-      const tlsDomains = opts.domains.filter((d) => !isLocalhostDomain(d));
+      const localhostDomains = opts.domains.filter((dm) => isLocalhostDomain(dm));
+      const tlsDomains = opts.domains.filter((dm) => !isLocalhostDomain(dm));
 
       // Service port (shared by all routers for this container)
       labels[`traefik.http.services.${routerName}.loadbalancer.server.port`] =
@@ -369,7 +382,7 @@ export async function deployContainer(opts: DeployOptions): Promise<{
       // HTTP router for localhost domains (no TLS)
       if (localhostDomains.length > 0) {
         const localHostRules = localhostDomains
-          .map((d) => `Host(\`${d}\`)`)
+          .map((dm) => `Host(\`${dm}\`)`)
           .join(" || ");
         labels[`traefik.http.routers.${routerName}.rule`] = localHostRules;
         labels[`traefik.http.routers.${routerName}.entrypoints`] = "web";
@@ -379,7 +392,7 @@ export async function deployContainer(opts: DeployOptions): Promise<{
       if (tlsDomains.length > 0) {
         const tlsRouterName = `${routerName}-secure`;
         const tlsHostRules = tlsDomains
-          .map((d) => `Host(\`${d}\`)`)
+          .map((dm) => `Host(\`${dm}\`)`)
           .join(" || ");
 
         // Secure router (HTTPS)
@@ -438,7 +451,7 @@ export async function deployContainer(opts: DeployOptions): Promise<{
 
     // 6. Create and start the container
     log(`Creating container ${name}...`);
-    const container = await docker.createContainer(containerConfig);
+    const container = await d.createContainer(containerConfig);
 
     log("Starting container...");
     await container.start();
@@ -467,8 +480,12 @@ export async function deployContainer(opts: DeployOptions): Promise<{
 /**
  * Get the running container for an application
  */
-export async function getAppContainer(applicationId: string): Promise<Docker.Container | null> {
-  const containers = await docker.listContainers({
+export async function getAppContainer(
+  applicationId: string,
+  dockerClient?: Docker,
+): Promise<Docker.Container | null> {
+  const d = dockerClient || docker;
+  const containers = await d.listContainers({
     filters: {
       label: [`${GS_LABELS.APP_ID}=${applicationId}`],
       status: ["running"],
@@ -476,14 +493,18 @@ export async function getAppContainer(applicationId: string): Promise<Docker.Con
   });
 
   if (containers.length === 0) return null;
-  return docker.getContainer(containers[0].Id);
+  return d.getContainer(containers[0].Id);
 }
 
 /**
  * Get container info for an application
  */
-export async function getAppContainerInfo(applicationId: string): Promise<ContainerInfo | null> {
-  const containers = await docker.listContainers({
+export async function getAppContainerInfo(
+  applicationId: string,
+  dockerClient?: Docker,
+): Promise<ContainerInfo | null> {
+  const d = dockerClient || docker;
+  const containers = await d.listContainers({
     all: true,
     filters: {
       label: [`${GS_LABELS.APP_ID}=${applicationId}`],
@@ -511,8 +532,11 @@ export async function getAppContainerInfo(applicationId: string): Promise<Contai
 /**
  * Restart a container for an application
  */
-export async function restartContainer(applicationId: string): Promise<boolean> {
-  const container = await getAppContainer(applicationId);
+export async function restartContainer(
+  applicationId: string,
+  dockerClient?: Docker,
+): Promise<boolean> {
+  const container = await getAppContainer(applicationId, dockerClient);
   if (!container) return false;
 
   await container.restart({ t: 10 });
@@ -522,8 +546,11 @@ export async function restartContainer(applicationId: string): Promise<boolean> 
 /**
  * Stop a container for an application
  */
-export async function stopContainer(applicationId: string): Promise<boolean> {
-  const container = await getAppContainer(applicationId);
+export async function stopContainer(
+  applicationId: string,
+  dockerClient?: Docker,
+): Promise<boolean> {
+  const container = await getAppContainer(applicationId, dockerClient);
   if (!container) return false;
 
   await container.stop({ t: 10 });
@@ -535,19 +562,21 @@ export async function stopContainer(applicationId: string): Promise<boolean> {
  */
 export async function getContainerLogs(
   applicationId: string,
-  lines: number = 100
+  lines: number = 100,
+  dockerClient?: Docker,
 ): Promise<string[]> {
-  const container = await getAppContainer(applicationId);
+  const d = dockerClient || docker;
+  const container = await getAppContainer(applicationId, d);
   if (!container) {
     // Try to get stopped container
-    const containers = await docker.listContainers({
+    const containers = await d.listContainers({
       all: true,
       filters: {
         label: [`${GS_LABELS.APP_ID}=${applicationId}`],
       },
     });
     if (containers.length === 0) return [];
-    const stoppedContainer = docker.getContainer(containers[0].Id);
+    const stoppedContainer = d.getContainer(containers[0].Id);
     const logBuffer = await stoppedContainer.logs({
       stdout: true,
       stderr: true,
@@ -599,8 +628,12 @@ function parseDockerLogs(buffer: Buffer | string): string[] {
 /**
  * Get real CPU/memory stats from a running container
  */
-export async function getContainerStats(applicationId: string): Promise<ContainerStats | null> {
-  const container = await getAppContainer(applicationId);
+export async function getContainerStats(
+  applicationId: string,
+  dockerClient?: Docker,
+): Promise<ContainerStats | null> {
+  const d = dockerClient || docker;
+  const container = await getAppContainer(applicationId, d);
   if (!container) return null;
 
   try {
@@ -647,8 +680,9 @@ export async function getContainerStats(applicationId: string): Promise<Containe
 /**
  * List all GuildServer-managed containers
  */
-export async function listManagedContainers(): Promise<ContainerInfo[]> {
-  const containers = await docker.listContainers({
+export async function listManagedContainers(dockerClient?: Docker): Promise<ContainerInfo[]> {
+  const d = dockerClient || docker;
+  const containers = await d.listContainers({
     all: true,
     filters: {
       label: [`${GS_LABELS.MANAGED}=true`],
@@ -673,9 +707,10 @@ export async function listManagedContainers(): Promise<ContainerInfo[]> {
 /**
  * Test Docker connectivity
  */
-export async function testDockerConnection(): Promise<boolean> {
+export async function testDockerConnection(dockerClient?: Docker): Promise<boolean> {
+  const d = dockerClient || docker;
   try {
-    await docker.ping();
+    await d.ping();
     return true;
   } catch {
     return false;
