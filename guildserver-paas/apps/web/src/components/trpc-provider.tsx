@@ -1,7 +1,7 @@
 "use client"
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { httpBatchLink } from '@trpc/client'
+import { httpBatchLink, TRPCClientError } from '@trpc/client'
 import { createTRPCReact } from '@trpc/react-query'
 import { useState } from 'react'
 import superjson from 'superjson'
@@ -16,7 +16,19 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
       queries: {
         staleTime: 2 * 60 * 1000, // 2 minutes default
         refetchOnWindowFocus: true,
-        retry: 1,
+        retry: (failureCount, error) => {
+          if (error instanceof TRPCClientError) {
+            const code = error.data?.code
+            if (code === 'UNAUTHORIZED' || code === 'FORBIDDEN') {
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('guildserver-token')
+                window.location.href = '/auth/login'
+              }
+              return false
+            }
+          }
+          return failureCount < 2
+        },
       },
       mutations: {
         retry: 0,
