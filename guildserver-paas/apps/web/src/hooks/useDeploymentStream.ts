@@ -185,7 +185,7 @@ export function useDeploymentStream({
     // If the URL is just a path (e.g. "/trpc"), derive host from window.location
     const isRelative = apiBaseUrl.startsWith("/")
     const fullBaseUrl = isRelative
-      ? `${window.location.protocol}//${window.location.hostname}:4000`
+      ? `${window.location.protocol}//${window.location.host}`
       : apiBaseUrl
     const wsProtocol = fullBaseUrl.startsWith("https") ? "wss" : "ws"
     const wsHost = fullBaseUrl.replace(/^https?:\/\//, "").replace(/\/trpc$/, "").replace(/\/$/, "")

@@ -18,7 +18,7 @@ import { oauthRouter } from "./routes/oauth";
 import { stripeWebhookRouter } from "./routes/stripe-webhooks";
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 4000;
 
 // Security middleware
 app.use(helmet({

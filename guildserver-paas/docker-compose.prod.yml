@@ -82,6 +82,9 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       BASE_DOMAIN: ${BASE_DOMAIN:-guildserver.io}
+      APP_URL: https://guildserver.io
+      API_PUBLIC_URL: https://guildserver.io
+      ENV_ENCRYPTION_KEY: ${ENV_ENCRYPTION_KEY:-}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
     depends_on:
@@ -109,11 +112,11 @@ services:
       - "traefik.http.routers.api-oauth.entrypoints=web"
       - "traefik.http.routers.api-oauth.service=api"
       - "traefik.http.routers.api-oauth.priority=10"
-      # Stripe webhooks
-      - "traefik.http.routers.api-stripe.rule=Host(`guildserver.io`) && PathPrefix(`/stripe-webhooks`)"
-      - "traefik.http.routers.api-stripe.entrypoints=web"
-      - "traefik.http.routers.api-stripe.service=api"
-      # Git webhooks
+      # WebSocket for deployment logs
+      - "traefik.http.routers.api-ws.rule=Host(`guildserver.io`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.api-ws.entrypoints=web"
+      - "traefik.http.routers.api-ws.service=api"
+      # Webhooks (Stripe, Git, etc.)
       - "traefik.http.routers.api-webhooks.rule=Host(`guildserver.io`) && PathPrefix(`/webhooks`)"
       - "traefik.http.routers.api-webhooks.entrypoints=web"
       - "traefik.http.routers.api-webhooks.service=api"

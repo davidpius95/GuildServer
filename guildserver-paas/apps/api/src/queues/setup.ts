@@ -23,8 +23,8 @@ import path from "path";
 
 // Redis connection
 // Note: dotenv may not be loaded when this module initializes (import hoisting),
-// so we default to the correct GuildServer Redis port (6380)
-const redis = new IORedis(process.env.REDIS_URL || "redis://localhost:6380", {
+// so we default to the standard Redis port (6379)
+const redis = new IORedis(process.env.REDIS_URL || "redis://localhost:6379", {
   maxRetriesPerRequest: null,
   retryDelayOnFailover: 100,
 });

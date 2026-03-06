@@ -76,6 +76,10 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: your-jwt-secret-key-here
       PORT: 4000
+      BASE_DOMAIN: ${BASE_DOMAIN:-guildserver.localhost}
+      APP_URL: http://localhost:3000
+      FRONTEND_URL: http://localhost:3000
+      API_PUBLIC_URL: http://localhost:4000
     ports:
       - "4000:4000"
     depends_on:
@@ -84,6 +88,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
       - ./apps/api:/app/apps/api
       - ./packages:/app/packages
       - /app/node_modules
