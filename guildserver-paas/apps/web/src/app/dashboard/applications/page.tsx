@@ -109,7 +109,7 @@ export default function ApplicationsPage() {
 
   const { confirm: showConfirm, dialogProps: confirmDialogProps } = useConfirmDialog()
 
-  const { orgId } = useOrganization()
+  const { orgId, currentOrg, isLoading: orgLoading } = useOrganization()
   const { projectId } = useProjects(orgId)
   const { isAdmin } = useCurrentUser()
 
@@ -240,6 +240,11 @@ export default function ApplicationsPage() {
       return
     }
 
+    if (!isValidUUID(projectId)) {
+      toast.error("You need to create an organization first. Go to Dashboard → Get Started.")
+      return
+    }
+
     // Convert env var array to Record, filtering empty keys
     const envRecord: Record<string, string> = {}
     for (const entry of createEnvVars) {
@@ -295,6 +300,35 @@ export default function ApplicationsPage() {
   const filteredApps = allApps.filter((app: any) =>
     app.appName.toLowerCase().includes(searchQuery.toLowerCase())
   )
+
+  // If no organization exists, prompt the user to create one first
+  if (!orgLoading && !currentOrg) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold">Applications</h1>
+          <p className="text-muted-foreground">
+            Deploy and manage your applications
+          </p>
+        </div>
+        <Card className="text-center py-12">
+          <CardContent>
+            <Rocket className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Create an organization first</h3>
+            <p className="text-muted-foreground mb-6">
+              You need an organization and project before deploying applications
+            </p>
+            <Link href="/dashboard/onboarding">
+              <Button size="lg">
+                <Plus className="mr-2 h-4 w-4" />
+                Get Started
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
