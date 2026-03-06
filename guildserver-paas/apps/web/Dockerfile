@@ -29,7 +29,8 @@ COPY apps/web ./apps/web
 # Build database package (needed as dependency), then web
 # API source is copied for type imports (import type { AppRouter })
 # but not built — Next.js resolves types from source with ignoreBuildErrors
-RUN pnpm --filter @guildserver/database build && \
+RUN mkdir -p /app/apps/web/public && \
+    pnpm --filter @guildserver/database build && \
     pnpm --filter @guildserver/web build
 
 # --- Runner stage ---
