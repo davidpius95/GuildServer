@@ -70,7 +70,7 @@ export const infrastructureRouter = createTRPCRouter({
    * Queries the Proxmox VE API in real-time. Returns both raw numbers
    * and human-readable formatted values for frontend display.
    */
-  getNodeResources: protectedProcedure
+  getNodeResources: adminProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const { client, config, provider } = await resolveProxmoxProvider(ctx.db, input.id);
@@ -118,7 +118,7 @@ export const infrastructureRouter = createTRPCRouter({
    * Returns container ID, name, status, and resource usage for each LXC.
    * Useful for the admin UI to see what's running on a node.
    */
-  listLxcContainers: protectedProcedure
+  listLxcContainers: adminProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const { client, config, provider } = await resolveProxmoxProvider(ctx.db, input.id);
@@ -169,7 +169,7 @@ export const infrastructureRouter = createTRPCRouter({
    * Used by the setup wizard to let admins choose which storage pool
    * to use for LXC rootfs.
    */
-  listStorages: protectedProcedure
+  listStorages: adminProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const { client, config, provider } = await resolveProxmoxProvider(ctx.db, input.id);
@@ -211,7 +211,7 @@ export const infrastructureRouter = createTRPCRouter({
    * Searches the provider's configured default storage (or a specified
    * storage) for CT templates (vztmpl). Used by the setup wizard.
    */
-  listTemplates: protectedProcedure
+  listTemplates: adminProcedure
     .input(
       z.object({
         id: z.string().uuid(),
@@ -371,6 +371,88 @@ export const infrastructureRouter = createTRPCRouter({
       }
     }),
 
+  // -----------------------------------------------------------------------
+  // Container lifecycle operations
+  // -----------------------------------------------------------------------
+
+  /**
+   * Start an LXC container on a Proxmox node.
+   */
+  startContainer: adminProcedure
+    .input(z.object({ id: z.string().uuid(), vmid: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      const { client, config } = await resolveProxmoxProvider(ctx.db, input.id);
+      try {
+        const upid = await client.startLXC(config.node, input.vmid);
+        return { success: true, vmid: input.vmid, taskUpid: upid, message: `Container CT${input.vmid} start initiated` };
+      } catch (err: any) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to start CT${input.vmid}: ${err.message}` });
+      }
+    }),
+
+  /**
+   * Stop an LXC container on a Proxmox node.
+   */
+  stopContainer: adminProcedure
+    .input(z.object({ id: z.string().uuid(), vmid: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      const { client, config } = await resolveProxmoxProvider(ctx.db, input.id);
+      try {
+        const upid = await client.stopLXC(config.node, input.vmid);
+        return { success: true, vmid: input.vmid, taskUpid: upid, message: `Container CT${input.vmid} stop initiated` };
+      } catch (err: any) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to stop CT${input.vmid}: ${err.message}` });
+      }
+    }),
+
+  /**
+   * Destroy (delete) an LXC container on a Proxmox node.
+   * The container must be stopped first.
+   */
+  destroyContainer: adminProcedure
+    .input(z.object({ id: z.string().uuid(), vmid: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      const { client, config } = await resolveProxmoxProvider(ctx.db, input.id);
+      try {
+        // Ensure container is stopped before destroying
+        const status = await client.getLXCStatus(config.node, input.vmid);
+        if (status.status === "running") {
+          await client.stopLXC(config.node, input.vmid);
+          // Wait a moment for the stop to take effect
+          await new Promise((r) => setTimeout(r, 3000));
+        }
+        const upid = await client.destroyLXC(config.node, input.vmid);
+        return { success: true, vmid: input.vmid, taskUpid: upid, message: `Container CT${input.vmid} destroyed` };
+      } catch (err: any) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to destroy CT${input.vmid}: ${err.message}` });
+      }
+    }),
+
+  /**
+   * Get detailed status and config of a single LXC container.
+   */
+  getContainerDetail: adminProcedure
+    .input(z.object({ id: z.string().uuid(), vmid: z.number().int() }))
+    .query(async ({ ctx, input }) => {
+      const { client, config } = await resolveProxmoxProvider(ctx.db, input.id);
+      try {
+        const [status, lxcConfig, interfaces] = await Promise.allSettled([
+          client.getLXCStatus(config.node, input.vmid),
+          client.getLXCConfig(config.node, input.vmid),
+          client.getLXCInterfaces(config.node, input.vmid),
+        ]);
+
+        return {
+          vmid: input.vmid,
+          status: status.status === "fulfilled" ? status.value : null,
+          config: lxcConfig.status === "fulfilled" ? lxcConfig.value : null,
+          interfaces: interfaces.status === "fulfilled" ? interfaces.value : [],
+        };
+      } catch (err: any) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to get CT${input.vmid} details: ${err.message}` });
+      }
+    }),
+
   /**
    * Get a summary overview of all Proxmox providers with their live status.
    *
@@ -378,7 +460,7 @@ export const infrastructureRouter = createTRPCRouter({
    * Proxmox node's API for current resource usage. Useful for the
    * infrastructure dashboard.
    */
-  overview: protectedProcedure.query(async ({ ctx }) => {
+  overview: adminProcedure.query(async ({ ctx }) => {
     const providers = await ctx.db.query.computeProviders.findMany({
       orderBy: (cp, { desc }) => [desc(cp.createdAt)],
     });

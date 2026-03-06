@@ -39,7 +39,7 @@ const updateProviderSchema = z.object({
 
 export const providerRouter = createTRPCRouter({
   // List all providers (optionally filtered by org)
-  list: protectedProcedure
+  list: adminProcedure
     .input(z.object({ organizationId: z.string().uuid().optional() }).optional())
     .query(async ({ ctx, input }) => {
       const providers = await ctx.db.query.computeProviders.findMany({
@@ -54,7 +54,7 @@ export const providerRouter = createTRPCRouter({
     }),
 
   // Get provider by ID
-  getById: protectedProcedure
+  getById: adminProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const provider = await ctx.db.query.computeProviders.findFirst({
@@ -262,7 +262,7 @@ export const providerRouter = createTRPCRouter({
     }),
 
   // List all available provider types (for the UI wizard)
-  listAvailable: protectedProcedure.query(async () => {
+  listAvailable: adminProcedure.query(async () => {
     const allProviders = listAvailableProviders();
 
     return allProviders.map((p) => ({

@@ -37,6 +37,21 @@ export function useAuth(options?: { redirect?: boolean }) {
   }
 }
 
+export function useCurrentUser() {
+  const { isReady, isAuthenticated } = useAuth({ redirect: false })
+
+  const meQuery = trpc.auth.me.useQuery(undefined, {
+    enabled: isReady && isAuthenticated,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  })
+
+  return {
+    user: meQuery.data ?? null,
+    isAdmin: meQuery.data?.role === "admin",
+    isLoading: meQuery.isLoading,
+  }
+}
+
 export function useOrganization() {
   const { isReady, isAuthenticated } = useAuth()
 

@@ -233,7 +233,21 @@ export class ProxmoxClient {
 
   /** Return status / resource usage for a single node. */
   async getNodeStatus(node: string): Promise<NodeStatus> {
-    return this.request<NodeStatus>("GET", `/nodes/${encodeURIComponent(node)}/status`);
+    // The /nodes/{node}/status endpoint returns a nested structure:
+    //   { cpu, cpuinfo: { cpus, ... }, memory: { total, used }, rootfs: { total, used }, uptime, ... }
+    // We normalize it to the flat NodeStatus interface used throughout the app.
+    const raw = await this.request<any>("GET", `/nodes/${encodeURIComponent(node)}/status`);
+
+    return {
+      cpu: raw.cpu ?? 0,
+      maxcpu: raw.cpuinfo?.cpus ?? raw.maxcpu ?? 0,
+      mem: raw.memory?.used ?? raw.mem ?? 0,
+      maxmem: raw.memory?.total ?? raw.maxmem ?? 0,
+      disk: raw.rootfs?.used ?? raw.disk ?? 0,
+      maxdisk: raw.rootfs?.total ?? raw.maxdisk ?? 0,
+      uptime: raw.uptime ?? 0,
+      status: raw.status ?? "unknown",
+    };
   }
 
   /** List all nodes in the cluster (or the single standalone node). */
@@ -304,18 +318,28 @@ export class ProxmoxClient {
 
   /** Get current status of an LXC container. */
   async getLXCStatus(node: string, vmid: number): Promise<LXCStatus> {
-    return this.request<LXCStatus>(
+    // Proxmox API returns `cpus` instead of `maxcpu` — normalize it.
+    const raw = await this.request<any>(
       "GET",
       `/nodes/${encodeURIComponent(node)}/lxc/${vmid}/status/current`,
     );
+    return {
+      ...raw,
+      maxcpu: raw.maxcpu ?? raw.cpus ?? 0,
+    };
   }
 
   /** List all LXC containers on a node. */
   async listLXCs(node: string): Promise<LXCInfo[]> {
-    return this.request<LXCInfo[]>(
+    // Proxmox API returns `cpus` instead of `maxcpu` — normalize each entry.
+    const raw = await this.request<any[]>(
       "GET",
       `/nodes/${encodeURIComponent(node)}/lxc`,
     );
+    return raw.map((c) => ({
+      ...c,
+      maxcpu: c.maxcpu ?? c.cpus ?? 0,
+    }));
   }
 
   /**

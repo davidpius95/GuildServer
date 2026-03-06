@@ -14,9 +14,11 @@ import { ProxmoxClient } from "../services/proxmox-client";
 import type { NetworkInterface } from "../services/proxmox-client";
 import {
   getDockerClient,
+  getLocalDockerClient,
   removeClientByHost,
   waitForDockerReady,
   testDockerClient,
+  transferDockerImage,
 } from "../services/node-docker";
 import {
   deployContainer,
@@ -30,6 +32,7 @@ import {
   restartContainer,
 } from "../services/docker";
 import type { DeployOptions } from "../services/docker";
+import { Client as SSHClient } from "ssh2";
 import { logger } from "../utils/logger";
 import { db, deployments } from "@guildserver/database";
 import { eq, desc, and, isNotNull } from "drizzle-orm";
@@ -64,6 +67,18 @@ const DOCKER_READY_TIMEOUT_MS = 60_000;
 
 /** Default Docker TCP port exposed inside the LXC. */
 const DOCKER_TCP_PORT = 2375;
+
+/** Maximum time (ms) to wait for SSH connection to the LXC. */
+const SSH_CONNECT_TIMEOUT_MS = 30_000;
+
+/** Maximum time (ms) to allow the Docker bootstrap script to run inside LXC. */
+const DOCKER_BOOTSTRAP_TIMEOUT_MS = 180_000;
+
+/** Polling interval (ms) when waiting for SSH readiness. */
+const SSH_READY_POLL_MS = 3_000;
+
+/** Maximum time (ms) to wait for SSH to become available after LXC start. */
+const SSH_READY_TIMEOUT_MS = 60_000;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -206,9 +221,15 @@ export class ProxmoxProvider implements ComputeProvider {
     // ------------------------------------------------------------------
     // 1. Resolve the OS template
     // ------------------------------------------------------------------
-    const ostemplate = await this.resolveTemplate(node, storage);
-    logs.push(`Using OS template: ${ostemplate}`);
-    logger.info("Resolved OS template", { ostemplate });
+    // Templates (vztmpl) live on directory-type storage (usually "local"),
+    // NOT on LVM/ZFS storage which only holds disk images. Auto-detect
+    // the correct template storage by querying Proxmox for storages that
+    // support "vztmpl" content.
+    const { templateStorage, rootfsStorage } = await this.resolveStorages(node, storage);
+    const ostemplate = await this.resolveTemplate(node, templateStorage);
+    logs.push(`Using OS template: ${ostemplate} (from storage: ${templateStorage})`);
+    logs.push(`Using rootfs storage: ${rootfsStorage}`);
+    logger.info("Resolved storages", { ostemplate, templateStorage, rootfsStorage });
 
     // ------------------------------------------------------------------
     // 2. Allocate a VMID
@@ -220,7 +241,7 @@ export class ProxmoxProvider implements ComputeProvider {
     // ------------------------------------------------------------------
     // 3. Create the LXC container
     // ------------------------------------------------------------------
-    const rootfs = `${storage}:${DEFAULT_ROOTFS_GB}`;
+    const rootfs = `${rootfsStorage}:${DEFAULT_ROOTFS_GB}`;
     const net0 = `name=eth0,bridge=${bridge},ip=dhcp`;
 
     logs.push(
@@ -236,7 +257,7 @@ export class ProxmoxProvider implements ComputeProvider {
       vmid,
       hostname,
       ostemplate,
-      storage,
+      storage: rootfsStorage,
       rootfs,
       memory: memoryMb,
       swap: Math.round(memoryMb / 2),
@@ -306,7 +327,7 @@ export class ProxmoxProvider implements ComputeProvider {
     }
 
     // ------------------------------------------------------------------
-    // 6. Deploy Docker container inside the LXC
+    // 6. Bootstrap Docker inside the LXC via SSH
     // ------------------------------------------------------------------
     const containerPort = config.containerPort || 3000;
     let dockerContainerId: string | null = null;
@@ -315,26 +336,43 @@ export class ProxmoxProvider implements ComputeProvider {
 
     if (lxcIp) {
       try {
-        // Connect to the Docker daemon inside the LXC via TCP
+        // 6a. SSH into the LXC and install Docker + configure TCP 2375
+        logs.push(`Bootstrapping Docker inside LXC via SSH (root@${lxcIp})...`);
+        logger.info("Starting Docker bootstrap via SSH", { vmid, lxcIp });
+
+        const bootstrapLogs = await this.bootstrapDockerViaSSH(lxcIp, lxcPassword);
+        logs.push(...bootstrapLogs);
+
+        // 6b. Wait for Docker daemon to become ready on TCP 2375
         const remoteDocker = getDockerClient(lxcIp, DOCKER_TCP_PORT);
-
-        logs.push(`Connecting to Docker daemon at ${lxcIp}:${DOCKER_TCP_PORT}...`);
-        logger.info("Waiting for Docker daemon in LXC", { vmid, lxcIp });
-
+        logs.push(`Waiting for Docker daemon at ${lxcIp}:${DOCKER_TCP_PORT}...`);
         await waitForDockerReady(remoteDocker, DOCKER_READY_TIMEOUT_MS);
         logs.push("Docker daemon is ready inside LXC");
 
-        // Pull the image on the remote Docker daemon
-        const pullLogs = await pullImage(
-          config.dockerImage,
-          config.dockerTag,
-          config.userId,
-          config.deploymentId,
-          remoteDocker,
-        );
-        logs.push(...pullLogs);
+        // 6c. Transfer the image if it's locally built (gs-* prefix)
+        const isLocalImage = config.dockerImage.startsWith("gs-");
+        const imageTag = `${config.dockerImage}:${config.dockerTag}`;
 
-        // Deploy the application container inside the LXC
+        if (isLocalImage) {
+          logs.push(`Transferring locally-built image ${imageTag} to LXC...`);
+          logger.info("Transferring Docker image to LXC", { vmid, imageTag, lxcIp });
+
+          const localDocker = getLocalDockerClient();
+          await transferDockerImage(imageTag, localDocker, remoteDocker);
+          logs.push(`Image ${imageTag} transferred successfully`);
+        } else {
+          // Pull from registry on the remote Docker daemon
+          const pullLogs = await pullImage(
+            config.dockerImage,
+            config.dockerTag,
+            config.userId,
+            config.deploymentId,
+            remoteDocker,
+          );
+          logs.push(...pullLogs);
+        }
+
+        // 6d. Deploy the application container inside the LXC
         const deployOpts: DeployOptions = {
           deploymentId: config.deploymentId,
           applicationId: config.applicationId,
@@ -366,57 +404,23 @@ export class ProxmoxProvider implements ComputeProvider {
         });
       } catch (dockerErr) {
         const msg = dockerErr instanceof Error ? dockerErr.message : String(dockerErr);
-        logs.push(
-          `Warning: Docker deployment inside LXC failed: ${msg}`,
-        );
-        logs.push(
-          "The LXC is running but Docker is not available on TCP port 2375.",
-        );
-        logs.push(
-          "To set up Docker manually, SSH into the LXC and run:",
-        );
-        logs.push(
-          `  ssh root@${lxcIp}  (password is stored in deployment metadata)`,
-        );
-        logs.push(
-          "  apt-get update && apt-get install -y docker.io",
-        );
-        logs.push(
-          '  echo \'{"hosts":["unix:///var/run/docker.sock","tcp://0.0.0.0:2375"]}\' > /etc/docker/daemon.json',
-        );
-        logs.push(
-          "  systemctl restart docker",
-        );
-        logs.push(
-          "Or use a Docker-ready LXC template for zero-config deployments.",
-        );
+        logs.push(`Warning: Docker deployment inside LXC failed: ${msg}`);
+        logs.push("The LXC is running but Docker setup failed.");
+        logs.push("To set up Docker manually, SSH into the LXC and run:");
+        logs.push(`  ssh root@${lxcIp}  (password is stored in deployment metadata)`);
+        logs.push("  apt-get update && apt-get install -y docker.io");
+        logs.push('  mkdir -p /etc/systemd/system/docker.service.d');
+        logs.push('  echo -e "[Service]\\nExecStart=\\nExecStart=/usr/bin/dockerd -H unix:///var/run/docker.sock -H tcp://0.0.0.0:2375" > /etc/systemd/system/docker.service.d/override.conf');
+        logs.push("  systemctl daemon-reload && systemctl restart docker");
         logger.warn("Docker deployment inside LXC failed", {
           vmid,
           lxcIp,
           error: msg,
         });
-        // Don't throw — the LXC is created and running, Docker can be
-        // set up manually or retried later.
       }
     } else {
-      logs.push(
-        "Note: Could not deploy Docker container — no LXC IP address available.",
-      );
-      logs.push(
-        "The LXC is running. Check the Proxmox web UI for its IP, then set up Docker:",
-      );
-      logs.push(
-        `  From Proxmox host: pct exec ${vmid} -- bash`,
-      );
-      logs.push(
-        "  apt-get update && apt-get install -y docker.io",
-      );
-      logs.push(
-        '  echo \'{"hosts":["unix:///var/run/docker.sock","tcp://0.0.0.0:2375"]}\' > /etc/docker/daemon.json',
-      );
-      logs.push(
-        "  systemctl restart docker",
-      );
+      logs.push("Note: Could not deploy Docker container — no LXC IP address available.");
+      logs.push("The LXC is running. Check the Proxmox web UI for its IP.");
     }
 
     const resultContainerName = dockerContainerName || `pve-${vmid}`;
@@ -985,6 +989,175 @@ export class ProxmoxProvider implements ComputeProvider {
   }
 
   // -------------------------------------------------------------------------
+  // Private helpers — SSH Docker bootstrap
+  // -------------------------------------------------------------------------
+
+  /**
+   * Wait for the SSH server inside the LXC to become reachable.
+   * After an LXC starts, sshd may take a few seconds to initialise.
+   */
+  private async waitForSSH(
+    host: string,
+    password: string,
+    timeoutMs: number = SSH_READY_TIMEOUT_MS,
+  ): Promise<void> {
+    const start = Date.now();
+
+    while (Date.now() - start < timeoutMs) {
+      try {
+        await this.sshExec(host, password, "echo ok", 10_000);
+        return; // SSH is ready
+      } catch {
+        // Not ready yet — wait and retry
+      }
+      await new Promise((resolve) => setTimeout(resolve, SSH_READY_POLL_MS));
+    }
+
+    throw new Error(`SSH not reachable at ${host} within ${timeoutMs}ms`);
+  }
+
+  /**
+   * Execute a command over SSH and return the combined stdout/stderr output.
+   */
+  private sshExec(
+    host: string,
+    password: string,
+    command: string,
+    timeoutMs: number = DOCKER_BOOTSTRAP_TIMEOUT_MS,
+  ): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const conn = new SSHClient();
+      let output = "";
+      let timedOut = false;
+
+      const timer = setTimeout(() => {
+        timedOut = true;
+        conn.end();
+        reject(new Error(`SSH command timed out after ${timeoutMs}ms: ${command.slice(0, 80)}`));
+      }, timeoutMs);
+
+      conn
+        .on("ready", () => {
+          conn.exec(command, (err, stream) => {
+            if (err) {
+              clearTimeout(timer);
+              conn.end();
+              return reject(err);
+            }
+
+            stream
+              .on("data", (data: Buffer) => {
+                output += data.toString();
+              })
+              .stderr.on("data", (data: Buffer) => {
+                output += data.toString();
+              });
+
+            stream.on("close", (code: number) => {
+              clearTimeout(timer);
+              conn.end();
+              if (timedOut) return;
+              if (code !== 0) {
+                reject(new Error(`SSH command exited with code ${code}: ${output.slice(-500)}`));
+              } else {
+                resolve(output);
+              }
+            });
+          });
+        })
+        .on("error", (err) => {
+          clearTimeout(timer);
+          if (!timedOut) reject(err);
+        })
+        .connect({
+          host,
+          port: 22,
+          username: "root",
+          password,
+          readyTimeout: SSH_CONNECT_TIMEOUT_MS,
+          // Accept any host key — LXC containers are ephemeral
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          hostVerifier: (_key: any) => true,
+        } as any);
+    });
+  }
+
+  /**
+   * Bootstrap Docker inside a fresh LXC container via SSH.
+   *
+   * Steps:
+   *  1. Configure DNS (in case DHCP didn't provide resolvers)
+   *  2. Install docker.io from Ubuntu repos
+   *  3. Configure Docker daemon to listen on TCP 2375
+   *  4. Override systemd unit to avoid -H fd:// conflict
+   *  5. Restart Docker
+   *
+   * Returns an array of log lines describing what was done.
+   */
+  private async bootstrapDockerViaSSH(
+    host: string,
+    password: string,
+  ): Promise<string[]> {
+    const logs: string[] = [];
+
+    // Wait for SSH to become available
+    logs.push("Waiting for SSH to become available...");
+    await this.waitForSSH(host, password);
+    logs.push("SSH connection established");
+
+    // Run the bootstrap script as a single bash -c invocation
+    const bootstrapScript = `bash -c '
+set -e
+
+# Ensure DNS resolution works (DHCP may not provide nameservers)
+grep -q "nameserver" /etc/resolv.conf || echo "nameserver 8.8.8.8" >> /etc/resolv.conf
+echo "nameserver 8.8.8.8" >> /etc/resolv.conf
+
+# Update package lists and install Docker
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y -qq docker.io
+
+# Create systemd override to remove the default -H fd:// flag
+# (it conflicts with the "hosts" key in daemon.json)
+mkdir -p /etc/systemd/system/docker.service.d
+printf "[Service]\\nExecStart=\\nExecStart=/usr/bin/dockerd -H unix:///var/run/docker.sock -H tcp://0.0.0.0:2375\\n" > /etc/systemd/system/docker.service.d/override.conf
+
+# Reload systemd and start Docker
+systemctl daemon-reload
+systemctl enable docker
+systemctl restart docker
+
+# Verify Docker is running
+sleep 2
+docker info >/dev/null 2>&1 && echo "DOCKER_BOOTSTRAP_OK" || echo "DOCKER_BOOTSTRAP_FAIL"
+'`;
+
+    logs.push("Installing Docker and configuring TCP listener...");
+    logger.info("Running Docker bootstrap script via SSH", { host });
+
+    try {
+      const output = await this.sshExec(host, password, bootstrapScript);
+
+      if (output.includes("DOCKER_BOOTSTRAP_OK")) {
+        logs.push("Docker installed and configured successfully");
+        logger.info("Docker bootstrap completed", { host });
+      } else {
+        // Docker installed but verification failed — may still work after a moment
+        logs.push("Docker installed but initial verification uncertain — will retry via TCP");
+        logger.warn("Docker bootstrap verification uncertain", { host, output: output.slice(-200) });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logs.push(`Docker bootstrap error: ${msg}`);
+      logger.error("Docker bootstrap failed", { host, error: msg });
+      throw new Error(`Failed to bootstrap Docker in LXC at ${host}: ${msg}`);
+    }
+
+    return logs;
+  }
+
+  // -------------------------------------------------------------------------
   // Private helpers — LXC management
   // -------------------------------------------------------------------------
 
@@ -1144,22 +1317,98 @@ export class ProxmoxProvider implements ComputeProvider {
   }
 
   /**
+   * Determine the correct storage pools for templates and rootfs.
+   *
+   * Proxmox storage pools serve different content types:
+   *   - "vztmpl" → OS templates (directory storage, usually "local")
+   *   - "rootdir" → container rootfs (block storage, usually "local-lvm")
+   *   - "images" → VM disk images (also block storage)
+   *
+   * This method queries all storages on the node and picks the right one
+   * for each purpose, regardless of what the user configured.
+   */
+  private async resolveStorages(
+    node: string,
+    configuredStorage: string,
+  ): Promise<{ templateStorage: string; rootfsStorage: string }> {
+    try {
+      const storages = await this.client.listStorage(node);
+
+      logger.info("Available Proxmox storages", {
+        storages: storages.map((s) => ({
+          name: s.storage,
+          type: s.type,
+          content: s.content,
+        })),
+      });
+
+      // --- Template storage (needs "vztmpl" content support) ---
+      let templateStorage = "local";
+      const configuredEntry = storages.find(
+        (s) => s.storage === configuredStorage,
+      );
+      if (configuredEntry && configuredEntry.content.includes("vztmpl")) {
+        templateStorage = configuredStorage;
+      } else {
+        const vztmplStore = storages.find((s) =>
+          s.content.includes("vztmpl"),
+        );
+        if (vztmplStore) {
+          templateStorage = vztmplStore.storage;
+        }
+      }
+
+      // --- Rootfs storage (needs "rootdir" or "images" content support) ---
+      let rootfsStorage = "local-lvm";
+      if (
+        configuredEntry &&
+        (configuredEntry.content.includes("rootdir") ||
+          configuredEntry.content.includes("images"))
+      ) {
+        rootfsStorage = configuredStorage;
+      } else {
+        const rootdirStore = storages.find(
+          (s) =>
+            s.content.includes("rootdir") || s.content.includes("images"),
+        );
+        if (rootdirStore) {
+          rootfsStorage = rootdirStore.storage;
+        }
+      }
+
+      logger.info("Resolved storages", {
+        templateStorage,
+        rootfsStorage,
+        configuredStorage,
+      });
+
+      return { templateStorage, rootfsStorage };
+    } catch (err) {
+      logger.warn("Failed to query storages, using defaults", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return { templateStorage: "local", rootfsStorage: "local-lvm" };
+    }
+  }
+
+  /**
    * Resolve the OS template to use for LXC creation.
    *
-   * Attempts to find an Ubuntu template in the configured storage pool.
+   * Attempts to find an Ubuntu template in the given storage pool.
    * Falls back to the first available template if no Ubuntu variant is found.
    */
   private async resolveTemplate(
     node: string,
-    storage: string,
+    templateStorage: string,
   ): Promise<string> {
     try {
-      const templates = await this.client.listTemplates(node, storage);
+      const templates = await this.client.listTemplates(node, templateStorage);
 
       if (templates.length === 0) {
         throw new Error(
-          `No container templates found in storage "${storage}" on node "${node}". ` +
-            "Please upload an Ubuntu template (e.g., ubuntu-22.04-standard) via the Proxmox web UI.",
+          `No container templates found in storage "${templateStorage}" on node "${node}". ` +
+            "Please upload an Ubuntu template (e.g., ubuntu-22.04-standard) via the Proxmox web UI: " +
+            `Datacenter → ${node} → ${templateStorage} → CT Templates → Templates button.`,
         );
       }
 
@@ -1188,12 +1437,11 @@ export class ProxmoxProvider implements ComputeProvider {
       );
       return templates[0].volid;
     } catch (err) {
-      // If listing templates fails, construct a conventional template path
-      // as a best-effort fallback. This will fail at LXC creation time if
-      // the template doesn't exist, which gives the user a clear error.
-      const fallback = `${storage}:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst`;
-      logger.warn("Failed to list templates, using fallback", {
+      // If listing templates fails, try "local" as a last resort fallback
+      const fallback = `local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst`;
+      logger.warn("Failed to list templates, using fallback path", {
         fallback,
+        templateStorage,
         error: err instanceof Error ? err.message : String(err),
       });
       return fallback;

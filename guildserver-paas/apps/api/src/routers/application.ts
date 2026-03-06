@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure, enforcePlanLimit } from "../trpc/trpc";
-import { applications, projects, members, deployments } from "@guildserver/database";
+import { applications, projects, members, deployments, computeProviders } from "@guildserver/database";
 import { eq, and, desc } from "drizzle-orm";
 import { deploymentQueue } from "../queues/deployment";
 import {
@@ -14,6 +14,7 @@ import {
 } from "../services/docker";
 import { healthCheck } from "../services/container-manager";
 import { listGithubRepos, listGithubBranches } from "../services/git-provider";
+import { getProvider } from "../providers/factory";
 
 const createApplicationSchema = z.object({
   name: z.string().min(1),
@@ -158,11 +159,36 @@ export const applicationRouter = createTRPCRouter({
       // Generate app name from name (lowercase, replace spaces with hyphens)
       const appName = input.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
 
+      // Auto-resolve deployment target for non-admin users
+      let resolvedDeploymentTarget = input.deploymentTarget;
+      let resolvedProviderId = input.providerId;
+
+      if (!ctx.isAdmin) {
+        // Non-admin users: auto-select the org's default connected provider
+        const defaultProvider = await ctx.db.query.computeProviders.findFirst({
+          where: and(
+            eq(computeProviders.organizationId, project.organization.id),
+            eq(computeProviders.isDefault, true),
+            eq(computeProviders.status, "connected"),
+          ),
+        });
+
+        if (defaultProvider) {
+          resolvedDeploymentTarget = defaultProvider.type === "proxmox" ? "proxmox" : "docker-local";
+          resolvedProviderId = defaultProvider.id;
+        } else {
+          resolvedDeploymentTarget = "docker-local";
+          resolvedProviderId = null;
+        }
+      }
+
       const [newApplication] = await ctx.db
         .insert(applications)
         .values({
           ...input,
           appName,
+          deploymentTarget: resolvedDeploymentTarget,
+          providerId: resolvedProviderId,
           environment: input.environment || {},
           // Convert cpuLimit from number to string (DB column is decimal)
           cpuLimit: input.cpuLimit != null ? String(input.cpuLimit) : undefined,
@@ -294,12 +320,22 @@ export const applicationRouter = createTRPCRouter({
         });
       }
 
-      // Stop and remove Docker containers for this application
-      try {
-        await removeExistingContainers(input.id);
-      } catch (error: any) {
-        // Log but don't block deletion if container cleanup fails
-        console.warn(`Failed to clean up containers for app ${input.id}: ${error.message}`);
+      // Clean up containers based on deployment target
+      if (application.deploymentTarget === "proxmox" && application.providerId) {
+        // Proxmox-deployed app: destroy the LXC container
+        try {
+          const provider = await getProvider(application.providerId);
+          await provider.remove(input.id);
+        } catch (error: any) {
+          console.warn(`Failed to clean up Proxmox LXC for app ${input.id}: ${error.message}`);
+        }
+      } else {
+        // Docker-local: remove local Docker containers
+        try {
+          await removeExistingContainers(input.id);
+        } catch (error: any) {
+          console.warn(`Failed to clean up containers for app ${input.id}: ${error.message}`);
+        }
       }
 
       await ctx.db.delete(applications).where(eq(applications.id, input.id));
@@ -525,8 +561,14 @@ export const applicationRouter = createTRPCRouter({
         });
       }
 
-      // Restart Docker container
-      const restarted = await restartContainer(input.id);
+      // Restart container (Proxmox or Docker-local)
+      let restarted: boolean;
+      if (application.deploymentTarget === "proxmox" && application.providerId) {
+        const provider = await getProvider(application.providerId);
+        restarted = await provider.restart(input.id);
+      } else {
+        restarted = await restartContainer(input.id);
+      }
       if (!restarted) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -591,7 +633,14 @@ export const applicationRouter = createTRPCRouter({
       // Handle scaling: if scaled to 0, stop the container
       if (replicas === 0) {
         try {
-          await stopContainer(id);
+          if (application.deploymentTarget === "proxmox" && application.providerId) {
+            // Proxmox-deployed app: stop the LXC container
+            const provider = await getProvider(application.providerId);
+            await provider.stop(id);
+          } else {
+            // Docker-local: stop local Docker container
+            await stopContainer(id);
+          }
           await ctx.db
             .update(applications)
             .set({ status: "stopped", updatedAt: new Date() })
