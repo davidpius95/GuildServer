@@ -81,6 +81,7 @@ services:
       GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:-https://guildserver.io/auth/github/callback}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      BASE_DOMAIN: ${BASE_DOMAIN:-guildserver.io}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
     depends_on:
