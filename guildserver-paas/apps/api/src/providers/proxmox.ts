@@ -1,4 +1,7 @@
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   ComputeProvider,
   DeployConfig,
@@ -79,6 +82,64 @@ const SSH_READY_POLL_MS = 3_000;
 
 /** Maximum time (ms) to wait for SSH to become available after LXC start. */
 const SSH_READY_TIMEOUT_MS = 60_000;
+
+// ---------------------------------------------------------------------------
+// Bootstrap script — loaded from scripts/bootstrap-lxc.sh at startup
+// ---------------------------------------------------------------------------
+
+/**
+ * Load the LXC bootstrap script from the scripts directory.
+ * Falls back to a minimal inline script if the file is not found.
+ */
+function loadBootstrapScript(): string {
+  const possiblePaths = [
+    // Running from source (tsx / ts-node)
+    resolve(process.cwd(), "scripts", "bootstrap-lxc.sh"),
+    // Running from built output
+    resolve(process.cwd(), "..", "scripts", "bootstrap-lxc.sh"),
+    // Relative to this file
+    resolve(__dirname, "..", "..", "..", "scripts", "bootstrap-lxc.sh"),
+  ];
+
+  for (const p of possiblePaths) {
+    try {
+      const content = readFileSync(p, "utf-8");
+      logger.info("Loaded LXC bootstrap script", { path: p });
+      return content;
+    } catch {
+      // Try next path
+    }
+  }
+
+  // Fallback: minimal inline script if the file is missing
+  logger.warn("bootstrap-lxc.sh not found — using minimal inline bootstrap");
+  return `#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+grep -q "8.8.8.8" /etc/resolv.conf 2>/dev/null || echo "nameserver 8.8.8.8" >> /etc/resolv.conf
+apt-get update -qq
+apt-get install -y -qq docker.io curl git jq
+mkdir -p /etc/systemd/system/docker.service.d
+printf "[Service]\\nExecStart=\\nExecStart=/usr/bin/dockerd -H unix:///var/run/docker.sock -H tcp://0.0.0.0:2375\\n" > /etc/systemd/system/docker.service.d/override.conf
+mkdir -p /etc/docker
+printf '{"log-driver":"json-file","log-opts":{"max-size":"50m","max-file":"3"},"storage-driver":"overlay2","live-restore":true}' > /etc/docker/daemon.json
+systemctl daemon-reload
+systemctl enable docker
+systemctl restart docker
+sleep 3
+docker info >/dev/null 2>&1 && echo "BOOTSTRAP_OK" || echo "BOOTSTRAP_PARTIAL"
+`;
+}
+
+/** Cached bootstrap script content (loaded once at module init). */
+let _bootstrapScript: string | null = null;
+
+function getBootstrapScript(): string {
+  if (!_bootstrapScript) {
+    _bootstrapScript = loadBootstrapScript();
+  }
+  return _bootstrapScript;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1105,53 +1166,35 @@ export class ProxmoxProvider implements ComputeProvider {
     await this.waitForSSH(host, password);
     logs.push("SSH connection established");
 
-    // Run the bootstrap script as a single bash -c invocation
-    const bootstrapScript = `bash -c '
-set -e
+    // Load the comprehensive bootstrap script (from scripts/bootstrap-lxc.sh
+    // or the built-in fallback). The script installs Docker, essential packages,
+    // configures the daemon for TCP access, sets up log rotation, and tunes
+    // the system for container workloads.
+    const scriptContent = getBootstrapScript();
+    const bootstrapCmd = `bash -c '${scriptContent.replace(/'/g, "'\\''")}'`;
 
-# Ensure DNS resolution works (DHCP may not provide nameservers)
-grep -q "nameserver" /etc/resolv.conf || echo "nameserver 8.8.8.8" >> /etc/resolv.conf
-echo "nameserver 8.8.8.8" >> /etc/resolv.conf
-
-# Update package lists and install Docker
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq docker.io
-
-# Create systemd override to remove the default -H fd:// flag
-# (it conflicts with the "hosts" key in daemon.json)
-mkdir -p /etc/systemd/system/docker.service.d
-printf "[Service]\\nExecStart=\\nExecStart=/usr/bin/dockerd -H unix:///var/run/docker.sock -H tcp://0.0.0.0:2375\\n" > /etc/systemd/system/docker.service.d/override.conf
-
-# Reload systemd and start Docker
-systemctl daemon-reload
-systemctl enable docker
-systemctl restart docker
-
-# Verify Docker is running
-sleep 2
-docker info >/dev/null 2>&1 && echo "DOCKER_BOOTSTRAP_OK" || echo "DOCKER_BOOTSTRAP_FAIL"
-'`;
-
-    logs.push("Installing Docker and configuring TCP listener...");
-    logger.info("Running Docker bootstrap script via SSH", { host });
+    logs.push("Running LXC bootstrap script (Docker, networking, tools, tuning)...");
+    logger.info("Running LXC bootstrap script via SSH", { host });
 
     try {
-      const output = await this.sshExec(host, password, bootstrapScript);
+      const output = await this.sshExec(host, password, bootstrapCmd);
 
-      if (output.includes("DOCKER_BOOTSTRAP_OK")) {
-        logs.push("Docker installed and configured successfully");
-        logger.info("Docker bootstrap completed", { host });
+      if (output.includes("BOOTSTRAP_OK")) {
+        logs.push("LXC bootstrap completed successfully — all checks passed");
+        logger.info("LXC bootstrap completed (BOOTSTRAP_OK)", { host });
+      } else if (output.includes("BOOTSTRAP_PARTIAL")) {
+        logs.push("LXC bootstrap completed with warnings — Docker is ready but some checks failed");
+        logger.warn("LXC bootstrap partial success", { host, output: output.slice(-300) });
       } else {
-        // Docker installed but verification failed — may still work after a moment
-        logs.push("Docker installed but initial verification uncertain — will retry via TCP");
-        logger.warn("Docker bootstrap verification uncertain", { host, output: output.slice(-200) });
+        // Script ran but no status marker found — may still work
+        logs.push("LXC bootstrap finished but verification uncertain — will retry via TCP");
+        logger.warn("LXC bootstrap verification uncertain", { host, output: output.slice(-300) });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      logs.push(`Docker bootstrap error: ${msg}`);
-      logger.error("Docker bootstrap failed", { host, error: msg });
-      throw new Error(`Failed to bootstrap Docker in LXC at ${host}: ${msg}`);
+      logs.push(`LXC bootstrap error: ${msg}`);
+      logger.error("LXC bootstrap failed", { host, error: msg });
+      throw new Error(`Failed to bootstrap LXC at ${host}: ${msg}`);
     }
 
     return logs;
