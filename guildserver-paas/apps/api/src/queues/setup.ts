@@ -1,7 +1,7 @@
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
 import { eq, and } from "drizzle-orm";
-import { db, deployments, applications, environmentVariables, domains, projects } from "@guildserver/database";
+import { db, deployments, applications, environmentVariables, domains, projects, oauthAccounts } from "@guildserver/database";
 import { logger } from "../utils/logger";
 import {
   deployContainer,
@@ -256,12 +256,31 @@ const deploymentWorker = new Worker(
           message: `Cloning ${app.repository}...`,
         });
 
+        // Fetch user's OAuth token for authenticated cloning (private repos)
+        let gitToken: string | undefined;
+        const sourceProvider = (app.sourceType as string) || "git";
+        if (["github", "gitlab", "bitbucket", "gitea"].includes(sourceProvider) && userId) {
+          const oauthAccount = await db.query.oauthAccounts.findFirst({
+            where: and(
+              eq(oauthAccounts.userId, userId),
+              eq(oauthAccounts.provider, sourceProvider)
+            ),
+          });
+          if (oauthAccount?.accessToken) {
+            gitToken = oauthAccount.accessToken;
+            allBuildLogs.push("Using authenticated clone (OAuth token found)");
+          } else {
+            allBuildLogs.push("No OAuth token found — attempting unauthenticated clone");
+          }
+        }
+
         // Clone repository
         const cloneResult = await cloneRepository(
           {
             provider: (app.sourceType as any) || "git",
             repository: app.repository!,
             branch: app.branch || "main",
+            token: gitToken,
           },
           deploymentId,
           (msg) => {
