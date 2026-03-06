@@ -294,7 +294,7 @@ async function sendEmailNotification(
     await transporter.sendMail({
       from: process.env.EMAIL_FROM || "noreply@guildserver.com",
       to: user.email,
-      subject: title.replace(/[✅❌🔀⏰⚠️🔒🔔👤📋]/g, "").trim(),
+      subject: title.replace(/[✅❌🔀⏰⚠️🔒🔔👤📋]/gu, "").trim(),
       html: htmlBody,
     });
 
