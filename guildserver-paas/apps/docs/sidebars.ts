@@ -1,0 +1,161 @@
+import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
+
+const sidebars: SidebarsConfig = {
+  docs: [
+    {
+      type: 'category',
+      label: 'Getting Started',
+      collapsed: false,
+      items: [
+        'getting-started/index',
+        'getting-started/quickstart',
+        'getting-started/installation',
+        'getting-started/project-structure',
+        'getting-started/configuration',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Core Concepts',
+      items: [
+        'concepts/organizations',
+        'concepts/projects',
+        'concepts/applications',
+        'concepts/deployments',
+        'concepts/databases',
+        'concepts/domains',
+        'concepts/environment-variables',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Deployment',
+      items: [
+        'deployment/git-deployments',
+        'deployment/docker-deployments',
+        'deployment/preview-deployments',
+        'deployment/rollbacks',
+        'deployment/build-logs',
+        'deployment/webhooks',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Dashboard Guide',
+      items: [
+        'dashboard/overview',
+        'dashboard/applications-page',
+        'dashboard/app-detail',
+        'dashboard/deployments-page',
+        'dashboard/databases-page',
+        'dashboard/team-management',
+        'dashboard/settings',
+        'dashboard/monitoring',
+        'dashboard/billing',
+        'dashboard/notifications',
+        'dashboard/templates',
+        'dashboard/workflows',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Infrastructure',
+      items: [
+        'infrastructure/docker-setup',
+        'infrastructure/traefik',
+        'infrastructure/kubernetes',
+        'infrastructure/resource-limits',
+        'infrastructure/networking',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Authentication & Security',
+      items: [
+        'auth/authentication',
+        'auth/oauth',
+        'auth/roles-permissions',
+        'auth/sso',
+        'auth/two-factor',
+        'auth/api-keys',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'API Reference',
+      items: [
+        'api/index',
+        'api/auth',
+        'api/applications',
+        'api/deployments',
+        'api/databases',
+        'api/organizations',
+        'api/projects',
+        'api/domains',
+        'api/environment',
+        'api/webhooks',
+        'api/billing',
+        'api/monitoring',
+        'api/notifications',
+        'api/users',
+        'api/kubernetes',
+        'api/workflows',
+        'api/audit',
+        'api/github',
+        'api/websocket',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'CLI Reference',
+      items: [
+        'cli/index',
+        'cli/commands',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Billing & Plans',
+      items: [
+        'billing/plans',
+        'billing/usage-tracking',
+        'billing/spend-limits',
+        'billing/stripe-integration',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Monitoring & Observability',
+      items: [
+        'monitoring/metrics',
+        'monitoring/health-checks',
+        'monitoring/logging',
+        'monitoring/alerts',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Self-Hosting',
+      items: [
+        'self-hosting/docker-compose',
+        'self-hosting/vps-deployment',
+        'self-hosting/production-checklist',
+        'self-hosting/ssl-certificates',
+        'self-hosting/backups',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Contributing',
+      items: [
+        'contributing/development-setup',
+        'contributing/architecture',
+        'contributing/database-schema',
+        'contributing/testing',
+        'contributing/code-style',
+      ],
+    },
+  ],
+};
+
+export default sidebars;

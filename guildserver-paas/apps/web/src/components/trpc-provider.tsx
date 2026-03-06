@@ -14,7 +14,12 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: {
       queries: {
-        staleTime: 5 * 60 * 1000, // 5 minutes
+        staleTime: 2 * 60 * 1000, // 2 minutes default
+        refetchOnWindowFocus: true,
+        retry: 1,
+      },
+      mutations: {
+        retry: 0,
       },
     },
   }))
@@ -24,9 +29,11 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
       transformer: superjson,
       links: [
         httpBatchLink({
-          url: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/trpc',
+          url: process.env.NEXT_PUBLIC_API_URL || '/trpc',
           headers() {
-            const token = localStorage.getItem('guildserver-token')
+            const token = typeof window !== 'undefined'
+              ? localStorage.getItem('guildserver-token')
+              : null
             return token ? { authorization: `Bearer ${token}` } : {}
           },
         }),

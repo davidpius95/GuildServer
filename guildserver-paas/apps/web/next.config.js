@@ -9,6 +9,18 @@ const nextConfig = {
     API_URL: process.env.API_URL || 'http://localhost:4000',
   },
   transpilePackages: ['@guildserver/database'],
+  async rewrites() {
+    return [
+      {
+        source: '/trpc/:path*',
+        destination: 'http://localhost:4000/trpc/:path*',
+      },
+      {
+        source: '/webhooks/:path*',
+        destination: 'http://localhost:4000/webhooks/:path*',
+      },
+    ]
+  },
 }
 
 module.exports = nextConfig
