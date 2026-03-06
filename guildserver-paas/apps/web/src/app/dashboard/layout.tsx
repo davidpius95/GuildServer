@@ -124,14 +124,18 @@ export default function DashboardLayout({
   const { isReady, isAuthenticated, logout } = useAuth({ redirect: true })
   const { isAdmin } = useCurrentUser()
 
-  // Notification queries
+  // Notification queries — optimized polling intervals
   const unreadCountQuery = trpc.notification.getUnreadCount.useQuery(undefined, {
-    refetchInterval: 30000,
+    refetchInterval: 60000, // Poll every 60s (was 30s)
+    staleTime: 30 * 1000,
     enabled: isAuthenticated,
   })
   const notificationsQuery = trpc.notification.list.useQuery(
     { limit: 10, offset: 0 },
-    { enabled: notifOpen && isAuthenticated }
+    {
+      enabled: notifOpen && isAuthenticated,
+      staleTime: 30 * 1000,
+    }
   )
   const markReadMutation = trpc.notification.markRead.useMutation({
     onSuccess: () => {

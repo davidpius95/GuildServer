@@ -14,8 +14,10 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: {
       queries: {
-        staleTime: 2 * 60 * 1000, // 2 minutes default
-        refetchOnWindowFocus: true,
+        staleTime: 3 * 60 * 1000, // 3 minutes — reduces redundant refetches
+        cacheTime: 10 * 60 * 1000, // Keep in cache 10 min after component unmount
+        refetchOnWindowFocus: false, // Don't refetch on every tab switch
+        refetchOnReconnect: true, // Refetch when network reconnects
         retry: (failureCount, error) => {
           if (error instanceof TRPCClientError) {
             const code = error.data?.code
@@ -26,6 +28,8 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
               }
               return false
             }
+            // Don't retry server errors more than once
+            if (code === 'INTERNAL_SERVER_ERROR') return failureCount < 1
           }
           return failureCount < 2
         },

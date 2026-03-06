@@ -93,7 +93,10 @@ export default function DashboardPage() {
   // Real data queries - only fetch when we have valid UUIDs
   const appsQuery = trpc.application.list.useQuery(
     { projectId },
-    { enabled: isValidUUID(projectId) }
+    {
+      enabled: isValidUUID(projectId),
+      staleTime: 2 * 60 * 1000,
+    }
   )
 
   // Real system health from Docker/API/WebSocket
@@ -101,7 +104,8 @@ export default function DashboardPage() {
     { organizationId: orgId },
     {
       enabled: isValidUUID(orgId),
-      refetchInterval: 30000, // Refresh every 30s
+      refetchInterval: 60000, // Refresh every 60s (was 30s — reduces load)
+      staleTime: 30 * 1000, // Consider stale after 30s
       retry: 1,
     }
   )
