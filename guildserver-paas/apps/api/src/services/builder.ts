@@ -233,7 +233,14 @@ export async function buildImage(
 ): Promise<BuildResult> {
   const d = dockerClient || docker;
   const logs: string[] = [];
-  const imageTag = `gs-${opts.appName}:${opts.deploymentId.slice(0, 8)}`;
+  // Sanitize app name for Docker image reference format:
+  // must be lowercase, only [a-z0-9._-], can't start/end with separator
+  const sanitizedName = opts.appName
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "-")
+    .replace(/^[-._]+|[-._]+$/g, "")
+    || "app";
+  const imageTag = `gs-${sanitizedName}:${opts.deploymentId.slice(0, 8)}`;
 
   const log = (msg: string) => {
     logs.push(msg);
