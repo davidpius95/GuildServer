@@ -32,7 +32,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Install tsx globally for reliable execution
+# Install git (for cloning repos), docker-cli (for building images), and tsx
+RUN apk add --no-cache git docker-cli
 RUN npm install -g tsx
 
 # Copy all node_modules

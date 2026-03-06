@@ -66,6 +66,8 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     container_name: guildserver-api
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://guildserver:${POSTGRES_PASSWORD:-password123}@postgres:5432/guildserver
