@@ -181,7 +181,7 @@ export function useDeploymentStream({
     }
 
     // Use NEXT_PUBLIC_API_BASE_URL for the actual server host (NEXT_PUBLIC_API_URL may be just "/trpc")
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || ""
     // If the URL is just a path (e.g. "/trpc"), derive host from window.location
     const isRelative = apiBaseUrl.startsWith("/")
     const fullBaseUrl = isRelative

@@ -122,6 +122,11 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: https://guildserver.io
+        NEXT_PUBLIC_API_URL: /trpc
+        API_URL: http://api:4000
+        NEXTAUTH_URL: https://guildserver.io
     container_name: guildserver-web
     environment:
       NODE_ENV: production

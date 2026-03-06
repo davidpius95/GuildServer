@@ -16,6 +16,16 @@ RUN pnpm install --frozen-lockfile
 FROM base AS builder
 WORKDIR /app
 
+# NEXT_PUBLIC_* vars must be available at build time for Next.js to inline them
+ARG NEXT_PUBLIC_API_BASE_URL=https://guildserver.io
+ARG NEXT_PUBLIC_API_URL=/trpc
+ARG API_URL=http://api:4000
+ARG NEXTAUTH_URL=https://guildserver.io
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV API_URL=$API_URL
+ENV NEXTAUTH_URL=$NEXTAUTH_URL
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
