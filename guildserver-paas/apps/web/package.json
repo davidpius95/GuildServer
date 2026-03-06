@@ -8,6 +8,7 @@
     "start": "next start -p 3000",
     "clean": "rm -rf .next",
     "typecheck": "tsc --noEmit",
+    "test": "echo \"No tests configured\" && exit 0",
     "lint": "next lint",
     "lint:fix": "next lint --fix"
   },

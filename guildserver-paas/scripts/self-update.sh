@@ -26,10 +26,10 @@ echo "$LOG_PREFIX Updating from ${CURRENT:0:7} to ${LATEST:0:7}..."
 # Pull latest code
 git reset --hard origin/main
 
-# Rebuild and restart app containers
+# Rebuild and restart app containers (api, web, docs)
 cd "$COMPOSE_DIR"
-docker compose -f docker-compose.prod.yml build api web
-docker compose -f docker-compose.prod.yml up -d api web
+docker compose -f docker-compose.prod.yml build api web docs
+docker compose -f docker-compose.prod.yml up -d api web docs
 
 # Run database migrations
 sleep 10

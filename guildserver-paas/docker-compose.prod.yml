@@ -72,9 +72,11 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       PORT: 4000
+      FRONTEND_URL: https://guildserver.io
+      API_URL: https://guildserver.io
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
-      GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:-https://guildserver.io/auth/callback}
+      GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:-https://guildserver.io/auth/github/callback}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
     depends_on:
@@ -85,15 +87,31 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.api.loadbalancer.server.port=4000"
+      # tRPC API
       - "traefik.http.routers.api-trpc.rule=Host(`guildserver.io`) && PathPrefix(`/trpc`)"
       - "traefik.http.routers.api-trpc.entrypoints=web"
       - "traefik.http.routers.api-trpc.service=api"
+      # Health check
       - "traefik.http.routers.api-health.rule=Host(`guildserver.io`) && PathPrefix(`/health`)"
       - "traefik.http.routers.api-health.entrypoints=web"
       - "traefik.http.routers.api-health.service=api"
+      # REST API
       - "traefik.http.routers.api-rest.rule=Host(`guildserver.io`) && PathPrefix(`/api`)"
       - "traefik.http.routers.api-rest.entrypoints=web"
       - "traefik.http.routers.api-rest.service=api"
+      # OAuth routes (GitHub/Google) — must route to API, not web
+      - "traefik.http.routers.api-oauth.rule=Host(`guildserver.io`) && (PathPrefix(`/auth/github`) || PathPrefix(`/auth/google`))"
+      - "traefik.http.routers.api-oauth.entrypoints=web"
+      - "traefik.http.routers.api-oauth.service=api"
+      - "traefik.http.routers.api-oauth.priority=10"
+      # Stripe webhooks
+      - "traefik.http.routers.api-stripe.rule=Host(`guildserver.io`) && PathPrefix(`/stripe-webhooks`)"
+      - "traefik.http.routers.api-stripe.entrypoints=web"
+      - "traefik.http.routers.api-stripe.service=api"
+      # Git webhooks
+      - "traefik.http.routers.api-webhooks.rule=Host(`guildserver.io`) && PathPrefix(`/webhooks`)"
+      - "traefik.http.routers.api-webhooks.entrypoints=web"
+      - "traefik.http.routers.api-webhooks.service=api"
     networks:
       - default
       - guildserver
@@ -109,6 +127,7 @@ services:
       NODE_ENV: production
       API_URL: http://api:4000
       NEXT_PUBLIC_API_URL: /trpc
+      NEXT_PUBLIC_API_BASE_URL: https://guildserver.io
       NEXTAUTH_URL: https://guildserver.io
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me-in-production}
     depends_on:
@@ -116,10 +135,29 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.web.loadbalancer.server.port=3000"
+      # Catchall for all frontend pages (lowest priority)
       - "traefik.http.routers.web.rule=Host(`guildserver.io`)"
       - "traefik.http.routers.web.entrypoints=web"
       - "traefik.http.routers.web.service=web"
       - "traefik.http.routers.web.priority=1"
+    networks:
+      - default
+      - guildserver
+    restart: unless-stopped
+
+  # Documentation Site (Docusaurus)
+  docs:
+    build:
+      context: .
+      dockerfile: apps/docs/Dockerfile
+    container_name: guildserver-docs
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.docs.loadbalancer.server.port=80"
+      - "traefik.http.routers.docs.rule=Host(`guildserver.io`) && PathPrefix(`/docs`)"
+      - "traefik.http.routers.docs.entrypoints=web"
+      - "traefik.http.routers.docs.service=docs"
+      - "traefik.http.routers.docs.priority=10"
     networks:
       - default
       - guildserver
