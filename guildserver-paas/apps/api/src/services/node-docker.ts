@@ -188,3 +188,56 @@ export async function waitForDockerReady(
     `Docker daemon did not become ready within ${timeoutMs}ms`,
   );
 }
+
+// ---------------------------------------------------------------------------
+// Image transfer helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Transfer a Docker image from one daemon to another by streaming.
+ *
+ * Uses `docker save` (image.get()) on the source and `docker load`
+ * (loadImage()) on the target. The image is streamed directly — it is NOT
+ * buffered in memory — so even multi-GB images work without OOM.
+ *
+ * @param imageTag      Full image reference, e.g. "gs-myapp:abc123".
+ * @param sourceClient  The Docker daemon that has the image (usually local).
+ * @param targetClient  The Docker daemon to load the image into (remote LXC).
+ */
+export async function transferDockerImage(
+  imageTag: string,
+  sourceClient: Docker,
+  targetClient: Docker,
+): Promise<void> {
+  logger.info("Transferring Docker image", { imageTag });
+  const start = Date.now();
+
+  // `image.get()` returns a ReadableStream of a tar archive (docker save)
+  const image = sourceClient.getImage(imageTag);
+  const tarStream = await image.get();
+
+  // `loadImage()` accepts a ReadableStream and loads it (docker load)
+  const response = await targetClient.loadImage(tarStream);
+
+  // Wait for the load to complete — response is a stream of JSON progress
+  await new Promise<void>((resolve, reject) => {
+    targetClient.modem.followProgress(
+      response,
+      (err: Error | null) => {
+        if (err) {
+          logger.error("Image transfer failed", { imageTag, error: err.message });
+          reject(err);
+        } else {
+          const elapsed = Date.now() - start;
+          logger.info("Image transfer complete", { imageTag, elapsedMs: elapsed });
+          resolve();
+        }
+      },
+      (event: any) => {
+        if (event.stream) {
+          logger.debug("Image load progress", { imageTag, stream: event.stream.trim() });
+        }
+      },
+    );
+  });
+}

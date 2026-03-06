@@ -386,6 +386,7 @@ export async function deployContainer(
           .join(" || ");
         labels[`traefik.http.routers.${routerName}.rule`] = localHostRules;
         labels[`traefik.http.routers.${routerName}.entrypoints`] = "web";
+        labels[`traefik.http.routers.${routerName}.service`] = routerName;
       }
 
       // HTTPS router for real domains (with TLS via Let's Encrypt)
@@ -400,12 +401,14 @@ export async function deployContainer(
         labels[`traefik.http.routers.${tlsRouterName}.entrypoints`] = "websecure";
         labels[`traefik.http.routers.${tlsRouterName}.tls`] = "true";
         labels[`traefik.http.routers.${tlsRouterName}.tls.certresolver`] = "letsencrypt";
+        labels[`traefik.http.routers.${tlsRouterName}.service`] = routerName;
 
         // HTTP→HTTPS redirect router for real domains
         const redirectRouterName = `${routerName}-redirect`;
         labels[`traefik.http.routers.${redirectRouterName}.rule`] = tlsHostRules;
         labels[`traefik.http.routers.${redirectRouterName}.entrypoints`] = "web";
         labels[`traefik.http.routers.${redirectRouterName}.middlewares`] = `${routerName}-https-redirect`;
+        labels[`traefik.http.routers.${redirectRouterName}.service`] = routerName;
         labels[`traefik.http.middlewares.${routerName}-https-redirect.redirectscheme.scheme`] = "https";
         labels[`traefik.http.middlewares.${routerName}-https-redirect.redirectscheme.permanent`] = "true";
 

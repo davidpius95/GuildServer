@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { trpc } from "@/components/trpc-provider"
-import { useOrganization, useProjects } from "@/hooks/use-auth"
+import { useOrganization, useProjects, useCurrentUser } from "@/hooks/use-auth"
 import { formatDateTime } from "@/lib/utils"
 import { toast } from "sonner"
 import { EnvVarEditor, type EnvVarEntry } from "@/components/env-var-editor"
@@ -111,6 +111,7 @@ export default function ApplicationsPage() {
 
   const { orgId } = useOrganization()
   const { projectId } = useProjects(orgId)
+  const { isAdmin } = useCurrentUser()
 
   // UUID validation to prevent queries with empty/invalid IDs
   const isValidUUID = (s: string) =>
@@ -200,9 +201,9 @@ export default function ApplicationsPage() {
 
   const githubConnected = githubConnectedWithScope
 
-  // Proxmox providers query — fetch available compute providers for deploy target
+  // Proxmox providers query — only admins can see/choose deploy targets
   const providersQuery = trpc.provider.list.useQuery(undefined, {
-    enabled: showCreateModal,
+    enabled: showCreateModal && isAdmin,
   })
   const proxmoxProviders = useMemo(() => {
     return (providersQuery.data ?? []).filter((p: any) => p.type === "proxmox" && p.status === "connected")
@@ -729,7 +730,8 @@ export default function ApplicationsPage() {
                 </div>
               )}
 
-              {/* Deploy Target */}
+              {/* Deploy Target — only visible to admins */}
+              {isAdmin && (
               <div className="space-y-3">
                 <Label>Deploy Target</Label>
                 <div className="grid grid-cols-2 gap-2">
@@ -829,14 +831,15 @@ export default function ApplicationsPage() {
                     <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
                     <span>
                       Want to deploy on remote infrastructure?{" "}
-                      <Link href="/dashboard/settings/infrastructure" className="text-primary hover:underline">
+                      <Link href="/dashboard/admin/infrastructure" className="text-primary hover:underline">
                         Add a Proxmox node
                       </Link>{" "}
-                      in Settings to unlock multi-node deployments.
+                      in the Admin section to unlock multi-node deployments.
                     </span>
                   </div>
                 )}
               </div>
+              )}
 
               {/* Environment Variables */}
               <EnvVarEditor

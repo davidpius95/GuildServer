@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { useAuth } from "@/hooks/use-auth"
+import { useAuth, useCurrentUser } from "@/hooks/use-auth"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { trpc } from "@/components/trpc-provider"
 import {
@@ -28,6 +28,7 @@ import {
   CreditCard,
   Loader2,
   Server,
+  UserCog,
 } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageTransition } from "@/components/motion/page-transition"
@@ -44,15 +45,21 @@ const navigation = [
   { name: "Team", href: "/dashboard/team", icon: Users },
   { name: "Security", href: "/dashboard/security", icon: Shield },
   { name: "Billing", href: "/dashboard/billing", icon: CreditCard },
-  { name: "Infrastructure", href: "/dashboard/settings/infrastructure", icon: Server },
+  { name: "Infrastructure", href: "/dashboard/admin/infrastructure", icon: Server, adminOnly: true },
+  { name: "User Management", href: "/dashboard/admin/users", icon: UserCog, adminOnly: true },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ]
 
 // Memoized sidebar navigation to prevent re-renders
-const SidebarNav = memo(function SidebarNav({ pathname }: { pathname: string }) {
+const SidebarNav = memo(function SidebarNav({ pathname, isAdmin }: { pathname: string; isAdmin: boolean }) {
+  const visibleNav = navigation.filter(item => !item.adminOnly || isAdmin)
+  // Separate admin items for visual grouping
+  const mainItems = visibleNav.filter(item => !item.adminOnly)
+  const adminItems = visibleNav.filter(item => item.adminOnly)
+
   return (
-    <nav className="flex-1 space-y-2 p-4">
-      {navigation.map((item) => {
+    <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
+      {mainItems.map((item) => {
         const isActive = pathname === item.href ||
           (item.href !== "/dashboard" && pathname.startsWith(item.href))
         return (
@@ -72,6 +79,35 @@ const SidebarNav = memo(function SidebarNav({ pathname }: { pathname: string }) 
           </Link>
         )
       })}
+      {adminItems.length > 0 && (
+        <>
+          <div className="pt-4 pb-1 px-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+              Admin
+            </span>
+          </div>
+          {adminItems.map((item) => {
+            const isActive = pathname === item.href ||
+              (item.href !== "/dashboard" && pathname.startsWith(item.href))
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                prefetch={true}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                )}
+              >
+                <item.icon className="h-4 w-4" />
+                {item.name}
+              </Link>
+            )
+          })}
+        </>
+      )}
     </nav>
   )
 })
@@ -86,6 +122,7 @@ export default function DashboardLayout({
   const notifRef = useRef<HTMLDivElement>(null)
   const pathname = usePathname()
   const { isReady, isAuthenticated, logout } = useAuth({ redirect: true })
+  const { isAdmin } = useCurrentUser()
 
   // Notification queries
   const unreadCountQuery = trpc.notification.getUnreadCount.useQuery(undefined, {
@@ -181,7 +218,7 @@ export default function DashboardLayout({
               PaaS
             </Badge>
           </div>
-          <SidebarNav pathname={pathname} />
+          <SidebarNav pathname={pathname} isAdmin={isAdmin} />
           <div className="border-t p-4">
             <Button
               variant="ghost"
@@ -226,7 +263,7 @@ export default function DashboardLayout({
                     PaaS
                   </Badge>
                 </div>
-                <SidebarNav pathname={pathname} />
+                <SidebarNav pathname={pathname} isAdmin={isAdmin} />
                 <div className="border-t p-4">
                   <Button
                     variant="ghost"
