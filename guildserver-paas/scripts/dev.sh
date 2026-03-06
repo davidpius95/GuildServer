@@ -32,11 +32,11 @@ fi
 
 # Install dependencies
 echo "📦 Installing dependencies..."
-npm install
+pnpm install
 
 # Start services
 echo "🐳 Starting Docker services..."
-docker-compose up -d postgres redis
+docker compose up -d postgres redis
 
 # Wait for services to be healthy
 echo "⏳ Waiting for services to be ready..."
@@ -44,11 +44,11 @@ sleep 10
 
 # Run database migrations
 echo "🗄️ Running database migrations..."
-npm run db:migrate --workspace=@guildserver/database
+pnpm --filter @guildserver/database db:migrate
 
 # Start development servers
 echo "🔥 Starting development servers..."
-npm run dev
+pnpm run dev
 
 echo "✅ GuildServer is running!"
 echo ""
@@ -57,4 +57,4 @@ echo "🔧 Backend API: http://localhost:4000"
 echo "📊 Database: postgresql://guildserver:password123@localhost:5432/guildserver"
 echo "📦 Redis: redis://localhost:6379"
 echo ""
-echo "To stop the services, run: docker-compose down"
+echo "To stop the services, run: docker compose down"

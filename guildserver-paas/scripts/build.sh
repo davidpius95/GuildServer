@@ -4,25 +4,25 @@
 
 set -e
 
-echo "🏗️ Building GuildServer for production..."
+echo "Building GuildServer for production..."
 
 # Clean previous builds
-echo "🧹 Cleaning previous builds..."
-npm run clean
+echo "Cleaning previous builds..."
+pnpm run clean
 
 # Install production dependencies
-echo "📦 Installing production dependencies..."
-npm ci --production=false
+echo "Installing dependencies..."
+pnpm install --frozen-lockfile
 
 # Build all packages
-echo "🔨 Building packages..."
-npm run build
+echo "Building packages..."
+pnpm run build
 
 # Build Docker images
-echo "🐳 Building Docker images..."
-docker-compose build
+echo "Building Docker images..."
+docker compose build
 
-echo "✅ Build complete!"
+echo "Build complete!"
 echo ""
 echo "To deploy:"
-echo "  docker-compose up -d"
+echo "  docker compose up -d"

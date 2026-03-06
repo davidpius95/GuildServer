@@ -150,8 +150,8 @@ This uses Turborepo to start all workspaces concurrently.
 | Service | URL | Description |
 |---|---|---|
 | Web App | http://localhost:3000 | Next.js 15 frontend |
-| API Server | http://localhost:3001/health | Express + tRPC backend health check |
-| Swagger Docs | http://localhost:3001/api-docs | API documentation |
+| API Server | http://localhost:4000/health | Express + tRPC backend health check |
+| Swagger Docs | http://localhost:4000/api-docs | API documentation |
 | Traefik Dashboard | http://localhost:8080 | Reverse proxy dashboard |
 
 ### Understanding the Codebase
@@ -163,9 +163,9 @@ GuildServer is a **pnpm workspace monorepo** managed by **Turborepo**.
 ```
 guildserver-paas/
 ├── apps/
-│   ├── api/          # Express + tRPC backend (port 3001)
+│   ├── api/          # Express + tRPC backend (port 4000)
 │   ├── web/          # Next.js 15 frontend (port 3000)
-│   └── docs/         # Docusaurus 3 documentation (port 3001)
+│   └── docs/         # Docusaurus 3 documentation (port 3002)
 ├── packages/
 │   ├── database/     # Drizzle ORM schemas + migrations (@guildserver/database)
 │   └── cli/          # CLI tool (gs command)
@@ -316,6 +316,44 @@ Rules:
 - Keep the subject line under 72 characters.
 - Use the body to explain **what** and **why**, not **how**.
 - Reference issue numbers where applicable: `fix: resolve timeout (#42)`.
+
+### Code Quality Tools
+
+#### ESLint
+
+The project uses a three-level ESLint configuration:
+
+- **`.eslintrc.json`** (root) -- `@typescript-eslint/recommended`, warns on `no-explicit-any` and unused vars (with `_` ignore pattern)
+- **`apps/web/.eslintrc.json`** -- extends `next/core-web-vitals` + root config
+- **`apps/api/.eslintrc.json`** -- extends root with `node: true` environment
+
+#### Prettier
+
+Formatting is configured in `.prettierrc.json`:
+
+```json
+{
+  "semi": false,
+  "singleQuote": true,
+  "trailingComma": "es5",
+  "tabWidth": 2,
+  "printWidth": 100
+}
+```
+
+Run formatting: `pnpm run format`
+
+#### Docker Compose
+
+Use Docker Compose v2 syntax (`docker compose` as a subcommand, not `docker-compose` as a separate binary):
+
+```bash
+# Correct (v2)
+docker compose up -d postgres redis traefik
+
+# Legacy (v1) -- still works but deprecated
+docker-compose up -d postgres redis traefik
+```
 
 #### Commit Hygiene
 

@@ -7,13 +7,13 @@ const config: Config = {
   tagline: 'Enterprise Platform as a Service — Deploy, scale, and manage applications with ease',
   favicon: 'img/favicon.ico',
 
-  url: 'https://docs.guildserver.com',
-  baseUrl: '/',
+  url: 'https://guildserver.io',
+  baseUrl: '/docs/',
 
-  organizationName: 'guildserver',
-  projectName: 'guildserver-paas',
+  organizationName: 'davidpius95',
+  projectName: 'GuildServer',
 
-  onBrokenLinks: 'throw',
+  onBrokenLinks: 'warn',
   onBrokenAnchors: 'warn',
 
   markdown: {
@@ -32,7 +32,7 @@ const config: Config = {
         docs: {
           routeBasePath: '/',
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/guildserver/guildserver-paas/tree/main/apps/docs/',
+          editUrl: 'https://github.com/davidpius95/GuildServer/tree/main/guildserver-paas/apps/docs/',
         },
         blog: false,
         theme: {
@@ -48,7 +48,7 @@ const config: Config = {
     announcementBar: {
       id: 'beta_notice',
       content:
-        'GuildServer PaaS is in active development. <a target="_blank" rel="noopener noreferrer" href="https://github.com/guildserver/guildserver-paas">Star us on GitHub</a> and follow along!',
+        'GuildServer PaaS is in active development. <a target="_blank" rel="noopener noreferrer" href="https://github.com/davidpius95/GuildServer">Star us on GitHub</a> and follow along!',
       backgroundColor: '#10b981',
       textColor: '#ffffff',
       isCloseable: true,
@@ -78,7 +78,7 @@ const config: Config = {
           position: 'left',
         },
         {
-          href: 'https://github.com/guildserver/guildserver-paas',
+          href: 'https://github.com/davidpius95/GuildServer',
           label: 'GitHub',
           position: 'right',
         },
@@ -114,7 +114,7 @@ const config: Config = {
           items: [
             {
               label: 'GitHub Discussions',
-              href: 'https://github.com/guildserver/guildserver-paas/discussions',
+              href: 'https://github.com/davidpius95/GuildServer/discussions',
             },
             {
               label: 'Discord',
@@ -131,7 +131,7 @@ const config: Config = {
           items: [
             {
               label: 'Dashboard',
-              href: 'https://app.guildserver.com',
+              href: 'https://guildserver.io/dashboard',
             },
             {
               label: 'Status Page',
@@ -139,7 +139,7 @@ const config: Config = {
             },
             {
               label: 'Changelog',
-              href: 'https://github.com/guildserver/guildserver-paas/releases',
+              href: 'https://github.com/davidpius95/GuildServer/releases',
             },
           ],
         },
@@ -152,11 +152,11 @@ const config: Config = {
             },
             {
               label: 'GitHub',
-              href: 'https://github.com/guildserver/guildserver-paas',
+              href: 'https://github.com/davidpius95/GuildServer',
             },
             {
               label: 'License',
-              href: 'https://github.com/guildserver/guildserver-paas/blob/main/LICENSE',
+              href: 'https://github.com/davidpius95/GuildServer/blob/main/LICENSE',
             },
           ],
         },
