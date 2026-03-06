@@ -44,7 +44,7 @@ import { EmptyState } from "@/components/empty-state"
 import { AnimatedList, AnimatedItem } from "@/components/motion/animated-list"
 import { ResponsiveModal } from "@/components/ui/responsive-modal"
 
-const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000"
+const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || ""
 
 function GitHubIcon({ className }: { className?: string }) {
   return (

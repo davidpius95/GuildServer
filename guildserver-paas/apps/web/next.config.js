@@ -12,9 +12,9 @@ const nextConfig = {
     ],
   },
   env: {
-    NEXTAUTH_URL: process.env.NEXTAUTH_URL || 'http://localhost:3000',
+    NEXTAUTH_URL: process.env.NEXTAUTH_URL || 'https://guildserver.io',
     NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
-    API_URL: process.env.API_URL || 'http://localhost:4000',
+    API_URL: process.env.API_URL || 'https://guildserver.io',
   },
   transpilePackages: ['@guildserver/database'],
   typescript: {
@@ -43,7 +43,7 @@ const nextConfig = {
     ]
   },
   async rewrites() {
-    const apiUrl = process.env.API_URL || 'http://localhost:4000'
+    const apiUrl = process.env.API_URL || 'https://guildserver.io'
     return [
       {
         source: '/trpc/:path*',

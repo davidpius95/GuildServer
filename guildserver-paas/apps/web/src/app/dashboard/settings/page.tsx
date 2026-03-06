@@ -37,7 +37,7 @@ import { trpc } from "@/components/trpc-provider"
 import { useOrganization } from "@/hooks/use-auth"
 import { toast } from "sonner"
 
-const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000"
+const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || ""
 
 function GitHubIcon({ className }: { className?: string }) {
   return (
