@@ -10,7 +10,7 @@ async function seed() {
       email: "admin@guildserver.com",
       name: "GuildServer Admin",
       role: "admin",
-      password: "$2a$12$LQv3c1yqBw9uK6PfgzK2W.3vAJWJh1M5Z8L2qO5X7vW2c9I1p2s3e", // "password123"
+      password: "$2a$12$4N00EmV4Our7fiYYxxF0k.kTtwOT/GW122TOffy7mdoTcebK2agW2", // "password123"
       emailVerified: new Date(),
     }).returning();
 
@@ -75,7 +75,7 @@ async function seed() {
         email: faker.internet.email(),
         name: faker.person.fullName(),
         role: "user",
-        password: "$2a$12$LQv3c1yqBw9uK6PfgzK2W.3vAJWJh1M5Z8L2qO5X7vW2c9I1p2s3e",
+        password: "$2a$12$4N00EmV4Our7fiYYxxF0k.kTtwOT/GW122TOffy7mdoTcebK2agW2",
         emailVerified: new Date(),
       }).returning();
       
