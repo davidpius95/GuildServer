@@ -214,9 +214,7 @@ export default function DashboardLayout({
       >
         <div className="flex h-full flex-col">
           <div className="flex h-16 items-center gap-2 border-b px-6">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">G</span>
-            </div>
+            <img src="/logo.png" alt="GuildServer Logo" className="h-8 w-8 object-contain" />
             <span className="text-xl font-bold">GuildServer</span>
             <Badge variant="secondary" className="ml-auto text-xs">
               PaaS
@@ -259,9 +257,7 @@ export default function DashboardLayout({
             >
               <div className="flex h-full flex-col">
                 <div className="flex h-16 items-center gap-2 border-b px-6">
-                  <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-                    <span className="text-primary-foreground font-bold text-sm">G</span>
-                  </div>
+                  <img src="/logo.png" alt="GuildServer Logo" className="h-8 w-8 object-contain" />
                   <span className="text-xl font-bold">GuildServer</span>
                   <Badge variant="secondary" className="ml-auto text-xs">
                     PaaS

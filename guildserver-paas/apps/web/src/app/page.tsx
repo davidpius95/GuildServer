@@ -37,9 +37,7 @@ export default function HomePage() {
         <div className="main-container flex h-16 items-center justify-between">
           <div className="flex items-center gap-8">
             <Link href="/" className="flex items-center gap-2.5">
-              <div className="h-8 w-8 rounded-lg gradient-bg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">G</span>
-              </div>
+              <img src="/logo.png" alt="GuildServer Logo" className="h-8 w-8 object-contain" />
               <span className="text-xl font-bold tracking-tight">GuildServer</span>
             </Link>
             <nav className="hidden md:flex items-center gap-6 text-sm">
