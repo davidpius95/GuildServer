@@ -416,7 +416,7 @@ export default function ApplicationsPage() {
                       <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">URL:</span>
                         <a
-                          href={`http://${primaryDomain.domain}`}
+                          href={`https://${primaryDomain.domain}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-blue-500 hover:underline flex items-center gap-1 truncate ml-2"
@@ -733,7 +733,7 @@ export default function ApplicationsPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              window.location.href = `${API_URL}/auth/github?scope=repo`
+                              window.location.href = `${API_URL}/auth/github?scope=repo&returnTo=/dashboard/applications`
                             }}
                           >
                             <Link2 className="mr-1.5 h-3.5 w-3.5" />

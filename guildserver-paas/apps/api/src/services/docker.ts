@@ -389,30 +389,49 @@ export async function deployContainer(
         labels[`traefik.http.routers.${routerName}.service`] = routerName;
       }
 
-      // HTTPS router for real domains (with TLS via Let's Encrypt)
+      // HTTPS router for real domains
       if (tlsDomains.length > 0) {
-        const tlsRouterName = `${routerName}-secure`;
         const tlsHostRules = tlsDomains
           .map((dm) => `Host(\`${dm}\`)`)
           .join(" || ");
 
-        // Secure router (HTTPS)
-        labels[`traefik.http.routers.${tlsRouterName}.rule`] = tlsHostRules;
-        labels[`traefik.http.routers.${tlsRouterName}.entrypoints`] = "websecure";
-        labels[`traefik.http.routers.${tlsRouterName}.tls`] = "true";
-        labels[`traefik.http.routers.${tlsRouterName}.tls.certresolver`] = "letsencrypt";
-        labels[`traefik.http.routers.${tlsRouterName}.service`] = routerName;
+        // Check if we are behind a Cloudflare Tunnel.
+        // When behind a tunnel, Cloudflare terminates TLS at the edge and
+        // forwards plain HTTP to Traefik on port 80.  We must NOT set up
+        // an HTTPS redirect or TLS cert resolver — doing so causes a
+        // redirect loop because the tunnel never reaches the websecure
+        // entrypoint.
+        const behindTunnel = process.env.CLOUDFLARE_TUNNEL === "true";
 
-        // HTTP→HTTPS redirect router for real domains
-        const redirectRouterName = `${routerName}-redirect`;
-        labels[`traefik.http.routers.${redirectRouterName}.rule`] = tlsHostRules;
-        labels[`traefik.http.routers.${redirectRouterName}.entrypoints`] = "web";
-        labels[`traefik.http.routers.${redirectRouterName}.middlewares`] = `${routerName}-https-redirect`;
-        labels[`traefik.http.routers.${redirectRouterName}.service`] = routerName;
-        labels[`traefik.http.middlewares.${routerName}-https-redirect.redirectscheme.scheme`] = "https";
-        labels[`traefik.http.middlewares.${routerName}-https-redirect.redirectscheme.permanent`] = "true";
+        if (behindTunnel) {
+          // Plain HTTP router on the "web" entrypoint — tunnel handles SSL
+          labels[`traefik.http.routers.${routerName}.rule`] = tlsHostRules;
+          labels[`traefik.http.routers.${routerName}.entrypoints`] = "web";
+          labels[`traefik.http.routers.${routerName}.service`] = routerName;
 
-        log(`Configured TLS (Let's Encrypt) for domains: ${tlsDomains.join(", ")}`);
+          log(`Configured HTTP routing (behind Cloudflare Tunnel) for domains: ${tlsDomains.join(", ")}`);
+        } else {
+          // Direct exposure: TLS via Let's Encrypt + HTTP→HTTPS redirect
+          const tlsRouterName = `${routerName}-secure`;
+
+          // Secure router (HTTPS)
+          labels[`traefik.http.routers.${tlsRouterName}.rule`] = tlsHostRules;
+          labels[`traefik.http.routers.${tlsRouterName}.entrypoints`] = "websecure";
+          labels[`traefik.http.routers.${tlsRouterName}.tls`] = "true";
+          labels[`traefik.http.routers.${tlsRouterName}.tls.certresolver`] = "letsencrypt";
+          labels[`traefik.http.routers.${tlsRouterName}.service`] = routerName;
+
+          // HTTP→HTTPS redirect router for real domains
+          const redirectRouterName = `${routerName}-redirect`;
+          labels[`traefik.http.routers.${redirectRouterName}.rule`] = tlsHostRules;
+          labels[`traefik.http.routers.${redirectRouterName}.entrypoints`] = "web";
+          labels[`traefik.http.routers.${redirectRouterName}.middlewares`] = `${routerName}-https-redirect`;
+          labels[`traefik.http.routers.${redirectRouterName}.service`] = routerName;
+          labels[`traefik.http.middlewares.${routerName}-https-redirect.redirectscheme.scheme`] = "https";
+          labels[`traefik.http.middlewares.${routerName}-https-redirect.redirectscheme.permanent`] = "true";
+
+          log(`Configured TLS (Let's Encrypt) for domains: ${tlsDomains.join(", ")}`);
+        }
       }
 
       // Fallback: if only localhost domains, also set up a basic HTTP router

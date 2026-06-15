@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure, enforcePlanLimit } from "../trpc/trpc";
-import { applications, projects, members, deployments, computeProviders } from "@guildserver/database";
+import { applications, projects, members, deployments, computeProviders, oauthAccounts } from "@guildserver/database";
 import { eq, and, desc } from "drizzle-orm";
 import { deploymentQueue } from "../queues/deployment";
 import {
@@ -15,6 +15,7 @@ import {
 import { healthCheck } from "../services/container-manager";
 import { listGithubRepos, listGithubBranches } from "../services/git-provider";
 import { getProvider } from "../providers/factory";
+import { registerGithubWebhook } from "../services/github";
 
 const createApplicationSchema = z.object({
   name: z.string().min(1),
@@ -195,6 +196,32 @@ export const applicationRouter = createTRPCRouter({
         } as any)
         .returning();
 
+      // Register GitHub Webhook
+      if (input.sourceType === "github" && input.repository) {
+        try {
+          const account = await ctx.db.query.oauthAccounts.findFirst({
+            where: and(
+              eq(oauthAccounts.userId, ctx.user.id),
+              eq(oauthAccounts.provider, "github")
+            ),
+          });
+
+          if (account?.accessToken) {
+            // Determine the API base URL from env
+            const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guildserver.io";
+            // Check if it's the traefik setup where webhook route is on main domain under /api?
+            // Actually, /webhooks is at the root of the api container. 
+            // The Traefik rule for webhooks should be under the BASE_DOMAIN, for example https://guildserver.io/webhooks/github
+            const webhookUrl = `${baseUrl}/webhooks/github`;
+            const secret = process.env.GITHUB_WEBHOOK_SECRET || "guildserver-webhook-secret-default";
+            
+            await registerGithubWebhook(input.repository, account.accessToken, webhookUrl, secret);
+          }
+        } catch (error) {
+          console.warn("Failed to register webhook during app creation:", error);
+        }
+      }
+
       return newApplication;
     }),
 
@@ -236,6 +263,28 @@ export const applicationRouter = createTRPCRouter({
         })
         .where(eq(applications.id, id))
         .returning();
+
+      // Register GitHub Webhook if repository was updated
+      if (updates.repository && updatedApplication.sourceType === "github") {
+        try {
+          const account = await ctx.db.query.oauthAccounts.findFirst({
+            where: and(
+              eq(oauthAccounts.userId, ctx.user.id),
+              eq(oauthAccounts.provider, "github")
+            ),
+          });
+
+          if (account?.accessToken) {
+            const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guildserver.io";
+            const webhookUrl = `${baseUrl}/webhooks/github`;
+            const secret = process.env.GITHUB_WEBHOOK_SECRET || "guildserver-webhook-secret-default";
+            
+            await registerGithubWebhook(updates.repository, account.accessToken, webhookUrl, secret);
+          }
+        } catch (error) {
+          console.warn("Failed to register webhook during app update:", error);
+        }
+      }
 
       return updatedApplication;
     }),

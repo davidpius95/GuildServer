@@ -46,9 +46,14 @@ oauthRouter.get("/github", (req: Request, res: Response) => {
   }
 
   // If scope=repo is requested, include repo access (for GitHub integration)
-  const scopes = req.query.scope === "repo" ? "user:email,repo" : "user:email";
+  const scopes = req.query.scope === "repo" ? "user:email repo" : "user:email";
 
-  const state = crypto.randomBytes(32).toString("hex");
+  const stateObj = {
+    csrf: crypto.randomBytes(32).toString("hex"),
+    returnTo: req.query.returnTo ? String(req.query.returnTo) : undefined,
+    scope: req.query.scope ? String(req.query.scope) : undefined,
+  };
+  const state = Buffer.from(JSON.stringify(stateObj)).toString("base64url");
   setStateCookie(res, state);
 
   const params = new URLSearchParams({
@@ -117,6 +122,19 @@ oauthRouter.get("/github/callback", async (req: Request, res: Response) => {
       return res.redirect(`${FRONTEND_URL}/auth/login?error=no_email`);
     }
 
+    let returnTo = "";
+    let requestedScope = "";
+    try {
+      const stateObj = JSON.parse(Buffer.from(state as string, "base64url").toString());
+      if (stateObj.returnTo) returnTo = stateObj.returnTo;
+      if (stateObj.scope) requestedScope = stateObj.scope;
+    } catch (e) {}
+
+    // GitHub's token response sometimes omits the scope field.
+    // The most reliable way to check granted scopes is the X-OAuth-Scopes header.
+    // Fall back to tokenData.scope, and then to the requestedScope we sent.
+    const actualScopes = userResponse.headers.get("x-oauth-scopes") || scope || (requestedScope === "repo" ? "user:email repo" : "user:email");
+
     // Find or create user
     const result = await findOrCreateOAuthUser({
       provider: "github",
@@ -125,7 +143,7 @@ oauthRouter.get("/github/callback", async (req: Request, res: Response) => {
       name: githubUser.name || githubUser.login,
       avatar: githubUser.avatar_url,
       accessToken: access_token,
-      scope,
+      scope: actualScopes,
     });
 
     // Generate JWT
@@ -139,7 +157,10 @@ oauthRouter.get("/github/callback", async (req: Request, res: Response) => {
     await db.update(users).set({ lastLogin: new Date() }).where(eq(users.id, result.user.id));
 
     logger.info(`GitHub OAuth: ${result.isNew ? "new user" : "existing user"} ${email}`);
-    res.redirect(`${FRONTEND_URL}/auth/callback?token=${jwtToken}`);
+    const redirectUrl = returnTo
+      ? `${FRONTEND_URL}/auth/callback?token=${jwtToken}&returnTo=${encodeURIComponent(returnTo)}`
+      : `${FRONTEND_URL}/auth/callback?token=${jwtToken}`;
+    res.redirect(redirectUrl);
   } catch (error: any) {
     logger.error("GitHub OAuth callback error", { error: error.message, stack: error.stack });
     res.redirect(`${FRONTEND_URL}/auth/login?error=oauth_failed`);
@@ -154,7 +175,11 @@ oauthRouter.get("/google", (req: Request, res: Response) => {
     return res.status(500).json({ error: "Google OAuth not configured. Set GOOGLE_CLIENT_ID env var." });
   }
 
-  const state = crypto.randomBytes(32).toString("hex");
+  const stateObj = {
+    csrf: crypto.randomBytes(32).toString("hex"),
+    returnTo: req.query.returnTo ? String(req.query.returnTo) : undefined,
+  };
+  const state = Buffer.from(JSON.stringify(stateObj)).toString("base64url");
   setStateCookie(res, state);
 
   const params = new URLSearchParams({
@@ -227,6 +252,12 @@ oauthRouter.get("/google/callback", async (req: Request, res: Response) => {
       scope: "openid email profile",
     });
 
+    let returnTo = "";
+    try {
+      const stateObj = JSON.parse(Buffer.from(state as string, "base64url").toString());
+      if (stateObj.returnTo) returnTo = stateObj.returnTo;
+    } catch (e) {}
+
     const jwtToken = jwt.sign(
       { userId: result.user.id, email: result.user.email },
       process.env.JWT_SECRET!,
@@ -236,7 +267,10 @@ oauthRouter.get("/google/callback", async (req: Request, res: Response) => {
     await db.update(users).set({ lastLogin: new Date() }).where(eq(users.id, result.user.id));
 
     logger.info(`Google OAuth: ${result.isNew ? "new user" : "existing user"} ${email}`);
-    res.redirect(`${FRONTEND_URL}/auth/callback?token=${jwtToken}`);
+    const redirectUrl = returnTo
+      ? `${FRONTEND_URL}/auth/callback?token=${jwtToken}&returnTo=${encodeURIComponent(returnTo)}`
+      : `${FRONTEND_URL}/auth/callback?token=${jwtToken}`;
+    res.redirect(redirectUrl);
   } catch (error: any) {
     logger.error("Google OAuth callback error", { error: error.message, stack: error.stack });
     res.redirect(`${FRONTEND_URL}/auth/login?error=oauth_failed`);

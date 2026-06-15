@@ -465,7 +465,7 @@ const deploymentWorker = new Worker(
             status: "active",
             forceHttps: false,
           });
-          allBuildLogs.push(`Auto-generated URL: http://${autoUrl}`);
+          allBuildLogs.push(`Auto-generated URL: https://${autoUrl}`);
         } catch (domainErr: any) {
           logger.warn("Failed to create auto-domain", { error: domainErr.message, applicationId });
         }
@@ -489,7 +489,7 @@ const deploymentWorker = new Worker(
         previewDomain = `${safeBranch}-${appSlug}.${baseDomain}`;
         domainList = [previewDomain];
         allBuildLogs.push(`🔀 Preview deployment for branch: ${previewBranch}`);
-        allBuildLogs.push(`Preview URL: http://${previewDomain}`);
+        allBuildLogs.push(`Preview URL: https://${previewDomain}`);
 
         broadcastToUser(userId, {
           type: "deployment_log",
@@ -562,9 +562,9 @@ const deploymentWorker = new Worker(
 
       // Resolve the friendly access URL
       const accessUrl = previewDomain
-        ? `http://${previewDomain}`
+        ? `https://${previewDomain}`
         : appDomains.find((d) => d.isPrimary) || appDomains[0]
-          ? `http://${(appDomains.find((d) => d.isPrimary) || appDomains[0]).domain}`
+          ? `https://${(appDomains.find((d) => d.isPrimary) || appDomains[0]).domain}`
           : `http://localhost:${result.hostPort}`;
 
       // Save the image tag for future rollbacks
