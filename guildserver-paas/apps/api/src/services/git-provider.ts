@@ -303,3 +303,124 @@ export async function listGithubBranches(
   const branches = await response.json() as any[];
   return branches.map((b) => b.name);
 }
+
+/**
+ * List repositories for a GitLab user using their OAuth token
+ */
+export async function listGitlabRepos(token: string): Promise<Array<{
+  fullName: string;
+  name: string;
+  owner: string;
+  defaultBranch: string;
+  private: boolean;
+  url: string;
+}>> {
+  const response = await fetch("https://gitlab.com/api/v4/projects?membership=true&simple=true&per_page=100&order_by=updated_at", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+  }
+
+  const repos = await response.json() as any[];
+  return repos.map((repo) => ({
+    fullName: repo.path_with_namespace,
+    name: repo.name,
+    owner: repo.namespace?.path || repo.namespace?.name || "",
+    defaultBranch: repo.default_branch,
+    private: repo.visibility === "private",
+    url: repo.web_url,
+  }));
+}
+
+/**
+ * List branches for a GitLab repository
+ */
+export async function listGitlabBranches(
+  token: string,
+  owner: string,
+  repo: string
+): Promise<string[]> {
+  const projectId = encodeURIComponent(`${owner}/${repo}`);
+  const response = await fetch(
+    `https://gitlab.com/api/v4/projects/${projectId}/repository/branches?per_page=100`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`GitLab API error: ${response.status}`);
+  }
+
+  const branches = await response.json() as any[];
+  return branches.map((b) => b.name);
+}
+
+/**
+ * List repositories for a Bitbucket user using their OAuth token
+ */
+export async function listBitbucketRepos(token: string): Promise<Array<{
+  fullName: string;
+  name: string;
+  owner: string;
+  defaultBranch: string;
+  private: boolean;
+  url: string;
+}>> {
+  const response = await fetch("https://api.bitbucket.org/2.0/repositories?role=member", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Bitbucket API error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json() as any;
+  const repos = data.values || [];
+  return repos.map((repo: any) => ({
+    fullName: repo.full_name,
+    name: repo.name,
+    owner: repo.workspace?.slug || "",
+    defaultBranch: repo.mainbranch?.name || "main",
+    private: repo.is_private,
+    url: repo.links?.html?.href || "",
+  }));
+}
+
+/**
+ * List branches for a Bitbucket repository
+ */
+export async function listBitbucketBranches(
+  token: string,
+  owner: string,
+  repo: string
+): Promise<string[]> {
+  const response = await fetch(
+    `https://api.bitbucket.org/2.0/repositories/${owner}/${repo}/refs/branches?pagelen=100`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Bitbucket API error: ${response.status}`);
+  }
+
+  const data = await response.json() as any;
+  const branches = data.values || [];
+  return branches.map((b: any) => b.name);
+}

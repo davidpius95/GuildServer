@@ -47,7 +47,12 @@ function OAuthCallbackContent() {
 
     if (token) {
       localStorage.setItem("guildserver-token", token)
-      router.replace("/dashboard")
+      const returnTo = searchParams.get("returnTo")
+      if (returnTo && returnTo.startsWith("/")) {
+        router.replace(returnTo)
+      } else {
+        router.replace("/dashboard")
+      }
     } else {
       setError("No authentication token received.")
       setTimeout(() => router.replace("/auth/login"), 3000)

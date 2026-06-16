@@ -81,6 +81,10 @@ services:
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:-https://${BASE_DOMAIN:-guildserver.io}/auth/github/callback}
+      GITLAB_CLIENT_ID: ${GITLAB_CLIENT_ID:-}
+      GITLAB_CLIENT_SECRET: ${GITLAB_CLIENT_SECRET:-}
+      BITBUCKET_CLIENT_ID: ${BITBUCKET_CLIENT_ID:-}
+      BITBUCKET_CLIENT_SECRET: ${BITBUCKET_CLIENT_SECRET:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       BASE_DOMAIN: ${BASE_DOMAIN:-guildserver.io}
@@ -111,8 +115,8 @@ services:
       - "traefik.http.routers.api-rest.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && PathPrefix(`/api`)"
       - "traefik.http.routers.api-rest.entrypoints=web"
       - "traefik.http.routers.api-rest.service=api"
-      # OAuth routes (GitHub/Google) — must route to API, not web
-      - "traefik.http.routers.api-oauth.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && (PathPrefix(`/auth/github`) || PathPrefix(`/auth/google`))"
+      # OAuth routes — must route to API, not web
+      - "traefik.http.routers.api-oauth.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && (PathPrefix(`/auth/github`) || PathPrefix(`/auth/gitlab`) || PathPrefix(`/auth/bitbucket`) || PathPrefix(`/auth/google`))"
       - "traefik.http.routers.api-oauth.entrypoints=web"
       - "traefik.http.routers.api-oauth.service=api"
       - "traefik.http.routers.api-oauth.priority=10"
