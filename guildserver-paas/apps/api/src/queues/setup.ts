@@ -520,6 +520,19 @@ const deploymentWorker = new Worker(
       // Falls back to local Docker if no provider is configured for this app
       const computeProvider = await getProvider(resolvedProviderId);
 
+      // Auto-inject URL environment variables so frameworks can configure themselves dynamically
+      if (domainList.length > 0) {
+        const primaryUrl = `https://${domainList[0]}`;
+        mergedEnv["PUBLIC_URL"] = mergedEnv["PUBLIC_URL"] || primaryUrl;
+        mergedEnv["GUILDSERVER_URL"] = mergedEnv["GUILDSERVER_URL"] || primaryUrl;
+      }
+      
+      // Auto-inject PORT so frameworks know where to bind
+      const effectiveContainerPort = app.containerPort || detectedPort || undefined;
+      if (effectiveContainerPort) {
+        mergedEnv["PORT"] = mergedEnv["PORT"] || effectiveContainerPort.toString();
+      }
+
       const deployConfig = {
         deploymentId,
         applicationId,
