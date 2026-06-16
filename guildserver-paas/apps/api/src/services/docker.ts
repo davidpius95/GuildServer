@@ -1,4 +1,5 @@
 import Docker from "dockerode";
+import http from "http";
 import { logger } from "../utils/logger";
 import { broadcastToUser } from "../websocket/server";
 
@@ -497,6 +498,170 @@ export async function deployContainer(
     log(`ERROR: Deployment failed: ${error.message}`);
     throw error;
   }
+}
+
+/**
+ * Probe a host:port via HTTP to see if anything responds.
+ * Returns true on any HTTP response (even 4xx/5xx), false on connection refused/timeout.
+ */
+function probeHttp(port: number, timeoutMs = 3000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.get(
+      { hostname: "127.0.0.1", port, path: "/", timeout: timeoutMs },
+      (res) => {
+        res.resume(); // drain the response
+        resolve(true);
+      },
+    );
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+/**
+ * Detect which ports are actually exposed/bound by a running container.
+ * Returns the first private (container-side) port that has a host binding.
+ */
+async function detectActualListeningPort(
+  containerId: string,
+  dockerClient?: Docker,
+): Promise<number | null> {
+  const d = dockerClient || docker;
+  try {
+    const container = d.getContainer(containerId);
+    const inspection = await container.inspect();
+    const portBindings = inspection.NetworkSettings?.Ports || {};
+
+    for (const [containerPort] of Object.entries(portBindings)) {
+      // containerPort is like "80/tcp"
+      const parsed = parseInt(containerPort, 10);
+      if (!isNaN(parsed)) return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+export interface HealthCheckResult {
+  healthy: boolean;
+  message: string;
+  /** If the container is running on a different port than expected */
+  portMismatch?: { expected: number; actual: number };
+}
+
+/**
+ * Post-deploy health check: probes the container's mapped host port
+ * to verify the service is actually responding to HTTP requests.
+ *
+ * Retries every 2s for up to `maxWaitMs` (default 30s).
+ * If the expected port never responds, inspects the container image
+ * to detect a port mismatch (e.g., Nixpacks fell back to nginx:80
+ * but Traefik is routing to 8000).
+ */
+export async function postDeployHealthCheck(opts: {
+  containerId: string;
+  hostPort: number;
+  expectedContainerPort: number;
+  userId?: string;
+  deploymentId?: string;
+  maxWaitMs?: number;
+  dockerClient?: Docker;
+}): Promise<HealthCheckResult> {
+  const {
+    containerId,
+    hostPort,
+    expectedContainerPort,
+    userId,
+    deploymentId,
+    maxWaitMs = 30000,
+    dockerClient,
+  } = opts;
+
+  const log = (msg: string) => {
+    logger.info(`[healthcheck] ${msg}`);
+    if (userId && deploymentId) {
+      broadcastToUser(userId, {
+        type: "deployment_log",
+        deploymentId,
+        log: msg,
+        phase: "health_check",
+      });
+    }
+  };
+
+  const intervalMs = 2000;
+  const maxAttempts = Math.ceil(maxWaitMs / intervalMs);
+
+  log(`Running health check on port ${hostPort} (expecting container port ${expectedContainerPort})...`);
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const reachable = await probeHttp(hostPort);
+    if (reachable) {
+      log(`✅ Service is responding on port ${hostPort} (attempt ${attempt}/${maxAttempts})`);
+      return { healthy: true, message: "Service is responding" };
+    }
+
+    if (attempt < maxAttempts) {
+      log(`⏳ Waiting for service to start (attempt ${attempt}/${maxAttempts})...`);
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+  }
+
+  // Service never responded — try to diagnose why
+  log("⚠️ Service did not respond within the timeout window. Diagnosing...");
+
+  // Check if the container is still running
+  const d = dockerClient || docker;
+  try {
+    const container = d.getContainer(containerId);
+    const inspection = await container.inspect();
+
+    if (!inspection.State.Running) {
+      const exitCode = inspection.State.ExitCode;
+      log(`❌ Container exited with code ${exitCode}. Check the build logs for errors.`);
+      return {
+        healthy: false,
+        message: `Container crashed (exit code ${exitCode}). The application failed to start — check build logs.`,
+      };
+    }
+  } catch {
+    // container might have been removed
+  }
+
+  // Check for port mismatch (the exact Django/nginx issue)
+  const actualPort = await detectActualListeningPort(containerId, dockerClient);
+  if (actualPort && actualPort !== expectedContainerPort) {
+    log(
+      `❌ Port mismatch detected! Expected container port ${expectedContainerPort} ` +
+      `but the image exposes port ${actualPort}. ` +
+      `This usually means the build system (Nixpacks) detected a different framework than expected.`,
+    );
+    return {
+      healthy: false,
+      message:
+        `Port mismatch: Traefik is routing to container port ${expectedContainerPort} ` +
+        `but the container is actually listening on port ${actualPort}. ` +
+        `The build system may have detected a different framework. ` +
+        `Try setting the correct port in the application settings.`,
+      portMismatch: { expected: expectedContainerPort, actual: actualPort },
+    };
+  }
+
+  log(
+    `❌ Service did not respond on port ${hostPort} after ${maxWaitMs / 1000}s. ` +
+    `The container is running but the application may have failed to bind to port ${expectedContainerPort}.`,
+  );
+  return {
+    healthy: false,
+    message:
+      `Service unreachable after ${maxWaitMs / 1000}s. ` +
+      `The container is running but the application is not responding on port ${expectedContainerPort}. ` +
+      `Check the application logs for startup errors.`,
+  };
 }
 
 /**

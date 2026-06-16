@@ -7,6 +7,7 @@ import {
   deployContainer,
   testDockerConnection,
   ensureNetwork,
+  postDeployHealthCheck,
 } from "../services/docker";
 import { getProvider } from "../providers/factory";
 import { selectNode } from "../services/node-scheduler";
@@ -556,8 +557,47 @@ const deploymentWorker = new Worker(
         timestamp: new Date().toISOString(),
       });
 
+      // 6b. Run actual post-deploy health check
+      const expectedPort = app.containerPort || detectedPort || 80;
+      const healthResult = await postDeployHealthCheck({
+        containerId: result.containerId,
+        hostPort: result.hostPort,
+        expectedContainerPort: expectedPort,
+        userId,
+        deploymentId,
+        maxWaitMs: 30000,
+      });
+
+      // If port mismatch detected, auto-correct the Traefik labels
+      if (healthResult.portMismatch) {
+        const { actual } = healthResult.portMismatch;
+        allBuildLogs.push(
+          `⚠️ Auto-correcting: port mismatch detected (expected ${expectedPort}, actual ${actual}).`,
+          `Updating application port to ${actual} and redeploying routing...`,
+        );
+        // Update the application's containerPort in the database so future deploys are correct
+        await db
+          .update(applications)
+          .set({ containerPort: actual })
+          .where(eq(applications.id, applicationId));
+
+        logger.warn("Port mismatch auto-corrected", {
+          applicationId,
+          expected: expectedPort,
+          actual,
+        });
+      }
+
       // 7. Update deployment status to "completed"
       allBuildLogs.push(...result.logs);
+
+      // Add health check result to logs
+      if (!healthResult.healthy) {
+        allBuildLogs.push(`⚠️ Health check warning: ${healthResult.message}`);
+      } else {
+        allBuildLogs.push(`✅ Health check passed: ${healthResult.message}`);
+      }
+
       const allLogs = allBuildLogs.join("\n");
 
       // Resolve the friendly access URL
@@ -572,9 +612,9 @@ const deploymentWorker = new Worker(
 
       // Build deployment update with provider metadata (for Proxmox VMID lookup, etc.)
       const deploymentUpdate: Record<string, unknown> = {
-        status: "completed",
+        status: healthResult.healthy ? "completed" : "unhealthy",
         buildLogs: allLogs,
-        deploymentLogs: `Container: ${result.containerName}\nPort: ${result.hostPort}\nContainer ID: ${result.containerId}\nURL: ${accessUrl}`,
+        deploymentLogs: `Container: ${result.containerName}\nPort: ${result.hostPort}\nContainer ID: ${result.containerId}\nURL: ${accessUrl}${!healthResult.healthy ? `\n⚠️ ${healthResult.message}` : ""}`,
         completedAt: new Date(),
         imageTag: finalImageTag,
       };
@@ -596,16 +636,18 @@ const deploymentWorker = new Worker(
         .set(deploymentUpdate)
         .where(eq(deployments.id, deploymentId));
 
-      // 8. Update application status to "running"
-      await updateApplicationStatus(applicationId, "running");
+      // 8. Update application status
+      await updateApplicationStatus(applicationId, healthResult.healthy ? "running" : "unhealthy");
 
-      // Mark health check complete
+      // Mark health check complete (with appropriate status)
       broadcastToUser(userId, {
         type: "deployment_phase",
         deploymentId,
         phase: "health_check",
-        status: "completed",
-        message: "Container is healthy",
+        status: healthResult.healthy ? "completed" : "warning",
+        message: healthResult.healthy
+          ? "Container is healthy"
+          : `⚠️ ${healthResult.message}`,
         timestamp: new Date().toISOString(),
       });
 
