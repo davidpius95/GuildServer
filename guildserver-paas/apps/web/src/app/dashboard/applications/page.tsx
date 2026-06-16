@@ -270,7 +270,17 @@ export default function ApplicationsPage() {
       data.dockerImage = dockerImage
       data.dockerTag = dockerTag
     } else {
-      data.sourceType = "github"
+      if (repository.includes("gitlab.com")) {
+        data.sourceType = "gitlab"
+      } else if (repository.includes("bitbucket.org")) {
+        data.sourceType = "bitbucket"
+      } else if (repository.includes("gitea")) {
+        data.sourceType = "gitea"
+      } else if (repository.includes("github.com") || repository.indexOf("http") === -1) {
+        data.sourceType = "github"
+      } else {
+        data.sourceType = "git"
+      }
       data.repository = repository
       data.branch = branch
     }
@@ -747,7 +757,7 @@ export default function ApplicationsPage() {
                           id="repository"
                           value={repository}
                           onChange={(e) => setRepository(e.target.value)}
-                          placeholder="https://github.com/user/repo"
+                          placeholder="https://github.com/user/repo, or GitLab/Bitbucket URL"
                         />
                       </div>
                       <div className="space-y-2">

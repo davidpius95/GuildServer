@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Search,
   Rocket,
@@ -16,14 +17,17 @@ import {
   ArrowRight,
   Star,
   GitBranch,
-  ExternalLink,
   Loader2,
   CheckCircle,
   X,
+  ChevronDown,
+  ChevronRight,
+  SlidersHorizontal,
 } from "lucide-react"
 import { trpc } from "@/components/trpc-provider"
 import { useOrganization, useProjects } from "@/hooks/use-auth"
 import { EnvVarEditor, type EnvVarEntry } from "@/components/env-var-editor"
+import { cn } from "@/lib/utils"
 
 // ─── Template types ──────────────────────────────────────────────────────────
 
@@ -37,6 +41,8 @@ interface Template {
   category: string
   tags: string[]
   popular?: boolean
+  useCase: string[]
+  framework?: string
   // Docker templates (sourceKind === "docker")
   sourceKind: SourceKind
   dockerImage?: string
@@ -45,8 +51,16 @@ interface Template {
   // Git templates (sourceKind === "git")
   repository?: string
   branch?: string
-  buildPath?: string   // subdirectory inside repo
-  buildType?: string   // "nixpacks" | "dockerfile" | "static"
+  buildPath?: string
+  buildType?: string
+}
+
+// ─── Filter definitions ─────────────────────────────────────────────────────
+
+interface FilterSection {
+  id: string
+  label: string
+  options: string[]
 }
 
 // ─── Template catalogue ──────────────────────────────────────────────────────
@@ -65,6 +79,7 @@ const TEMPLATES: Template[] = [
     dockerImage: "nginx:alpine",
     containerPort: 80,
     tags: ["web server", "proxy", "static"],
+    useCase: ["Backend", "Starter"],
     popular: true,
   },
   {
@@ -77,6 +92,7 @@ const TEMPLATES: Template[] = [
     dockerImage: "caddy:2-alpine",
     containerPort: 80,
     tags: ["web server", "https", "proxy"],
+    useCase: ["Backend"],
   },
   {
     id: "postgres",
@@ -89,6 +105,7 @@ const TEMPLATES: Template[] = [
     containerPort: 5432,
     envVars: { POSTGRES_DB: "app", POSTGRES_USER: "admin", POSTGRES_PASSWORD: "changeme" },
     tags: ["database", "sql", "relational"],
+    useCase: ["Database"],
     popular: true,
   },
   {
@@ -101,6 +118,7 @@ const TEMPLATES: Template[] = [
     dockerImage: "redis:7-alpine",
     containerPort: 6379,
     tags: ["cache", "queue", "key-value"],
+    useCase: ["Database"],
     popular: true,
   },
   {
@@ -114,6 +132,7 @@ const TEMPLATES: Template[] = [
     containerPort: 3306,
     envVars: { MYSQL_ROOT_PASSWORD: "changeme", MYSQL_DATABASE: "app" },
     tags: ["database", "sql", "relational"],
+    useCase: ["Database"],
   },
   {
     id: "mongodb",
@@ -125,6 +144,7 @@ const TEMPLATES: Template[] = [
     dockerImage: "mongo:7",
     containerPort: 27017,
     tags: ["database", "nosql", "document"],
+    useCase: ["Database"],
   },
   {
     id: "mariadb",
@@ -137,6 +157,7 @@ const TEMPLATES: Template[] = [
     containerPort: 3306,
     envVars: { MARIADB_ROOT_PASSWORD: "changeme", MARIADB_DATABASE: "app" },
     tags: ["database", "sql", "mysql-compatible"],
+    useCase: ["Database"],
   },
   {
     id: "grafana",
@@ -148,6 +169,7 @@ const TEMPLATES: Template[] = [
     dockerImage: "grafana/grafana:latest",
     containerPort: 3000,
     tags: ["monitoring", "dashboards", "analytics"],
+    useCase: ["Monitoring"],
   },
   {
     id: "uptime-kuma",
@@ -159,6 +181,7 @@ const TEMPLATES: Template[] = [
     dockerImage: "louislam/uptime-kuma:1",
     containerPort: 3001,
     tags: ["monitoring", "uptime", "status page"],
+    useCase: ["Monitoring"],
     popular: true,
   },
   {
@@ -172,6 +195,7 @@ const TEMPLATES: Template[] = [
     containerPort: 9000,
     envVars: { MINIO_ROOT_USER: "admin", MINIO_ROOT_PASSWORD: "changeme123" },
     tags: ["storage", "s3", "object store"],
+    useCase: ["Backend"],
   },
   {
     id: "rabbitmq",
@@ -184,6 +208,7 @@ const TEMPLATES: Template[] = [
     containerPort: 15672,
     envVars: { RABBITMQ_DEFAULT_USER: "admin", RABBITMQ_DEFAULT_PASS: "changeme" },
     tags: ["messaging", "queue", "amqp"],
+    useCase: ["Backend"],
   },
   {
     id: "ghost",
@@ -196,6 +221,7 @@ const TEMPLATES: Template[] = [
     containerPort: 2368,
     envVars: { NODE_ENV: "production" },
     tags: ["blog", "cms", "publishing"],
+    useCase: ["Blog", "CMS"],
     popular: true,
   },
   {
@@ -209,6 +235,7 @@ const TEMPLATES: Template[] = [
     containerPort: 80,
     envVars: { WORDPRESS_DB_HOST: "db:3306", WORDPRESS_DB_USER: "wp", WORDPRESS_DB_PASSWORD: "changeme" },
     tags: ["cms", "blog", "php"],
+    useCase: ["Blog", "CMS", "Ecommerce"],
   },
   {
     id: "plausible",
@@ -221,6 +248,7 @@ const TEMPLATES: Template[] = [
     containerPort: 8000,
     envVars: { BASE_URL: "http://localhost", SECRET_KEY_BASE: "changeme-generate-a-secret" },
     tags: ["analytics", "privacy", "web"],
+    useCase: ["Monitoring"],
   },
   {
     id: "n8n",
@@ -232,6 +260,7 @@ const TEMPLATES: Template[] = [
     dockerImage: "n8nio/n8n:latest",
     containerPort: 5678,
     tags: ["automation", "workflow", "integrations"],
+    useCase: ["Backend", "AI"],
   },
   {
     id: "gitea",
@@ -243,6 +272,7 @@ const TEMPLATES: Template[] = [
     dockerImage: "gitea/gitea:latest",
     containerPort: 3000,
     tags: ["git", "version control", "devops"],
+    useCase: ["Backend"],
   },
   {
     id: "drone",
@@ -254,6 +284,7 @@ const TEMPLATES: Template[] = [
     dockerImage: "drone/drone:latest",
     containerPort: 80,
     tags: ["ci", "cd", "devops"],
+    useCase: ["Backend"],
   },
   {
     id: "portainer",
@@ -265,6 +296,7 @@ const TEMPLATES: Template[] = [
     dockerImage: "portainer/portainer-ce:latest",
     containerPort: 9000,
     tags: ["docker", "management", "ui"],
+    useCase: ["Monitoring"],
   },
   {
     id: "directus",
@@ -277,6 +309,7 @@ const TEMPLATES: Template[] = [
     containerPort: 8055,
     envVars: { KEY: "changeme", SECRET: "changeme", ADMIN_EMAIL: "admin@example.com", ADMIN_PASSWORD: "changeme" },
     tags: ["headless cms", "api", "database"],
+    useCase: ["CMS", "Backend"],
   },
   {
     id: "strapi",
@@ -288,10 +321,11 @@ const TEMPLATES: Template[] = [
     dockerImage: "strapi/strapi:latest",
     containerPort: 1337,
     tags: ["headless cms", "api", "node"],
+    useCase: ["CMS", "Backend"],
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
-  //  GIT TEMPLATES — GuildServer examples (verified directory names)
+  //  GIT TEMPLATES — GuildServer examples
   // ═══════════════════════════════════════════════════════════════════════════
   {
     id: "nextjs",
@@ -306,6 +340,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 3000,
     tags: ["react", "ssr", "javascript", "fullstack"],
+    useCase: ["Starter", "SaaS"],
+    framework: "Next.js",
     popular: true,
   },
   {
@@ -321,6 +357,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 4321,
     tags: ["static", "ssr", "javascript", "content"],
+    useCase: ["Blog", "Portfolio", "Starter"],
+    framework: "Astro",
     popular: true,
   },
   {
@@ -336,6 +374,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 4321,
     tags: ["astro", "ssr", "javascript", "dynamic"],
+    useCase: ["Starter"],
+    framework: "Astro",
   },
   {
     id: "svelte",
@@ -350,6 +390,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 3000,
     tags: ["svelte", "ssr", "javascript", "fullstack"],
+    useCase: ["Starter"],
+    framework: "Svelte",
   },
   {
     id: "nuxt",
@@ -364,6 +406,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 3000,
     tags: ["vue", "ssr", "javascript", "fullstack"],
+    useCase: ["Starter", "SaaS"],
+    framework: "Nuxt",
   },
   {
     id: "remix",
@@ -378,6 +422,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 3000,
     tags: ["react", "ssr", "javascript", "web standards"],
+    useCase: ["Starter"],
+    framework: "Remix",
   },
   {
     id: "vuejs",
@@ -392,6 +438,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 3000,
     tags: ["vue", "spa", "javascript", "frontend"],
+    useCase: ["Starter"],
+    framework: "Vue",
   },
   {
     id: "vite",
@@ -406,6 +454,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 3000,
     tags: ["react", "vite", "javascript", "frontend"],
+    useCase: ["Starter"],
+    framework: "Vite",
   },
   {
     id: "django",
@@ -420,6 +470,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 8000,
     tags: ["python", "django", "api", "fullstack"],
+    useCase: ["Backend", "SaaS"],
+    framework: "Django",
     popular: true,
   },
   {
@@ -435,6 +487,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 5000,
     tags: ["python", "flask", "api", "microservice"],
+    useCase: ["Backend"],
+    framework: "Flask",
   },
   {
     id: "nestjs",
@@ -449,6 +503,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 3000,
     tags: ["node", "nestjs", "typescript", "api"],
+    useCase: ["Backend", "SaaS"],
+    framework: "NestJS",
   },
   {
     id: "go-fiber",
@@ -463,6 +519,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 3000,
     tags: ["go", "golang", "fiber", "api"],
+    useCase: ["Backend"],
+    framework: "Go",
   },
   {
     id: "deno-app",
@@ -477,6 +535,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 8000,
     tags: ["deno", "typescript", "runtime", "secure"],
+    useCase: ["Backend"],
+    framework: "Deno",
   },
   {
     id: "solidjs",
@@ -491,6 +551,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 3000,
     tags: ["solid", "reactive", "javascript", "frontend"],
+    useCase: ["Starter"],
+    framework: "SolidJS",
   },
   {
     id: "preact",
@@ -505,6 +567,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 3000,
     tags: ["preact", "react", "lightweight", "frontend"],
+    useCase: ["Starter"],
+    framework: "Preact",
   },
   {
     id: "qwik",
@@ -519,6 +583,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 3000,
     tags: ["qwik", "resumable", "javascript", "performance"],
+    useCase: ["Starter"],
+    framework: "Qwik",
   },
   {
     id: "t3-stack",
@@ -533,6 +599,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 3000,
     tags: ["next", "trpc", "prisma", "fullstack"],
+    useCase: ["SaaS", "Starter"],
+    framework: "Next.js",
   },
   {
     id: "11ty",
@@ -547,6 +615,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 3000,
     tags: ["static", "ssg", "javascript", "content"],
+    useCase: ["Blog", "Portfolio"],
+    framework: "Eleventy",
   },
   {
     id: "lit",
@@ -561,6 +631,8 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 3000,
     tags: ["web components", "lit", "javascript", "lightweight"],
+    useCase: ["Starter"],
+    framework: "Lit",
   },
   {
     id: "static-html",
@@ -575,39 +647,371 @@ const TEMPLATES: Template[] = [
     buildType: "nixpacks",
     containerPort: 80,
     tags: ["html", "static", "simple", "beginner"],
+    useCase: ["Starter", "Portfolio"],
+  },
+  {
+    id: "vercel-ai-chatgpt",
+    name: "AI ChatGPT App",
+    description: "An open-source AI chatbot app template built with Next.js",
+    icon: "code",
+    category: "Frameworks",
+    sourceKind: "git",
+    repository: "https://github.com/davidpius95/guildserver-examples",
+    branch: "main",
+    buildPath: "vercel/solutions/ai-chatgpt",
+    buildType: "nixpacks",
+    containerPort: 3000,
+    tags: ["nextjs", "ai", "chatgpt", "openai"],
+    useCase: ["AI", "Starter"],
+    framework: "Next.js",
+    popular: true,
+  },
+  {
+    id: "vercel-blog-starter",
+    name: "Blog Starter Kit",
+    description: "A statically generated blog example using Next.js and Markdown",
+    icon: "globe",
+    category: "Frameworks",
+    sourceKind: "git",
+    repository: "https://github.com/davidpius95/guildserver-examples",
+    branch: "main",
+    buildPath: "vercel/solutions/blog",
+    buildType: "nixpacks",
+    containerPort: 3000,
+    tags: ["nextjs", "blog", "markdown"],
+    useCase: ["Blog", "Starter"],
+    framework: "Next.js",
+  },
+  {
+    id: "vercel-hono-ai-sdk",
+    name: "Hono AI SDK Starter",
+    description: "A starter for Hono with the Vercel AI SDK",
+    icon: "code",
+    category: "Frameworks",
+    sourceKind: "git",
+    repository: "https://github.com/davidpius95/guildserver-examples",
+    branch: "main",
+    buildPath: "vercel/starter/hono-ai-sdk",
+    buildType: "nixpacks",
+    containerPort: 3000,
+    tags: ["hono", "ai", "sdk"],
+    useCase: ["AI", "Starter", "Backend"],
+    framework: "Hono",
+  },
+  {
+    id: "vercel-express-ai",
+    name: "Express AI Chatbot",
+    description: "A lightweight Express API integrating with Vercel AI SDK",
+    icon: "code",
+    category: "Frameworks",
+    sourceKind: "git",
+    repository: "https://github.com/davidpius95/guildserver-examples",
+    branch: "main",
+    buildPath: "vercel/starter/express-ai-sdk",
+    buildType: "nixpacks",
+    containerPort: 3000,
+    tags: ["express", "node", "ai"],
+    useCase: ["AI", "Backend"],
+    framework: "Express",
+  },
+  {
+    id: "vercel-platforms-supabase",
+    name: "Platforms Starter (Supabase)",
+    description: "Multi-tenant platform builder using Next.js and Supabase",
+    icon: "boxes",
+    category: "Frameworks",
+    sourceKind: "git",
+    repository: "https://github.com/davidpius95/guildserver-examples",
+    branch: "main",
+    buildPath: "vercel/solutions/platforms-slate-supabase",
+    buildType: "nixpacks",
+    containerPort: 3000,
+    tags: ["nextjs", "supabase", "multi-tenant"],
+    useCase: ["SaaS", "Starter", "Database"],
+    framework: "Next.js",
+    popular: true,
+  },
+  {
+    id: "vercel-web3-auth",
+    name: "Web3 Authentication",
+    description: "Web3 wallet sign-in and session management",
+    icon: "shield",
+    category: "Frameworks",
+    sourceKind: "git",
+    repository: "https://github.com/davidpius95/guildserver-examples",
+    branch: "main",
+    buildPath: "vercel/solutions/web3-authentication",
+    buildType: "nixpacks",
+    containerPort: 3000,
+    tags: ["nextjs", "web3", "crypto", "auth"],
+    useCase: ["Security", "Starter"],
+    framework: "Next.js",
+  },
+  {
+    id: "vercel-cron",
+    name: "Cron Jobs Scheduler",
+    description: "Example showing how to run cron jobs in Next.js APIs",
+    icon: "code",
+    category: "Frameworks",
+    sourceKind: "git",
+    repository: "https://github.com/davidpius95/guildserver-examples",
+    branch: "main",
+    buildPath: "vercel/solutions/cron",
+    buildType: "nixpacks",
+    containerPort: 3000,
+    tags: ["nextjs", "cron", "jobs", "automation"],
+    useCase: ["Backend", "Automation"],
+    framework: "Next.js",
+  },
+  {
+    id: "vercel-monorepo",
+    name: "Turborepo Next.js Monorepo",
+    description: "Advanced Turborepo workspace with shared UI and apps",
+    icon: "boxes",
+    category: "Frameworks",
+    sourceKind: "git",
+    repository: "https://github.com/davidpius95/guildserver-examples",
+    branch: "main",
+    buildPath: "vercel/solutions/monorepo",
+    buildType: "nixpacks",
+    containerPort: 3000,
+    tags: ["turborepo", "nextjs", "monorepo", "workspace"],
+    useCase: ["Starter", "SaaS"],
+    framework: "Next.js",
+  }
+]
+
+// ─── Derive filter sections from the templates ───────────────────────────────
+
+const FILTER_SECTIONS: FilterSection[] = [
+  {
+    id: "useCase",
+    label: "Use Case",
+    options: [...new Set(TEMPLATES.flatMap((t) => t.useCase))].sort(),
+  },
+  {
+    id: "framework",
+    label: "Framework",
+    options: [...new Set(TEMPLATES.map((t) => t.framework).filter(Boolean) as string[])].sort(),
+  },
+  {
+    id: "category",
+    label: "Category",
+    options: [...new Set(TEMPLATES.map((t) => t.category))].sort(),
   },
 ]
 
-// ─── Derived data ────────────────────────────────────────────────────────────
+// ─── Gradient map for cards ──────────────────────────────────────────────────
 
-const CATEGORIES = [...new Set(TEMPLATES.map((t) => t.category))]
+const GRADIENT_MAP: Record<string, string> = {
+  "Next.js": "from-slate-900 via-slate-800 to-slate-900",
+  "Astro": "from-purple-950 via-indigo-950 to-slate-900",
+  "Svelte": "from-orange-950 via-red-950 to-slate-900",
+  "Nuxt": "from-emerald-950 via-green-950 to-slate-900",
+  "Vue": "from-emerald-950 via-teal-950 to-slate-900",
+  "Remix": "from-indigo-950 via-violet-950 to-slate-900",
+  "Django": "from-green-950 via-emerald-950 to-slate-900",
+  "Flask": "from-gray-900 via-slate-800 to-gray-900",
+  "NestJS": "from-red-950 via-rose-950 to-slate-900",
+  "Go": "from-cyan-950 via-sky-950 to-slate-900",
+  "Deno": "from-slate-900 via-gray-800 to-slate-900",
+  "SolidJS": "from-blue-950 via-indigo-950 to-slate-900",
+  "Vite": "from-violet-950 via-purple-950 to-slate-900",
+  "Preact": "from-purple-950 via-violet-950 to-slate-900",
+  "Qwik": "from-blue-950 via-cyan-950 to-slate-900",
+  "Eleventy": "from-gray-900 via-slate-800 to-gray-900",
+  "Lit": "from-blue-950 via-sky-950 to-slate-900",
+  "default": "from-slate-900 via-gray-800 to-slate-900",
+}
 
 const getIconComponent = (icon: string) => {
   switch (icon) {
-    case "globe":
-      return Globe
-    case "server":
-      return Server
-    case "database":
-      return Database
-    case "code":
-      return Code2
-    case "boxes":
-      return Boxes
-    default:
-      return Server
+    case "globe": return Globe
+    case "server": return Server
+    case "database": return Database
+    case "code": return Code2
+    case "boxes": return Boxes
+    default: return Server
   }
+}
+
+// ─── Sidebar filter section component ────────────────────────────────────────
+
+function FilterGroup({
+  section,
+  selected,
+  onToggle,
+}: {
+  section: FilterSection
+  selected: Set<string>
+  onToggle: (value: string) => void
+}) {
+  const [isOpen, setIsOpen] = useState(true)
+  const activeCount = section.options.filter((o) => selected.has(o)).length
+
+  return (
+    <div className="border-b border-border/40 pb-3 mb-3 last:border-0 last:pb-0 last:mb-0">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center justify-between w-full text-sm font-semibold text-foreground hover:text-foreground/80 transition-colors py-1"
+      >
+        <span className="flex items-center gap-2">
+          {isOpen ? (
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+          )}
+          {section.label}
+        </span>
+        {activeCount > 0 && (
+          <Badge variant="secondary" className="h-5 min-w-[20px] px-1.5 text-[10px] font-bold">
+            {activeCount}
+          </Badge>
+        )}
+      </button>
+      {isOpen && (
+        <div className="mt-2 space-y-1 ml-1">
+          {section.options.map((option) => (
+            <label
+              key={option}
+              className={cn(
+                "flex items-center gap-2.5 py-1.5 px-2 rounded-md cursor-pointer text-sm transition-colors",
+                selected.has(option)
+                  ? "text-foreground bg-accent/50"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent/30"
+              )}
+            >
+              <Checkbox
+                checked={selected.has(option)}
+                onCheckedChange={() => onToggle(option)}
+                className="h-4 w-4 rounded border-border/60"
+              />
+              {option}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Template card component ─────────────────────────────────────────────────
+
+function TemplateCard({
+  template,
+  isDeploying,
+  projectId,
+  onDeploy,
+}: {
+  template: Template
+  isDeploying: boolean
+  projectId: string | null
+  onDeploy: (t: Template) => void
+}) {
+  const Icon = getIconComponent(template.icon)
+  const gradient = template.framework
+    ? GRADIENT_MAP[template.framework] || GRADIENT_MAP.default
+    : GRADIENT_MAP.default
+
+  return (
+    <Card className="group overflow-hidden border-border/40 hover:border-border/80 transition-all duration-300 hover:shadow-lg hover:shadow-black/10 bg-card">
+      {/* Top text section */}
+      <CardHeader className="p-4 pb-3">
+        <CardTitle className="text-[15px] font-semibold leading-tight line-clamp-1 group-hover:text-primary transition-colors">
+          {template.name}
+        </CardTitle>
+        <CardDescription className="text-xs text-muted-foreground line-clamp-2 mt-1 leading-relaxed">
+          {template.description}
+        </CardDescription>
+      </CardHeader>
+
+      {/* Visual preview area */}
+      <div
+        className={cn(
+          "relative h-[140px] mx-3 mb-3 rounded-lg overflow-hidden bg-gradient-to-br",
+          gradient
+        )}
+      >
+        {/* Grid pattern overlay */}
+        <div
+          className="absolute inset-0 opacity-[0.07]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
+          }}
+        />
+
+        {/* Centered icon */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="p-5 rounded-2xl bg-white/[0.07] backdrop-blur-sm border border-white/[0.08] shadow-2xl group-hover:scale-110 transition-transform duration-500">
+            <Icon className="h-8 w-8 text-white/70" />
+          </div>
+        </div>
+
+        {/* Source badge */}
+        <div className="absolute top-2 right-2">
+          <Badge
+            variant="secondary"
+            className="text-[10px] px-1.5 py-0.5 bg-black/30 text-white/70 border-white/10 backdrop-blur-sm"
+          >
+            {template.sourceKind === "git" ? (
+              <span className="flex items-center gap-1">
+                <GitBranch className="h-2.5 w-2.5" />
+                Git
+              </span>
+            ) : (
+              "Docker"
+            )}
+          </Badge>
+        </div>
+
+        {/* Popular star */}
+        {template.popular && (
+          <div className="absolute top-2 left-2">
+            <Star className="h-3.5 w-3.5 text-yellow-400 fill-yellow-400 drop-shadow" />
+          </div>
+        )}
+
+        {/* Deploy hover overlay */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100">
+          <Button
+            size="sm"
+            disabled={isDeploying || !projectId}
+            onClick={(e) => {
+              e.stopPropagation()
+              onDeploy(template)
+            }}
+            className="bg-white text-black hover:bg-white/90 shadow-xl"
+          >
+            {isDeploying ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+            ) : (
+              <Rocket className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            Deploy
+          </Button>
+        </div>
+      </div>
+    </Card>
+  )
 }
 
 // ─── Page component ──────────────────────────────────────────────────────────
 
 export default function TemplatesPage() {
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [selectedFilters, setSelectedFilters] = useState<Record<string, Set<string>>>({
+    useCase: new Set(),
+    framework: new Set(),
+    category: new Set(),
+  })
   const [deployingTemplate, setDeployingTemplate] = useState<string | null>(null)
   const [deployedApp, setDeployedApp] = useState<string | null>(null)
   const [preDeployTemplate, setPreDeployTemplate] = useState<Template | null>(null)
   const [preDeployEnvVars, setPreDeployEnvVars] = useState<EnvVarEntry[]>([])
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
   const { orgId } = useOrganization()
   const { projectId } = useProjects(orgId)
@@ -615,18 +1019,56 @@ export default function TemplatesPage() {
   const createAppMutation = trpc.application.create.useMutation()
   const deployAppMutation = trpc.application.deploy.useMutation()
 
-  const filteredTemplates = TEMPLATES.filter((t) => {
-    const q = searchQuery.toLowerCase()
-    const matchesSearch =
-      !searchQuery ||
-      t.name.toLowerCase().includes(q) ||
-      t.description.toLowerCase().includes(q) ||
-      t.tags.some((tag) => tag.includes(q))
-    const matchesCategory = !selectedCategory || t.category === selectedCategory
-    return matchesSearch && matchesCategory
-  })
+  const hasActiveFilters = Object.values(selectedFilters).some((s) => s.size > 0)
+  const activeFilterCount = Object.values(selectedFilters).reduce((sum, s) => sum + s.size, 0)
 
-  const popularTemplates = TEMPLATES.filter((t) => t.popular)
+  const toggleFilter = (sectionId: string, value: string) => {
+    setSelectedFilters((prev) => {
+      const next = { ...prev }
+      const set = new Set(prev[sectionId])
+      if (set.has(value)) {
+        set.delete(value)
+      } else {
+        set.add(value)
+      }
+      next[sectionId] = set
+      return next
+    })
+  }
+
+  const clearAllFilters = () => {
+    setSelectedFilters({
+      useCase: new Set(),
+      framework: new Set(),
+      category: new Set(),
+    })
+  }
+
+  const filteredTemplates = useMemo(() => {
+    return TEMPLATES.filter((t) => {
+      // Search
+      const q = searchQuery.toLowerCase()
+      const matchesSearch =
+        !searchQuery ||
+        t.name.toLowerCase().includes(q) ||
+        t.description.toLowerCase().includes(q) ||
+        t.tags.some((tag) => tag.includes(q))
+
+      // Use Case filter
+      const useCaseFilter = selectedFilters.useCase
+      const matchesUseCase = useCaseFilter.size === 0 || t.useCase.some((uc) => useCaseFilter.has(uc))
+
+      // Framework filter
+      const frameworkFilter = selectedFilters.framework
+      const matchesFramework = frameworkFilter.size === 0 || (t.framework && frameworkFilter.has(t.framework))
+
+      // Category filter
+      const categoryFilter = selectedFilters.category
+      const matchesCategory = categoryFilter.size === 0 || categoryFilter.has(t.category)
+
+      return matchesSearch && matchesUseCase && matchesFramework && matchesCategory
+    })
+  }, [searchQuery, selectedFilters])
 
   const openPreDeployDialog = (template: Template) => {
     const entries: EnvVarEntry[] = template.envVars
@@ -646,7 +1088,6 @@ export default function TemplatesPage() {
 
     try {
       if (template.sourceKind === "git") {
-        // Git-based template — clone + build with Nixpacks
         const app = await createAppMutation.mutateAsync({
           name: template.id + "-" + Date.now().toString(36),
           projectId,
@@ -661,7 +1102,6 @@ export default function TemplatesPage() {
         await deployAppMutation.mutateAsync({ id: app.id })
         setDeployedApp(app.id)
       } else {
-        // Docker image template
         const app = await createAppMutation.mutateAsync({
           name: template.id + "-" + Date.now().toString(36),
           projectId,
@@ -683,210 +1123,138 @@ export default function TemplatesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Page header */}
       <div>
-        <h1 className="text-3xl font-bold">Templates</h1>
-        <p className="text-muted-foreground">
-          Deploy pre-configured applications and frameworks with one click
+        <h1 className="text-3xl font-bold tracking-tight">Find your Template</h1>
+        <p className="text-muted-foreground mt-1">
+          Jumpstart your app development process with pre-built solutions from GuildServer and our community.
         </p>
       </div>
 
-      {/* Search and Filter */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search templates..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <Button
-            variant={!selectedCategory ? "default" : "outline"}
-            size="sm"
-            onClick={() => setSelectedCategory(null)}
+      {/* Full-width search bar */}
+      <div className="relative">
+        <Search className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search templates..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-11 h-12 text-base bg-background border-border/60 focus:border-primary/40 rounded-xl"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery("")}
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
           >
-            All
-          </Button>
-          {CATEGORIES.map((cat) => (
-            <Button
-              key={cat}
-              variant={selectedCategory === cat ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedCategory(cat === selectedCategory ? null : cat)}
-            >
-              {cat}
-            </Button>
-          ))}
-        </div>
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
-      {/* Popular Templates */}
-      {!searchQuery && !selectedCategory && (
-        <div>
-          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <Star className="h-5 w-5 text-yellow-500" />
-            Popular Templates
-          </h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {popularTemplates.map((template) => {
-              const Icon = getIconComponent(template.icon)
-              const isDeploying = deployingTemplate === template.id
+      {/* Mobile filter toggle */}
+      <div className="lg:hidden">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+          className="gap-2"
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          Filter Templates
+          {activeFilterCount > 0 && (
+            <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+              {activeFilterCount}
+            </Badge>
+          )}
+        </Button>
+      </div>
 
-              return (
-                <Card
-                  key={template.id}
-                  className="hover:shadow-md transition-shadow cursor-pointer group"
-                >
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-primary/10 rounded-lg">
-                        <Icon className="h-5 w-5 text-primary" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-base">{template.name}</CardTitle>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      {template.description}
-                    </p>
-                    <div className="flex items-center justify-between">
-                      <Badge variant="secondary" className="text-xs">
-                        {template.sourceKind === "git" ? (
-                          <span className="flex items-center gap-1">
-                            <GitBranch className="h-3 w-3" />
-                            Nixpacks
-                          </span>
-                        ) : (
-                          template.dockerImage
-                        )}
-                      </Badge>
-                      <Button
-                        size="sm"
-                        disabled={isDeploying || !projectId}
-                        onClick={() => openPreDeployDialog(template)}
-                      >
-                        {isDeploying ? (
-                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                        ) : (
-                          <Rocket className="h-3 w-3 mr-1" />
-                        )}
-                        Deploy
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* All Templates */}
-      <div>
-        {(searchQuery || selectedCategory) && (
-          <h2 className="text-lg font-semibold mb-3">
-            {filteredTemplates.length} template{filteredTemplates.length !== 1 ? "s" : ""} found
-          </h2>
-        )}
-        {!searchQuery && !selectedCategory && (
-          <h2 className="text-lg font-semibold mb-3">
-            All Templates ({TEMPLATES.length})
-          </h2>
-        )}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredTemplates.map((template) => {
-            const Icon = getIconComponent(template.icon)
-            const isDeploying = deployingTemplate === template.id
-
-            return (
-              <Card
-                key={template.id}
-                className="hover:shadow-md transition-shadow"
+      {/* Main layout: Sidebar + Grid */}
+      <div className="flex gap-8">
+        {/* ── Sidebar ─────────────────────────────── */}
+        <aside
+          className={cn(
+            "w-[220px] flex-shrink-0 space-y-1",
+            "hidden lg:block",
+            mobileSidebarOpen && "!block"
+          )}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-foreground">Filter Templates</h2>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
               >
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-primary/10 rounded-lg">
-                        <Icon className="h-5 w-5 text-primary" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-base">{template.name}</CardTitle>
-                        <CardDescription className="text-xs">
-                          {template.category}
-                        </CardDescription>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      {template.sourceKind === "git" && (
-                        <Badge variant="outline" className="text-xs border-blue-200 text-blue-700 bg-blue-50">
-                          <GitBranch className="h-3 w-3 mr-1" />
-                          Git
-                        </Badge>
-                      )}
-                      {template.popular && (
-                        <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    {template.description}
-                  </p>
-                  <div className="flex flex-wrap gap-1 mb-3">
-                    {template.tags.map((tag) => (
-                      <Badge key={tag} variant="outline" className="text-xs">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between pt-2 border-t">
-                    <code className="text-xs text-muted-foreground truncate mr-2">
-                      {template.sourceKind === "git"
-                        ? `nixpacks/${template.buildPath}`
-                        : template.dockerImage}
-                    </code>
-                    <Button
-                      size="sm"
-                      disabled={isDeploying || !projectId}
-                      onClick={() => openPreDeployDialog(template)}
-                    >
-                      {isDeploying ? (
-                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                      ) : (
-                        <Rocket className="h-3 w-3 mr-1" />
-                      )}
-                      Deploy
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+                <X className="h-3 w-3" />
+                Clear
+              </button>
+            )}
+          </div>
 
-        {filteredTemplates.length === 0 && (
-          <Card className="text-center py-12">
-            <CardContent>
-              <Search className="mx-auto h-12 w-12 text-muted-foreground mb-4 opacity-30" />
-              <h3 className="text-lg font-semibold mb-2">No templates found</h3>
-              <p className="text-muted-foreground">
-                Try adjusting your search or filter
+          {FILTER_SECTIONS.map((section) => (
+            <FilterGroup
+              key={section.id}
+              section={section}
+              selected={selectedFilters[section.id] || new Set()}
+              onToggle={(value) => toggleFilter(section.id, value)}
+            />
+          ))}
+        </aside>
+
+        {/* ── Template grid ───────────────────────── */}
+        <div className="flex-1 min-w-0">
+          {(hasActiveFilters || searchQuery) && (
+            <div className="flex items-center gap-3 mb-4">
+              <p className="text-sm text-muted-foreground">
+                {filteredTemplates.length} template{filteredTemplates.length !== 1 ? "s" : ""} found
               </p>
-            </CardContent>
-          </Card>
-        )}
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={clearAllFilters}
+                  className="text-xs text-primary hover:text-primary/80 transition-colors"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+            {filteredTemplates.map((template) => (
+              <TemplateCard
+                key={template.id}
+                template={template}
+                isDeploying={deployingTemplate === template.id}
+                projectId={projectId}
+                onDeploy={openPreDeployDialog}
+              />
+            ))}
+          </div>
+
+          {filteredTemplates.length === 0 && (
+            <div className="text-center py-20">
+              <Search className="mx-auto h-12 w-12 text-muted-foreground mb-4 opacity-20" />
+              <h3 className="text-lg font-semibold mb-1">No templates found</h3>
+              <p className="text-sm text-muted-foreground">
+                Try adjusting your search or filters
+              </p>
+              {hasActiveFilters && (
+                <Button variant="outline" size="sm" className="mt-4" onClick={clearAllFilters}>
+                  Clear all filters
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Pre-Deploy Configuration Dialog */}
       {preDeployTemplate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <Card className="w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <Card className="w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto border-border/50 shadow-2xl">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -975,11 +1343,11 @@ export default function TemplatesPage() {
 
       {/* Deployed success message */}
       {deployedApp && (
-        <div className="fixed bottom-6 right-6 bg-green-50 border border-green-200 rounded-lg p-4 shadow-lg flex items-center gap-3 animate-in slide-in-from-bottom-5">
+        <div className="fixed bottom-6 right-6 bg-green-50 dark:bg-green-950/50 border border-green-200 dark:border-green-800 rounded-lg p-4 shadow-lg flex items-center gap-3 animate-in slide-in-from-bottom-5">
           <CheckCircle className="h-5 w-5 text-green-600" />
           <div>
-            <p className="font-medium text-green-900">Deployment started!</p>
-            <p className="text-sm text-green-700">
+            <p className="font-medium text-green-900 dark:text-green-100">Deployment started!</p>
+            <p className="text-sm text-green-700 dark:text-green-300">
               Your application is being deployed.
             </p>
           </div>
