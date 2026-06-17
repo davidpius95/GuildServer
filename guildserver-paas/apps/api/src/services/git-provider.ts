@@ -260,11 +260,13 @@ export async function listGithubRepos(token: string): Promise<Array<{
     headers: {
       Authorization: `token ${token}`,
       Accept: "application/vnd.github.v3+json",
+      "User-Agent": "GuildServer-PaaS",
     },
   });
 
   if (!response.ok) {
-    throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
+    const errorBody = await response.text();
+    throw new Error(`GitHub API error: ${response.status} ${response.statusText} - ${errorBody}`);
   }
 
   const repos = await response.json() as any[];
@@ -292,12 +294,14 @@ export async function listGithubBranches(
       headers: {
         Authorization: `token ${token}`,
         Accept: "application/vnd.github.v3+json",
+        "User-Agent": "GuildServer-PaaS",
       },
     }
   );
 
   if (!response.ok) {
-    throw new Error(`GitHub API error: ${response.status}`);
+    const errorBody = await response.text();
+    throw new Error(`GitHub API error: ${response.status} ${response.statusText} - ${errorBody}`);
   }
 
   const branches = await response.json() as any[];

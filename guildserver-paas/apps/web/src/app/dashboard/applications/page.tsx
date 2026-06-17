@@ -661,6 +661,23 @@ export default function ApplicationsPage() {
                                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                                 <span className="ml-2 text-sm text-muted-foreground">Loading repos...</span>
                               </div>
+                            ) : reposQuery.error ? (
+                              <div className="text-center py-6 px-4 space-y-3">
+                                <p className="text-sm text-destructive">
+                                  {reposQuery.error.message || "Failed to load repositories."}
+                                </p>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    window.location.href = `${API_URL}/auth/${selectedGitProvider}?scope=repo&returnTo=/dashboard/applications`
+                                  }}
+                                >
+                                  <Link2 className="mr-1.5 h-3.5 w-3.5" />
+                                  Reconnect {selectedGitProvider === "github" ? "GitHub" : selectedGitProvider === "gitlab" ? "GitLab" : "Bitbucket"}
+                                </Button>
+                              </div>
                             ) : filteredRepos.length === 0 ? (
                               <div className="text-center py-6 text-sm text-muted-foreground">
                                 {repoSearch ? "No repositories match your search" : "No repositories found"}

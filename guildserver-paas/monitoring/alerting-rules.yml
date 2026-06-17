@@ -1,0 +1,53 @@
+groups:
+  - name: infrastructure
+    rules:
+      - alert: HighCPU
+        expr: 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "VPS CPU above 85% for 5 minutes" }
+
+      - alert: HighMemory
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: "VPS memory above 90%" }
+
+      - alert: DiskSpaceLow
+        expr: (1 - node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100 > 85
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Disk usage above 85%" }
+
+  - name: containers
+    rules:
+      - alert: ContainerDown
+        expr: absent(container_last_seen{name=~"gs-.*"}) 
+        for: 2m
+        labels: { severity: critical }
+
+      - alert: ContainerHighMemory
+        expr: container_memory_usage_bytes{name=~"gs-.*"} / container_spec_memory_limit_bytes > 0.9
+        for: 5m
+        labels: { severity: warning }
+
+      - alert: ContainerRestarting
+        expr: increase(container_restart_count{name=~"gs-.*"}[1h]) > 3
+        for: 0m
+        labels: { severity: warning }
+
+  - name: deployments
+    rules:
+      - alert: HighDeploymentFailureRate
+        expr: rate(guildserver_deployments_total{status="failed"}[1h]) / rate(guildserver_deployments_total[1h]) > 0.3
+        for: 15m
+        labels: { severity: warning }
+        annotations: { summary: "More than 30% of deployments failing" }
+
+  - name: traefik
+    rules:
+      - alert: HighErrorRate
+        expr: sum(rate(traefik_service_requests_total{code=~"5.."}[5m])) / sum(rate(traefik_service_requests_total[5m])) > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "HTTP 5xx error rate above 5%" }
