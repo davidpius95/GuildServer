@@ -647,5 +647,9 @@ async function findOrCreateOAuthUser(params: {
 
   logger.info(`Created default organization '${orgName}' with default project for new OAuth user ${params.email}`);
 
+  // Record business metric
+  const { signupsTotal } = await import("../services/prometheus-metrics");
+  signupsTotal.inc({ provider: params.provider });
+
   return { user: newUser, isNew: true };
 }

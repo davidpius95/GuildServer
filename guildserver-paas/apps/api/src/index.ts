@@ -16,6 +16,7 @@ import { setupSwagger } from "./swagger";
 import { webhookRouter } from "./routes/webhooks";
 import { oauthRouter } from "./routes/oauth";
 import { stripeWebhookRouter } from "./routes/stripe-webhooks";
+import { register, httpRequestCounter, httpRequestDuration } from "./services/prometheus-metrics";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -42,6 +43,38 @@ app.use("/webhooks/stripe", express.raw({ type: "application/json" }), stripeWeb
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
+// Prometheus Metrics Middleware
+app.use((req, res, next) => {
+  // Don't track the /metrics endpoint itself
+  if (req.path === '/metrics') return next();
+
+  const start = process.hrtime();
+  
+  res.on('finish', () => {
+    const diff = process.hrtime(start);
+    const durationSeconds = diff[0] + diff[1] / 1e9;
+    
+    // Convert undefined route to actual path or generic label
+    const route = req.route ? req.route.path : req.path;
+    
+    httpRequestCounter.inc({
+      method: req.method,
+      route: route,
+      status_code: res.statusCode.toString()
+    });
+    
+    httpRequestDuration.observe(
+      {
+        method: req.method,
+        route: route,
+        status_code: res.statusCode.toString()
+      },
+      durationSeconds
+    );
+  });
+  next();
+});
+
 // Swagger API docs
 setupSwagger(app);
 
@@ -53,6 +86,16 @@ app.get("/health", (req, res) => {
     version: process.env.npm_package_version || "1.0.0",
     environment: process.env.NODE_ENV || "development",
   });
+});
+
+// Prometheus Metrics endpoint
+app.get("/metrics", async (req, res) => {
+  try {
+    res.set("Content-Type", register.contentType);
+    res.end(await register.metrics());
+  } catch (error) {
+    res.status(500).end(error);
+  }
 });
 
 // Webhook routes (before tRPC, these are plain Express routes)

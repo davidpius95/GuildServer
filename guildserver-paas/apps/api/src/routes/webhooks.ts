@@ -9,6 +9,7 @@ import {
   parseGithubPushEvent,
   parseGitlabPushEvent,
 } from "../services/git-provider";
+import { webhookDeliveries as webhookMetric } from "../services/prometheus-metrics";
 
 export const webhookRouter = Router();
 
@@ -381,6 +382,11 @@ async function logWebhookDelivery(data: {
       delivered: data.delivered,
       processingTimeMs: data.processingTimeMs,
       error: data.error,
+    });
+    
+    webhookMetric.inc({
+      provider: data.provider,
+      event_type: data.eventType
     });
   } catch (err: any) {
     logger.warn("Failed to log webhook delivery", { error: err.message });

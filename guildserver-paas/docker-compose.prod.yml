@@ -223,6 +223,7 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.grafana.loadbalancer.server.port=3000"
@@ -269,11 +270,80 @@ services:
       - default
     restart: unless-stopped
 
+  # Cloudflare Metrics Exporter
+  cloudflare-exporter:
+    image: ghcr.io/lablabs/cloudflare-exporter:latest
+    container_name: guildserver-cloudflare-exporter
+    environment:
+      - CF_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+      - CF_ZONES=${CF_ZONES:-}
+      - CF_ACCOUNTS=${CF_ACCOUNTS:-}
+      - FREE_TIER=${FREE_TIER:-true}
+    ports:
+      - "8080"
+    networks:
+      - default
+    restart: unless-stopped
+
+  # Postgres Exporter
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: guildserver-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://guildserver:${POSTGRES_PASSWORD:-password123}@postgres:5432/guildserver?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+    restart: unless-stopped
+
+  # Redis Exporter
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.59.0
+    container_name: guildserver-redis-exporter
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - default
+    restart: unless-stopped
+
+  # Loki (Centralized Logging)
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: guildserver-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    networks:
+      - default
+    restart: unless-stopped
+
+  # Promtail (Log Collector)
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: guildserver-promtail
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./monitoring/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    networks:
+      - default
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
   prometheus_data:
   grafana_data:
+  loki_data:
 
 networks:
   default:

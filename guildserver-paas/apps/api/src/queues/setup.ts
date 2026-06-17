@@ -19,6 +19,7 @@ import { startMetricsCollection, stopMetricsCollection, collectAndStoreMetrics }
 import { notify } from "../services/notification";
 import { trackDeployment, trackBuildMinutes } from "../services/usage-meter";
 import { checkSpendLimit, checkSpendThresholds } from "../services/spend-manager";
+import { deploymentsTotal, deploymentDuration, queueDepth } from "../services/prometheus-metrics";
 import crypto from "crypto";
 import path from "path";
 
@@ -63,6 +64,7 @@ async function updateApplicationStatus(applicationId: string, status: string) {
 const deploymentWorker = new Worker(
   "deployment",
   async (job) => {
+    const jobStartTime = process.hrtime();
     logger.info("Processing deployment job", { jobId: job.id, data: job.data });
 
     const { deploymentId, applicationId, userId, isRollback, sourceDeploymentId, isPreview, previewBranch } = job.data;
@@ -708,6 +710,15 @@ const deploymentWorker = new Worker(
         port: result.hostPort,
       });
 
+      // Track deployment success in Prometheus
+      deploymentsTotal.inc({ status: "success", app_id: applicationId });
+      
+      const diff = process.hrtime(jobStartTime);
+      deploymentDuration.observe(
+        { status: "success", app_id: applicationId },
+        diff[0] + diff[1] / 1e9
+      );
+
       return {
         success: true,
         deploymentId,
@@ -748,6 +759,15 @@ const deploymentWorker = new Worker(
         logsUrl: `${process.env.APP_URL || "http://localhost:3000"}/dashboard/applications/${applicationId}`,
       }).catch((err) => logger.warn("Notification error:", err.message));
 
+      // Track deployment failure in Prometheus
+      deploymentsTotal.inc({ status: "failed", app_id: applicationId });
+      
+      const diff = process.hrtime(jobStartTime);
+      deploymentDuration.observe(
+        { status: "failed", app_id: applicationId },
+        diff[0] + diff[1] / 1e9
+      );
+
       throw error;
     }
   },
@@ -768,6 +788,13 @@ const monitoringWorker = new Worker(
         case "collect-metrics":
           await syncContainerStatuses();
           await collectAndStoreMetrics();
+          
+          // Collect Queue Depths for Prometheus
+          const depActive = await deploymentQueue.getActiveCount();
+          const depWaiting = await deploymentQueue.getWaitingCount();
+          queueDepth.set({ queue_name: "deployment", status: "active" }, depActive);
+          queueDepth.set({ queue_name: "deployment", status: "waiting" }, depWaiting);
+          
           break;
         case "health-check":
           await syncContainerStatuses();

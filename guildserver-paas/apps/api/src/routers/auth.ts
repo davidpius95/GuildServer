@@ -128,6 +128,10 @@ export const authRouter = createTRPCRouter({
         { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
       );
 
+      // Record business metric
+      const { signupsTotal } = await import("../services/prometheus-metrics");
+      signupsTotal.inc({ provider: "email" });
+
       return {
         user: newUser,
         token,

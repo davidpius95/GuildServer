@@ -21,7 +21,8 @@ import {
   Zap,
   RefreshCw,
   XCircle,
-  Heart
+  Heart,
+  ExternalLink
 } from "lucide-react"
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import { trpc } from "@/components/trpc-provider"
@@ -164,6 +165,12 @@ export default function MonitoringPage() {
               </Button>
             ))}
           </div>
+          <Button variant="outline" asChild>
+            <a href={process.env.NEXT_PUBLIC_GRAFANA_URL || "http://localhost:3001"} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Advanced Dashboards
+            </a>
+          </Button>
           <Button onClick={handleRefresh} disabled={refreshing}>
             <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh
@@ -261,6 +268,7 @@ export default function MonitoringPage() {
           <TabsTrigger value="applications">Applications</TabsTrigger>
           <TabsTrigger value="health">System Health</TabsTrigger>
           <TabsTrigger value="alerts">Alerts ({alertsList.length})</TabsTrigger>
+          <TabsTrigger value="advanced">Advanced Analytics</TabsTrigger>
         </TabsList>
 
         {/* Performance Tab */}
@@ -571,6 +579,76 @@ export default function MonitoringPage() {
                   <p className="text-xs mt-1">No active alerts. All systems operating normally.</p>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        {/* Advanced Analytics Tab */}
+        <TabsContent value="advanced" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Deployment Pipeline (Grafana)</CardTitle>
+              <CardDescription>Advanced metrics from Prometheus</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[600px] w-full border rounded-md overflow-hidden bg-background">
+                <iframe 
+                  src={`${process.env.NEXT_PUBLIC_GRAFANA_URL || "http://localhost:3001"}/d/deploy-pipe-1/deployment-pipeline?orgId=1&kiosk=tv`} 
+                  width="100%" 
+                  height="100%" 
+                  frameBorder="0"
+                ></iframe>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Host Infrastructure (Grafana)</CardTitle>
+              <CardDescription>VPS level resource monitoring</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[600px] w-full border rounded-md overflow-hidden bg-background">
+                <iframe 
+                  src={`${process.env.NEXT_PUBLIC_GRAFANA_URL || "http://localhost:3001"}/d/rYdddlPWk/host-infrastructure?orgId=1&kiosk=tv`} 
+                  width="100%" 
+                  height="100%" 
+                  frameBorder="0"
+                ></iframe>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Traefik Edge Routing (Grafana)</CardTitle>
+              <CardDescription>Detailed HTTP request, latency, and status code metrics per service</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[600px] w-full border rounded-md overflow-hidden bg-background">
+                <iframe 
+                  src={`${process.env.NEXT_PUBLIC_GRAFANA_URL || "http://localhost:3001"}/d/n5bu_kv4k/traefik-routing?orgId=1&kiosk=tv`} 
+                  width="100%" 
+                  height="100%" 
+                  frameBorder="0"
+                ></iframe>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Container Resources (Grafana)</CardTitle>
+              <CardDescription>Detailed CPU, Memory, and Network usage for each deployed container</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[600px] w-full border rounded-md overflow-hidden bg-background">
+                <iframe 
+                  src={`${process.env.NEXT_PUBLIC_GRAFANA_URL || "http://localhost:3001"}/d/pMEd7m0Mz/container-resources?orgId=1&kiosk=tv`} 
+                  width="100%" 
+                  height="100%" 
+                  frameBorder="0"
+                ></iframe>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
