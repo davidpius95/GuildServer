@@ -49,15 +49,6 @@ export const adminProcedure = t.procedure.use(({ ctx, next }) => {
   });
 });
 
-// Organization-based authorization middleware
-export const organizationProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  // This middleware can be extended to check organization membership
-  // For now, it just ensures the user is authenticated
-  return next({
-    ctx,
-  });
-});
-
 // =====================
 // BILLING ENFORCEMENT HELPERS
 // =====================

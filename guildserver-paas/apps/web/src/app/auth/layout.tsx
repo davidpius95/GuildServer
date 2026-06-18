@@ -1,3 +1,5 @@
+import Image from "next/image"
+
 export default function AuthLayout({
   children,
 }: {
@@ -8,7 +10,7 @@ export default function AuthLayout({
       <div className="w-full max-w-md space-y-8 p-8">
         <div className="text-center">
           <div className="mx-auto h-16 w-16 mb-4 flex items-center justify-center">
-            <img src="/logo.png" alt="GuildServer Logo" className="h-full w-full object-contain" />
+            <Image src="/logo.png" alt="GuildServer Logo" width={64} height={64} className="object-contain dark:invert" />
           </div>
           <h1 className="text-2xl font-bold">GuildServer</h1>
           <p className="text-muted-foreground">Enterprise Platform as a Service</p>

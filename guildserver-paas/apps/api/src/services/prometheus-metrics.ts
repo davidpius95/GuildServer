@@ -4,7 +4,7 @@ import client from 'prom-client';
 export const register = new client.Registry();
 
 // Add default metrics (CPU, memory, file descriptors, etc. for the API container)
-client.collectDefaultMetrics({ register, prefix: 'guildserver_api_' });
+client.collectDefaultMetrics({ register });
 
 // -----------------------------------------------------------------------------
 // Custom Metrics
@@ -74,16 +74,16 @@ export const activeRepositories = new client.Gauge({
   help: 'Number of active Git repositories linked to the platform',
   async collect() {
     try {
-      // Lazy import db to prevent circular dependency issues during startup
       const { db } = await import('@guildserver/database');
       const { applications } = await import('@guildserver/database');
-      const { isNotNull } = await import('drizzle-orm');
-      
-      const countResult = await db.select({ count: isNotNull(applications.repository) })
+      const { isNotNull, count } = await import('drizzle-orm');
+
+      const [{ value }] = await db
+        .select({ value: count() })
         .from(applications)
         .where(isNotNull(applications.repository));
-        
-      this.set(countResult.length);
+
+      this.set(value);
     } catch (err) {
       console.error("Failed to collect active repositories metric", err);
     }

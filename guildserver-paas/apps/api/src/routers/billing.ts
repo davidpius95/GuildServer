@@ -19,7 +19,7 @@ import {
   createPortalSession,
   cancelSubscription as stripeCancelSubscription,
   resumeSubscription as stripeResumeSubscription,
-} from "../services/stripe";
+} from "../services/billing";
 
 export const billingRouter = createTRPCRouter({
   /**

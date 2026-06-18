@@ -18,6 +18,10 @@ const nextConfig = {
   },
   transpilePackages: ['@guildserver/database'],
   typescript: {
+    // trpc-provider.tsx imports AppRouter directly from API source, causing tsc to
+    // transitively check all API files through the web's tsconfig.
+    // Fix: build the API first and consume its compiled types, or move AppRouter to
+    // a shared @guildserver/types package. Until then, run `pnpm typecheck` separately.
     ignoreBuildErrors: true,
   },
   eslint: {

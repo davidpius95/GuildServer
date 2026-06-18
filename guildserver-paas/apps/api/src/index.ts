@@ -13,10 +13,11 @@ import { logger } from "./utils/logger";
 import { createWebSocketServer } from "./websocket/server";
 import { initializeQueues } from "./queues/setup";
 import { setupSwagger } from "./swagger";
-import { webhookRouter } from "./routes/webhooks";
-import { oauthRouter } from "./routes/oauth";
-import { stripeWebhookRouter } from "./routes/stripe-webhooks";
+import { webhookRouter } from "./handlers/webhooks";
+import { oauthRouter } from "./handlers/oauth";
+import { stripeWebhookRouter } from "./handlers/stripe-webhooks";
 import { register, httpRequestCounter, httpRequestDuration } from "./services/prometheus-metrics";
+import { AppError } from "./lib/errors";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -132,6 +133,13 @@ app.use("*", (req, res) => {
 
 // Global error handler
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err instanceof AppError) {
+    return res.status(err.statusCode).json({
+      error: err.code,
+      message: err.message,
+    });
+  }
+
   logger.error("Unhandled error:", {
     error: err.message,
     stack: err.stack,
@@ -140,7 +148,7 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   });
 
   res.status(500).json({
-    error: "Internal server error",
+    error: "INTERNAL_SERVER_ERROR",
     message: process.env.NODE_ENV === "development" ? err.message : "Something went wrong",
   });
 });

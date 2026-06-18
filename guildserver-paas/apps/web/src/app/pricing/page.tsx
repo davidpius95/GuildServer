@@ -31,7 +31,7 @@ export default function PricingPage() {
         <div className="main-container flex h-16 items-center justify-between">
           <div className="flex items-center gap-8">
             <Link href="/" className="flex items-center gap-2.5">
-              <img src="/logo.png" alt="GuildServer Logo" className="h-8 w-8 object-contain" />
+              <img src="/logo.png" alt="GuildServer Logo" className="h-8 w-8 object-contain dark:invert" />
               <span className="text-xl font-bold tracking-tight">GuildServer</span>
             </Link>
             <nav className="hidden md:flex items-center gap-6 text-sm">

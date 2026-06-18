@@ -8,7 +8,7 @@ import {
   syncInvoiceFromStripe,
   syncPaymentMethodFromStripe,
   handleSubscriptionDeleted,
-} from "../services/stripe";
+} from "../services/billing";
 import { notify } from "../services/notification";
 import { resetSpendNotifications } from "../services/spend-manager";
 import { db, subscriptions, members } from "@guildserver/database";
