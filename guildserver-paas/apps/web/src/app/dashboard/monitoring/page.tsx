@@ -147,7 +147,7 @@ export default function MonitoringPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Monitoring</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Monitoring</h1>
           <p className="text-muted-foreground">
             Real-time monitoring and observability
           </p>
@@ -186,7 +186,7 @@ export default function MonitoringPage() {
             <Cpu className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-semibold font-mono tabular-nums">
               {org?.resourceUsage?.cpu?.current?.toFixed(1) ?? totalCpu.toFixed(1)}%
             </div>
             <Progress value={Math.min(org?.resourceUsage?.cpu?.current ?? totalCpu, 100)} className="mt-2" />
@@ -202,7 +202,7 @@ export default function MonitoringPage() {
             <MemoryStick className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-semibold font-mono tabular-nums">
               {(org?.resourceUsage?.memory?.current ?? totalMemory).toFixed(1)} MB
             </div>
             <Progress value={Math.min((totalMemory / 1024) * 100, 100)} className="mt-2" />
@@ -218,7 +218,7 @@ export default function MonitoringPage() {
             <Server className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{runningApps}/{totalApps}</div>
+            <div className="text-2xl font-semibold font-mono tabular-nums">{runningApps}/{totalApps}</div>
             <div className="flex gap-1 mt-2">
               {runningApps > 0 && (
                 <Badge variant="outline" className="bg-green-50 text-green-700 text-xs">
@@ -240,7 +240,7 @@ export default function MonitoringPage() {
             <AlertTriangle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{alertsList.length}</div>
+            <div className="text-2xl font-semibold font-mono tabular-nums">{alertsList.length}</div>
             <div className="flex gap-1 mt-2">
               {alertsList.filter(a => a.severity === 'critical').length > 0 && (
                 <Badge variant="outline" className="bg-red-50 text-red-700 text-xs">
@@ -348,19 +348,19 @@ export default function MonitoringPage() {
               <Card>
                 <CardContent className="pt-6">
                   <div className="text-sm text-muted-foreground">Total Deployments</div>
-                  <div className="text-2xl font-bold">{org.totalDeployments}</div>
+                  <div className="text-2xl font-semibold font-mono tabular-nums">{org.totalDeployments}</div>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-6">
                   <div className="text-sm text-muted-foreground">Successful</div>
-                  <div className="text-2xl font-bold text-green-600">{org.successfulDeployments}</div>
+                  <div className="text-2xl font-semibold font-mono tabular-nums text-green-600">{org.successfulDeployments}</div>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-6">
                   <div className="text-sm text-muted-foreground">Success Rate</div>
-                  <div className="text-2xl font-bold">
+                  <div className="text-2xl font-semibold font-mono tabular-nums">
                     {org.totalDeployments > 0
                       ? ((org.successfulDeployments / org.totalDeployments) * 100).toFixed(1)
                       : '0'}%
@@ -370,7 +370,7 @@ export default function MonitoringPage() {
               <Card>
                 <CardContent className="pt-6">
                   <div className="text-sm text-muted-foreground">Running Apps</div>
-                  <div className="text-2xl font-bold">{org.runningApplications}/{org.totalApplications}</div>
+                  <div className="text-2xl font-semibold font-mono tabular-nums">{org.runningApplications}/{org.totalApplications}</div>
                 </CardContent>
               </Card>
             </div>
@@ -482,19 +482,19 @@ export default function MonitoringPage() {
                     <h4 className="text-sm font-medium mb-3">Container Summary</h4>
                     <div className="grid gap-3 md:grid-cols-4">
                       <div className="p-3 border rounded-lg text-center">
-                        <div className="text-2xl font-bold">{health.containers.total}</div>
+                        <div className="text-2xl font-semibold font-mono tabular-nums">{health.containers.total}</div>
                         <div className="text-xs text-muted-foreground">Total</div>
                       </div>
                       <div className="p-3 border rounded-lg text-center">
-                        <div className="text-2xl font-bold text-green-600">{health.containers.running}</div>
+                        <div className="text-2xl font-semibold font-mono tabular-nums text-green-600">{health.containers.running}</div>
                         <div className="text-xs text-muted-foreground">Running</div>
                       </div>
                       <div className="p-3 border rounded-lg text-center">
-                        <div className="text-2xl font-bold text-gray-500">{health.containers.stopped}</div>
+                        <div className="text-2xl font-semibold font-mono tabular-nums text-gray-500">{health.containers.stopped}</div>
                         <div className="text-xs text-muted-foreground">Stopped</div>
                       </div>
                       <div className="p-3 border rounded-lg text-center">
-                        <div className="text-2xl font-bold text-red-600">{health.containers.errored}</div>
+                        <div className="text-2xl font-semibold font-mono tabular-nums text-red-600">{health.containers.errored}</div>
                         <div className="text-xs text-muted-foreground">Errored</div>
                       </div>
                     </div>

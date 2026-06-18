@@ -38,7 +38,7 @@ function StatCard({
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-muted-foreground">{title}</p>
-            <p className="text-3xl font-bold mt-1">{value}</p>
+            <p className="text-3xl font-semibold font-mono tabular-nums mt-1">{value}</p>
           </div>
           <div className={cn("p-3 rounded-xl", color)}>
             <Icon className="h-6 w-6" />
@@ -98,7 +98,7 @@ export default function UserManagementPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">User Management</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">User Management</h1>
         <p className="text-muted-foreground">
           Manage user accounts and permissions
         </p>

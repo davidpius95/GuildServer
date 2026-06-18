@@ -152,7 +152,7 @@ export default function DatabasesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Databases</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Databases</h1>
           <p className="text-muted-foreground">
             Manage your database instances and backups
           </p>
@@ -353,7 +353,7 @@ export default function DatabasesPage() {
                 <Database className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{mockDatabases.length}</div>
+                <div className="text-2xl font-semibold font-mono tabular-nums">{mockDatabases.length}</div>
                 <p className="text-xs text-muted-foreground">
                   {mockDatabases.filter(db => db.status === 'running').length} running
                 </p>
@@ -366,7 +366,7 @@ export default function DatabasesPage() {
                 <HardDrive className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">12.6 GB</div>
+                <div className="text-2xl font-semibold font-mono tabular-nums">12.6 GB</div>
                 <p className="text-xs text-muted-foreground">
                   <span className="text-green-600">+2.1 GB</span> this month
                 </p>
@@ -379,7 +379,7 @@ export default function DatabasesPage() {
                 <Users className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">44</div>
+                <div className="text-2xl font-semibold font-mono tabular-nums">44</div>
                 <p className="text-xs text-muted-foreground">
                   of 1200 total
                 </p>
@@ -392,7 +392,7 @@ export default function DatabasesPage() {
                 <Clock className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">1h ago</div>
+                <div className="text-2xl font-semibold font-mono tabular-nums">1h ago</div>
                 <p className="text-xs text-muted-foreground">
                   All databases backed up
                 </p>

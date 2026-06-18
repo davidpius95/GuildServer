@@ -72,7 +72,7 @@ export default function BillingPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">Billing</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Billing</h1>
         <p className="text-muted-foreground mt-1">
           Manage your subscription, usage, and payment methods.
         </p>
@@ -178,7 +178,7 @@ function OverviewTab({
         </div>
         <div className="space-y-3">
           <div>
-            <p className="text-3xl font-bold">
+            <p className="text-3xl font-semibold tracking-tight tabular-nums">
               {currentPlan?.priceMonthly === 0
                 ? "Free"
                 : currentPlan?.priceMonthly
@@ -357,7 +357,7 @@ function PlansTab({ plans, currentSlug, orgId }: { plans: any[]; currentSlug: st
               <p className="text-sm text-muted-foreground mt-1">{plan.description}</p>
             </div>
             <div className="mb-6">
-              <p className="text-3xl font-bold">
+              <p className="text-3xl font-semibold tracking-tight tabular-nums">
                 {plan.priceMonthly === 0
                   ? "Free"
                   : plan.priceMonthly

@@ -294,7 +294,7 @@ export default function DeploymentsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold flex items-center gap-3">
+        <h1 className="text-3xl font-semibold tracking-tight flex items-center gap-3">
           <Rocket className="h-8 w-8" />
           Deployments
         </h1>

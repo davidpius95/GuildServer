@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { PageHeader } from "@/components/page-header"
 import { trpc } from "@/components/trpc-provider"
 import { useOrganization, useProjects } from "@/hooks/use-auth"
 import {
@@ -126,7 +127,7 @@ export default function DashboardPage() {
     return (
       <div className="space-y-8">
         <div>
-          <h1 className="text-3xl font-bold">Welcome to GuildServer</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Welcome to GuildServer</h1>
           <p className="text-muted-foreground">Let's get you set up</p>
         </div>
         <Card className="text-center py-12">
@@ -154,12 +155,8 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground">
-          {currentOrg.name} &mdash; Overview of your environment
-        </p>
-      </div>
+      <PageHeader title="Dashboard" description={`${currentOrg.name} — Overview of your environment`} />
+
 
       {/* Stats */}
       <AnimatedList className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -170,7 +167,7 @@ export default function DashboardPage() {
               <Rocket className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{allApps.length}</div>
+              <div className="text-2xl font-semibold font-mono tabular-nums">{allApps.length}</div>
               <p className="text-xs text-muted-foreground">
                 <span className="text-green-600">{runningApps.length} running</span>
                 {failedApps.length > 0 && (
@@ -188,7 +185,7 @@ export default function DashboardPage() {
               <GitBranch className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{projects.length}</div>
+              <div className="text-2xl font-semibold font-mono tabular-nums">{projects.length}</div>
               <p className="text-xs text-muted-foreground">
                 In {currentOrg.name}
               </p>
@@ -203,7 +200,7 @@ export default function DashboardPage() {
               <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{runningApps.length}</div>
+              <div className="text-2xl font-semibold font-mono tabular-nums text-success">{runningApps.length}</div>
               <p className="text-xs text-muted-foreground">
                 {healthData?.containers
                   ? `${healthData.containers.running}/${healthData.containers.total} containers`
@@ -220,9 +217,9 @@ export default function DashboardPage() {
               {getHealthStatusIcon(overallHealth)}
             </CardHeader>
             <CardContent>
-              <div className={`text-2xl font-bold ${
-                overallHealth === "healthy" ? "text-green-600" :
-                overallHealth === "warning" ? "text-yellow-600" : "text-red-600"
+              <div className={`text-2xl font-semibold ${
+                overallHealth === "healthy" ? "text-success" :
+                overallHealth === "warning" ? "text-warning" : "text-destructive"
               }`}>
                 {overallHealth === "healthy" ? "Healthy" :
                  overallHealth === "warning" ? "Warning" : "Critical"}

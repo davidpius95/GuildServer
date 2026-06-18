@@ -72,7 +72,7 @@ export default function TeamPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Team</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Team</h1>
           <p className="text-muted-foreground">
             Manage team members, roles, and permissions
           </p>
@@ -91,7 +91,7 @@ export default function TeamPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{members.length}</div>
+            <div className="text-2xl font-semibold font-mono tabular-nums">{members.length}</div>
             <p className="text-xs text-muted-foreground">
               {activeMembers.length} active
             </p>
@@ -104,7 +104,7 @@ export default function TeamPage() {
             <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold truncate">{currentOrg?.name || "—"}</div>
+            <div className="text-2xl font-semibold truncate">{currentOrg?.name || "—"}</div>
             <p className="text-xs text-muted-foreground">
               {currentOrg?.slug || ""}
             </p>
@@ -117,7 +117,7 @@ export default function TeamPage() {
             <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{adminCount}</div>
+            <div className="text-2xl font-semibold font-mono tabular-nums">{adminCount}</div>
             <p className="text-xs text-muted-foreground">
               With admin access
             </p>
@@ -130,7 +130,7 @@ export default function TeamPage() {
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{auditLogs.length}</div>
+            <div className="text-2xl font-semibold font-mono tabular-nums">{auditLogs.length}</div>
             <p className="text-xs text-muted-foreground">
               Recent actions
             </p>

@@ -1059,7 +1059,7 @@ export default function InfrastructurePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Infrastructure Providers</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Infrastructure Providers</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Manage compute providers for deploying applications. Add Proxmox nodes,
             cloud providers, or remote Docker hosts.
@@ -1079,21 +1079,21 @@ export default function InfrastructurePage() {
         <div className="grid gap-4 sm:grid-cols-4">
           <div className="rounded-xl border bg-card p-4">
             <div className="text-xs text-muted-foreground">Total Providers</div>
-            <div className="mt-1 text-2xl font-bold">{providers.length + 1}</div>
+            <div className="mt-1 text-2xl font-semibold font-mono tabular-nums">{providers.length + 1}</div>
             <div className="text-xs text-muted-foreground mt-0.5">
               including Local Docker
             </div>
           </div>
           <div className="rounded-xl border bg-card p-4">
             <div className="text-xs text-muted-foreground">Proxmox Nodes</div>
-            <div className="mt-1 text-2xl font-bold">{proxmoxProviders.length}</div>
+            <div className="mt-1 text-2xl font-semibold font-mono tabular-nums">{proxmoxProviders.length}</div>
             <div className="text-xs text-muted-foreground mt-0.5">
               {healthyCount} online
             </div>
           </div>
           <div className="rounded-xl border bg-card p-4">
             <div className="text-xs text-muted-foreground">Avg CPU</div>
-            <div className="mt-1 text-2xl font-bold">
+            <div className="mt-1 text-2xl font-semibold font-mono tabular-nums">
               {overviewData.length > 0
                 ? Math.round(
                     overviewData
@@ -1108,7 +1108,7 @@ export default function InfrastructurePage() {
           </div>
           <div className="rounded-xl border bg-card p-4">
             <div className="text-xs text-muted-foreground">Avg Memory</div>
-            <div className="mt-1 text-2xl font-bold">
+            <div className="mt-1 text-2xl font-semibold font-mono tabular-nums">
               {overviewData.length > 0
                 ? Math.round(
                     overviewData

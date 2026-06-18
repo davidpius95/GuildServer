@@ -4,35 +4,46 @@
 
 @layer base {
   :root {
+    /* Warm-neutral base (Vercel contrast × Heroku warmth) */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 240 10% 6%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 240 10% 6%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222.2 84% 4.9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+    --popover-foreground: 240 10% 6%;
+    /* Brand purple — single confident accent */
+    --primary: 262 83% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 6% 10%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 42%;
+    --accent: 262 60% 97%;
+    --accent-foreground: 262 60% 30%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 40%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 262 83% 58%;
+    --radius: 0.625rem;
 
-    /* Gradient colors - Light mode */
-    --gradient-1: #6366f1;
-    --gradient-2: #8b5cf6;
-    --gradient-3: #a855f7;
-    --gradient-4: #d946ef;
-    --gradient-5: #ec4899;
-    --gradient-blue-1: #3b82f6;
-    --gradient-blue-2: #06b6d4;
+    /* Elevation — subtle, layered (Vercel-style) */
+    --shadow-sm: 0 1px 2px 0 hsl(240 6% 10% / 0.04), 0 1px 3px 0 hsl(240 6% 10% / 0.04);
+    --shadow-md: 0 2px 4px -1px hsl(240 6% 10% / 0.05), 0 4px 12px -2px hsl(240 6% 10% / 0.08);
+    --shadow-lg: 0 8px 24px -4px hsl(240 6% 10% / 0.10), 0 16px 40px -8px hsl(240 6% 10% / 0.12);
+
+    /* Single restrained brand gradient (purple → indigo) */
+    --gradient-1: #7c3aed;
+    --gradient-2: #6366f1;
+    --gradient-3: #8b5cf6;
+    --gradient-4: #a855f7;
+    --gradient-5: #6366f1;
+    --gradient-blue-1: #6366f1;
+    --gradient-blue-2: #7c3aed;
     --gradient-green-1: #10b981;
     --gradient-green-2: #34d399;
     --gradient-orange-1: #f97316;
@@ -40,34 +51,42 @@
   }
 
   .dark {
-    --background: 224 71% 4%;
-    --foreground: 213 31% 91%;
-    --card: 224 71% 4%;
-    --card-foreground: 213 31% 91%;
-    --popover: 224 71% 4%;
-    --popover-foreground: 213 31% 91%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 222.2 47.4% 11.2%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 223 47% 11%;
-    --muted-foreground: 215.4 16.3% 56.9%;
-    --accent: 216 34% 17%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 216 34% 17%;
-    --input: 216 34% 17%;
-    --ring: 216 34% 17%;
+    /* Near-black background (#0a0a0b) */
+    --background: 240 10% 4%;
+    --foreground: 0 0% 96%;
+    --card: 240 8% 6%;
+    --card-foreground: 0 0% 96%;
+    --popover: 240 8% 7%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 263 70% 65%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 13%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 240 5% 13%;
+    --muted-foreground: 240 5% 60%;
+    --accent: 263 40% 18%;
+    --accent-foreground: 263 70% 85%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 65% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 240 10% 4%;
+    --border: 240 5% 15%;
+    --input: 240 5% 16%;
+    --ring: 263 70% 65%;
 
-    /* Gradient colors - Dark mode (more vivid/neon) */
-    --gradient-1: #818cf8;
-    --gradient-2: #a78bfa;
+    --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.3), 0 1px 3px 0 hsl(0 0% 0% / 0.3);
+    --shadow-md: 0 2px 4px -1px hsl(0 0% 0% / 0.4), 0 4px 12px -2px hsl(0 0% 0% / 0.5);
+    --shadow-lg: 0 8px 24px -4px hsl(0 0% 0% / 0.5), 0 16px 40px -8px hsl(0 0% 0% / 0.6);
+
+    --gradient-1: #a78bfa;
+    --gradient-2: #818cf8;
     --gradient-3: #c084fc;
-    --gradient-4: #e879f9;
-    --gradient-5: #f472b6;
-    --gradient-blue-1: #60a5fa;
-    --gradient-blue-2: #22d3ee;
+    --gradient-4: #a855f7;
+    --gradient-5: #818cf8;
+    --gradient-blue-1: #818cf8;
+    --gradient-blue-2: #a78bfa;
     --gradient-green-1: #34d399;
     --gradient-green-2: #6ee7b7;
     --gradient-orange-1: #fb923c;
@@ -81,6 +100,22 @@
   }
   body {
     @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv11", "ss01";
+  }
+  /* Confident, tightly-tracked headings (Vercel) */
+  h1, h2, h3, h4 {
+    @apply font-semibold tracking-tight;
+    text-wrap: balance;
+  }
+  /* Tabular, mono numerals everywhere numbers matter */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+  ::selection {
+    background-color: hsl(var(--primary) / 0.2);
   }
 }
 
@@ -161,28 +196,31 @@
     animation: gradient-shift 8s ease infinite;
   }
 
-  /* Glow effects */
+  /* Glow effects — toned down to a subtle brand halo (kept for compatibility) */
   .glow-purple {
-    box-shadow: 0 0 40px -10px var(--gradient-2);
+    box-shadow: 0 0 60px -24px hsl(var(--primary) / 0.5);
   }
 
   .glow-blue {
-    box-shadow: 0 0 40px -10px var(--gradient-blue-1);
+    box-shadow: 0 0 60px -24px hsl(var(--primary) / 0.4);
   }
 
-  /* Hero background mesh */
+  /* Hero background mesh — single restrained brand wash */
   .hero-mesh {
     background-image:
-      radial-gradient(at 27% 37%, var(--gradient-1) 0px, transparent 50%),
-      radial-gradient(at 97% 21%, var(--gradient-blue-2) 0px, transparent 50%),
-      radial-gradient(at 52% 99%, var(--gradient-3) 0px, transparent 50%),
-      radial-gradient(at 10% 29%, var(--gradient-blue-1) 0px, transparent 50%),
-      radial-gradient(at 97% 96%, var(--gradient-4) 0px, transparent 50%);
-    opacity: 0.12;
+      radial-gradient(at 30% 20%, var(--gradient-1) 0px, transparent 55%),
+      radial-gradient(at 80% 0%, var(--gradient-2) 0px, transparent 50%);
+    opacity: 0.06;
   }
 
   .dark .hero-mesh {
-    opacity: 0.15;
+    opacity: 0.10;
+  }
+
+  /* Subtle dotted grid backdrop (Vercel-style) */
+  .bg-grid {
+    background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px);
+    background-size: 24px 24px;
   }
 }
 

@@ -41,11 +41,11 @@ interface AnimatedItemProps {
 }
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 12 },
+  hidden: { opacity: 0, y: 10 },
   show: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.25, ease: "easeOut" },
+    transition: { duration: 0.22, ease: [0.16, 1, 0.3, 1] },
   },
 }
 

@@ -234,7 +234,7 @@ export default function SecurityPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Security & Compliance</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Security & Compliance</h1>
           <p className="text-muted-foreground">
             Monitor security posture and compliance status
           </p>
@@ -253,7 +253,7 @@ export default function SecurityPage() {
             <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">82/100</div>
+            <div className="text-2xl font-semibold font-mono tabular-nums">82/100</div>
             <Progress value={82} className="mt-2" />
             <p className="text-xs text-muted-foreground mt-2">
               <span className="text-green-600">+5</span> from last week
@@ -267,7 +267,7 @@ export default function SecurityPage() {
             <AlertTriangle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">{criticalIssues}</div>
+            <div className="text-2xl font-semibold font-mono tabular-nums text-red-600">{criticalIssues}</div>
             <p className="text-xs text-muted-foreground mt-2">
               Require immediate attention
             </p>
@@ -280,7 +280,7 @@ export default function SecurityPage() {
             <XCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{openIssues}</div>
+            <div className="text-2xl font-semibold font-mono tabular-nums">{openIssues}</div>
             <p className="text-xs text-muted-foreground mt-2">
               of {totalIssues} total issues
             </p>
@@ -293,7 +293,7 @@ export default function SecurityPage() {
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">78%</div>
+            <div className="text-2xl font-semibold font-mono tabular-nums">78%</div>
             <p className="text-xs text-muted-foreground mt-2">
               Average across frameworks
             </p>

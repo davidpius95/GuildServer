@@ -339,7 +339,7 @@ export default function ApplicationsPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Applications</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Applications</h1>
           <p className="text-muted-foreground">
             Deploy and manage your applications
           </p>
@@ -368,7 +368,7 @@ export default function ApplicationsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Applications</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Applications</h1>
           <p className="text-muted-foreground">
             Deploy and manage your applications
           </p>

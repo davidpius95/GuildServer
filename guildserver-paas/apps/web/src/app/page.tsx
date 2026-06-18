@@ -72,14 +72,10 @@ export default function HomePage() {
 
       {/* Hero Section */}
       <section className="relative overflow-hidden">
-        {/* Animated mesh background */}
+        {/* Subtle dotted grid + restrained brand wash */}
+        <div className="absolute inset-0 bg-grid [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_60%,transparent_100%)]" />
         <div className="absolute inset-0 hero-mesh" />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/50 to-background" />
-
-        {/* Floating gradient orbs */}
-        <div className="absolute top-20 left-[10%] w-72 h-72 rounded-full bg-[var(--gradient-1)] opacity-[0.07] blur-[100px] animate-pulse-glow" />
-        <div className="absolute top-40 right-[15%] w-96 h-96 rounded-full bg-[var(--gradient-3)] opacity-[0.07] blur-[100px] animate-pulse-glow" style={{ animationDelay: "1.5s" }} />
-        <div className="absolute bottom-10 left-[30%] w-80 h-80 rounded-full bg-[var(--gradient-blue-1)] opacity-[0.05] blur-[100px] animate-pulse-glow" style={{ animationDelay: "3s" }} />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/60 to-background" />
 
         <div className="relative main-container pt-20 pb-24 md:pt-32 md:pb-36">
           <div className="text-center max-w-4xl mx-auto">
@@ -162,19 +158,19 @@ export default function HomePage() {
         <div className="relative main-container py-16">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
             <div className="text-center">
-              <div className="text-4xl md:text-5xl font-bold tracking-tight mb-2 gradient-text">99.9%</div>
+              <div className="font-mono tabular-nums text-4xl md:text-5xl font-semibold tracking-tight mb-2 text-foreground">99.9%</div>
               <p className="text-sm text-muted-foreground">Uptime SLA</p>
             </div>
             <div className="text-center">
-              <div className="text-4xl md:text-5xl font-bold tracking-tight mb-2 gradient-text-blue">&lt;2s</div>
+              <div className="font-mono tabular-nums text-4xl md:text-5xl font-semibold tracking-tight mb-2 text-foreground">&lt;2s</div>
               <p className="text-sm text-muted-foreground">Average Deploy Time</p>
             </div>
             <div className="text-center">
-              <div className="text-4xl md:text-5xl font-bold tracking-tight mb-2 gradient-text-purple">50+</div>
+              <div className="font-mono tabular-nums text-4xl md:text-5xl font-semibold tracking-tight mb-2 text-foreground">50+</div>
               <p className="text-sm text-muted-foreground">Pre-built Templates</p>
             </div>
             <div className="text-center">
-              <div className="text-4xl md:text-5xl font-bold tracking-tight mb-2 gradient-text">24/7</div>
+              <div className="font-mono tabular-nums text-4xl md:text-5xl font-semibold tracking-tight mb-2 text-foreground">24/7</div>
               <p className="text-sm text-muted-foreground">Monitoring & Alerts</p>
             </div>
           </div>

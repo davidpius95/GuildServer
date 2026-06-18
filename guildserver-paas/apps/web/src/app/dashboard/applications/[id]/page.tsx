@@ -355,7 +355,7 @@ export default function ApplicationDetailPage() {
         </Link>
         <div className="flex-1">
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold">{app.appName}</h1>
+            <h1 className="text-3xl font-semibold tracking-tight">{app.appName}</h1>
             <Badge variant="outline" className={getStatusColor(app.status)}>
               {app.status}
             </Badge>
@@ -436,7 +436,7 @@ export default function ApplicationDetailPage() {
               <Cpu className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-2xl font-semibold font-mono tabular-nums">
                 {typeof metrics.cpu?.current === 'number' ? `${metrics.cpu.current.toFixed(1)}%` : 'N/A'}
               </div>
             </CardContent>
@@ -448,7 +448,7 @@ export default function ApplicationDetailPage() {
               <HardDrive className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-2xl font-semibold font-mono tabular-nums">
                 {typeof metrics.memory?.current === 'number' ? `${metrics.memory.current.toFixed(1)} MB` : 'N/A'}
               </div>
             </CardContent>
@@ -460,7 +460,7 @@ export default function ApplicationDetailPage() {
               <Wifi className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-2xl font-semibold font-mono tabular-nums">
                 {typeof metrics.network?.rxBytes === 'number'
                   ? `${(metrics.network.rxBytes / 1024).toFixed(0)} KB`
                   : 'N/A'

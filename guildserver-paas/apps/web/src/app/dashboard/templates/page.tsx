@@ -1125,7 +1125,7 @@ export default function TemplatesPage() {
     <div className="space-y-6">
       {/* Page header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Find your Template</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Find your Template</h1>
         <p className="text-muted-foreground mt-1">
           Jumpstart your app development process with pre-built solutions from GuildServer and our community.
         </p>

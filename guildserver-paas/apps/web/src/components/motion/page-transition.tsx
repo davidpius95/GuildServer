@@ -29,7 +29,7 @@ export function PageTransition({ children, className }: PageTransitionProps) {
       initial="hidden"
       animate="enter"
       exit="exit"
-      transition={{ duration: prefersReduced ? 0 : 0.2, ease: "easeOut" }}
+      transition={{ duration: prefersReduced ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] }}
       className={className}
     >
       {children}

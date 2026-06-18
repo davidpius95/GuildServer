@@ -94,7 +94,7 @@ export default function NotificationsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-3">
+          <h1 className="text-3xl font-semibold tracking-tight flex items-center gap-3">
             <Bell className="h-8 w-8" />
             Notifications
           </h1>
