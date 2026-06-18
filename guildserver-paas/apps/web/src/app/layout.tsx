@@ -10,6 +10,11 @@ export const metadata: Metadata = {
   title: 'GuildServer - Enterprise Platform as a Service',
   description: 'Deploy, manage, and scale your applications with enterprise-grade features',
   keywords: 'PaaS, deployment, containers, kubernetes, enterprise, cloud platform',
+  icons: {
+    icon: '/logo.png',
+    shortcut: '/logo.png',
+    apple: '/logo.png',
+  },
 }
 
 export default function RootLayout({

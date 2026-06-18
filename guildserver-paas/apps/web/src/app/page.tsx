@@ -855,9 +855,7 @@ export default function HomePage() {
             {/* Brand Column */}
             <div className="col-span-2 md:col-span-1">
               <div className="flex items-center gap-2 mb-4">
-                <div className="h-7 w-7 rounded-lg gradient-bg flex items-center justify-center">
-                  <span className="text-white font-bold text-xs">G</span>
-                </div>
+                <img src="/logo.png" alt="GuildServer Logo" className="h-7 w-7 object-contain dark:invert" />
                 <span className="font-bold">GuildServer</span>
               </div>
               <p className="text-sm text-muted-foreground leading-relaxed">
@@ -914,7 +912,7 @@ export default function HomePage() {
 
           <div className="border-t border-border/50 mt-12 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-sm text-muted-foreground">
-              &copy; 2026 GuildServer. All rights reserved.
+              &copy; 2026 GuildTechnologies. All rights reserved.
             </p>
             <div className="flex items-center gap-6 text-sm text-muted-foreground">
               <Link href="#" className="hover:text-foreground transition-colors">GitHub</Link>

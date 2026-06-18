@@ -12,7 +12,7 @@ export default function AuthLayout({
           <div className="mx-auto h-16 w-16 mb-4 flex items-center justify-center">
             <Image src="/logo.png" alt="GuildServer Logo" width={64} height={64} className="object-contain dark:invert" />
           </div>
-          <h1 className="text-2xl font-bold">GuildServer</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">GuildServer</h1>
           <p className="text-muted-foreground">Enterprise Platform as a Service</p>
         </div>
         {children}
