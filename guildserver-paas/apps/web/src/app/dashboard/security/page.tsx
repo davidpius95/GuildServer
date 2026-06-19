@@ -279,6 +279,8 @@ export default function SecurityPage() {
 
   const posture = postureQuery.data
   const scanHistory = scansQuery.data || vulnerabilityScans
+  // Real findings from the live scan (falls back to empty before first load).
+  const issues = (posture?.issues as typeof securityIssues | undefined) || []
 
   const totalIssues = posture ? posture.totalIssues : securityIssues.length
   const criticalIssues = posture ? posture.criticalIssues : securityIssues.filter(i => i.severity === 'critical').length
@@ -301,9 +303,9 @@ export default function SecurityPage() {
         </Button>
       </div>
 
-      {/* Preview notice — this surface currently shows sample data; real scanning is in development */}
-      <div className="rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
-        <strong>Preview:</strong> Security posture and scans shown here use sample data. Live security scanning and remediation are in development.
+      {/* Posture and findings are computed live from your infrastructure. Export & auto-remediation are still in development. */}
+      <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+        Posture and findings are scanned live from your infrastructure. Report export and one-click remediation are coming soon.
       </div>
 
       {/* Security Overview */}
@@ -463,7 +465,7 @@ export default function SecurityPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {securityIssues.map((issue) => (
+                {issues.map((issue) => (
                   <div key={issue.id} className="flex items-start gap-4 p-4 border rounded-lg">
                     <AlertTriangle className={`h-5 w-5 flex-shrink-0 mt-0.5 ${
                       issue.severity === 'critical' ? 'text-red-500' :
@@ -506,9 +508,9 @@ export default function SecurityPage() {
               <h3 className="text-lg font-medium">Security Scans</h3>
               <p className="text-sm text-muted-foreground">Automated security scanning results</p>
             </div>
-            <Button disabled title="Live security scanning is coming soon (preview)">
-              <Scan className="mr-2 h-4 w-4" />
-              Start New Scan (soon)
+            <Button onClick={handleStartScan} disabled={startScan.isLoading}>
+              {startScan.isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Scan className="mr-2 h-4 w-4" />}
+              Start New Scan
             </Button>
           </div>
 

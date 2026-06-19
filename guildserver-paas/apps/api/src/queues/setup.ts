@@ -667,15 +667,27 @@ const deploymentWorker = new Worker(
       });
 
       // 9. Notify user with friendly URL
-      broadcastToUser(userId, {
-        type: "deployment_status",
-        deploymentId,
-        status: "completed",
-        message: `Deployment successful! Access at ${accessUrl}`,
-        url: accessUrl,
-        directUrl: `http://localhost:${result.hostPort}`,
-        containerId: result.containerId,
-      });
+      if (healthResult.healthy) {
+        broadcastToUser(userId, {
+          type: "deployment_status",
+          deploymentId,
+          status: "completed",
+          message: `Deployment successful! Access at ${accessUrl}`,
+          url: accessUrl,
+          directUrl: `http://localhost:${result.hostPort}`,
+          containerId: result.containerId,
+        });
+      } else {
+        broadcastToUser(userId, {
+          type: "deployment_status",
+          deploymentId,
+          status: "unhealthy",
+          message: `Deployment completed but health check failed. The app may still be starting up.`,
+          url: accessUrl,
+          directUrl: `http://localhost:${result.hostPort}`,
+          containerId: result.containerId,
+        });
+      }
 
       // 10. Send notifications (in-app, email, Slack)
       const project = await db.query.projects.findFirst({
