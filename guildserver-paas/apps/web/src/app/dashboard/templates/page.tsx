@@ -915,7 +915,19 @@ function TemplateCard({
     : GRADIENT_MAP.default
 
   return (
-    <Card className="group overflow-hidden border-border/40 hover:border-border/80 transition-all duration-300 hover:shadow-lg hover:shadow-black/10 bg-card">
+    <Card
+      role="button"
+      tabIndex={0}
+      aria-label={`Deploy ${template.name}`}
+      onClick={() => onDeploy(template)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          onDeploy(template)
+        }
+      }}
+      className="group cursor-pointer overflow-hidden border-border/40 hover:border-primary/40 hover:-translate-y-0.5 transition-all duration-300 hover:shadow-lg hover:shadow-black/10 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    >
       {/* Top text section */}
       <CardHeader className="p-4 pb-3">
         <CardTitle className="text-[15px] font-semibold leading-tight line-clamp-1 group-hover:text-primary transition-colors">
