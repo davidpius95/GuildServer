@@ -302,14 +302,14 @@ export default function DatabasesPage() {
           ) : (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {filteredDatabases.map((db: any) => (
-                <Card key={db.id} className="relative">
+                <Card key={db.id} className="relative hover:shadow-md transition-shadow">
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         {getTypeIcon(db.type)}
                         <CardTitle className="text-lg">{db.name}</CardTitle>
                       </div>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(db.id, db.name)}>
+                      <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => handleDelete(db.id, db.name)}>
                         <Trash2 className="h-4 w-4 text-red-500" />
                       </Button>
                     </div>

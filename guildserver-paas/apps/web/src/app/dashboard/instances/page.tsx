@@ -176,7 +176,7 @@ export default function InstancesPage() {
       ) : (
         <div className="space-y-3">
           {instances.map((inst: any) => (
-            <Card key={inst.id}>
+            <Card key={inst.id} className="hover:shadow-md transition-shadow">
               <CardContent className="flex items-center justify-between py-4">
                 <div className="flex items-center gap-4">
                   <Server className="h-5 w-5 text-muted-foreground" />

@@ -48,6 +48,7 @@ import { AppListSkeleton } from "@/components/skeletons/app-list-skeleton"
 import { EmptyState } from "@/components/empty-state"
 import { AnimatedList, AnimatedItem } from "@/components/motion/animated-list"
 import { ResponsiveModal } from "@/components/ui/responsive-modal"
+import { CardLinkOverlay } from "@/components/ui/card-link-overlay"
 
 const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || ""
 
@@ -458,21 +459,22 @@ export default function ApplicationsPage() {
           {filteredApps.map((app: any) => (
             <AnimatedItem key={app.id}>
             <Card
-              className="relative group hover:shadow-md transition-shadow"
-              onMouseEnter={() => {
-                // Prefetch app detail data on hover
-                utils.application.getById.prefetch({ id: app.id })
-              }}
+              className="relative group cursor-pointer hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5 transition-all duration-200"
             >
+              {/* Whole-card click target → opens the application detail page.
+                  Action buttons below sit above this overlay via relative z-10. */}
+              <CardLinkOverlay
+                href={`/dashboard/applications/${app.id}`}
+                label={`Open ${app.appName}`}
+                onMouseEnter={() => utils.application.getById.prefetch({ id: app.id })}
+                onFocus={() => utils.application.getById.prefetch({ id: app.id })}
+              />
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
-                  <Link
-                    href={`/dashboard/applications/${app.id}`}
-                    className="flex items-center gap-2 hover:underline"
-                  >
+                  <div className="flex items-center gap-2">
                     {getStatusIcon(app.status)}
-                    <CardTitle className="text-lg">{app.appName}</CardTitle>
-                  </Link>
+                    <CardTitle className="text-lg group-hover:text-primary transition-colors">{app.appName}</CardTitle>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 mt-1">
                   <Badge
@@ -509,7 +511,8 @@ export default function ApplicationsPage() {
                           href={`https://${primaryDomain.domain}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-blue-500 hover:underline flex items-center gap-1 truncate ml-2"
+                          onClick={(e) => e.stopPropagation()}
+                          className="relative z-10 text-xs text-blue-500 hover:underline flex items-center gap-1 truncate ml-2"
                         >
                           {primaryDomain.domain}
                           <ExternalLink className="h-3 w-3 flex-shrink-0" />
@@ -534,7 +537,7 @@ export default function ApplicationsPage() {
                   </div>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="relative z-10 flex gap-2">
                   <Button
                     variant="default"
                     size="sm"
