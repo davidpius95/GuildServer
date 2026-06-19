@@ -115,7 +115,9 @@ export default function ApplicationsPage() {
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState("")
   const [showCreateModal, setShowCreateModal] = useState(searchParams.get("action") === "create")
-  const [createMode, setCreateMode] = useState<"docker" | "git">("docker")
+  const [createMode, setCreateMode] = useState<"docker" | "git">(
+    searchParams.get("mode") === "git" ? "git" : "docker"
+  )
 
   // Form state
   const [appName, setAppName] = useState("")
@@ -945,7 +947,8 @@ export default function ApplicationsPage() {
                                   size="sm"
                                   variant="outline"
                                   onClick={() => {
-                                    window.location.href = `${API_URL}/auth/${selectedGitProvider}?scope=repo&returnTo=/dashboard/applications`
+                                    const returnUrl = encodeURIComponent("/dashboard/applications?action=create&mode=git")
+                                    window.location.href = `${API_URL}/auth/${selectedGitProvider}?scope=repo&returnTo=${returnUrl}`
                                   }}
                                 >
                                   <Link2 className="mr-1.5 h-3.5 w-3.5" />
@@ -1085,7 +1088,8 @@ export default function ApplicationsPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              window.location.href = `${API_URL}/auth/${selectedGitProvider}?scope=repo&returnTo=/dashboard/applications`
+                              const returnUrl = encodeURIComponent("/dashboard/applications?action=create&mode=git")
+                              window.location.href = `${API_URL}/auth/${selectedGitProvider}?scope=repo&returnTo=${returnUrl}`
                             }}
                           >
                             <Link2 className="mr-1.5 h-3.5 w-3.5" />
