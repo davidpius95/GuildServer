@@ -46,7 +46,7 @@ export function ResponsiveModal({ open, onClose, title, children }: ResponsiveMo
   // Desktop: Centered modal
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <Card className="w-full max-w-lg mx-4">
+      <Card className="w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>{title}</CardTitle>
@@ -59,7 +59,7 @@ export function ResponsiveModal({ open, onClose, title, children }: ResponsiveMo
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-y-auto">
           {children}
         </CardContent>
       </Card>
