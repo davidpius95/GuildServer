@@ -16,6 +16,7 @@ import { setupSwagger } from "./swagger";
 import { webhookRouter } from "./handlers/webhooks";
 import { oauthRouter } from "./handlers/oauth";
 import { stripeWebhookRouter } from "./handlers/stripe-webhooks";
+import { backupsRouter } from "./handlers/backups";
 import { register, httpRequestCounter, httpRequestDuration } from "./services/prometheus-metrics";
 import { AppError } from "./lib/errors";
 
@@ -104,6 +105,9 @@ app.use("/webhooks", webhookRouter);
 
 // OAuth routes (GitHub + Google login)
 app.use("/auth", oauthRouter);
+
+// Database backup download route (token-authed file streaming)
+app.use("/backups", backupsRouter);
 
 // tRPC middleware
 app.use(

@@ -348,9 +348,9 @@ export default function DatabasesPage() {
                         <RefreshCw className="mr-2 h-3 w-3" />
                         Restart
                       </Button>
-                      <Button variant="outline" size="sm" className="flex-1" disabled title="Real backups are coming soon (preview)">
-                        <Download className="mr-2 h-3 w-3" />
-                        Backup (soon)
+                      <Button variant="outline" size="sm" className="flex-1" onClick={() => handleBackup(db.id)} disabled={backupDatabase.isLoading}>
+                        {backupDatabase.isLoading ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Download className="mr-2 h-3 w-3" />}
+                        Backup
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => openSettings(db)}>
                         <Settings className="h-3 w-3" />
@@ -412,20 +412,20 @@ export default function DatabasesPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled
-                          title="Real restore is coming soon (preview)"
+                          onClick={() => handleRestore(backup.id, backup.databaseName)}
+                          disabled={backup.status !== "completed" || restoreDatabase.isLoading}
                         >
                           <Upload className="mr-2 h-4 w-4" />
-                          Restore (soon)
+                          Restore
                         </Button>
                         <Button
                           variant="secondary"
                           size="sm"
-                          disabled
-                          title="Real backup download is coming soon (preview)"
+                          onClick={() => handleDownloadBackup(backup.id)}
+                          disabled={backup.status !== "completed"}
                         >
                           <Download className="mr-2 h-4 w-4" />
-                          Download (soon)
+                          Download
                         </Button>
                       </div>
                     </div>
