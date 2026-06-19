@@ -273,7 +273,7 @@ export const organizationRouter = createTRPCRouter({
       if (!userToInvite) {
         throw new TRPCError({
           code: "NOT_FOUND",
-          message: "User with this email not found in the system.",
+          message: "No GuildServer account exists for this email yet. Ask them to sign up first, then invite them.",
         });
       }
 

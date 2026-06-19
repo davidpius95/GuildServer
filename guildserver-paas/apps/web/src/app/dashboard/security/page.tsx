@@ -301,6 +301,11 @@ export default function SecurityPage() {
         </Button>
       </div>
 
+      {/* Preview notice — this surface currently shows sample data; real scanning is in development */}
+      <div className="rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+        <strong>Preview:</strong> Security posture and scans shown here use sample data. Live security scanning and remediation are in development.
+      </div>
+
       {/* Security Overview */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
@@ -439,7 +444,7 @@ export default function SecurityPage() {
                       <Eye className="mr-2 h-3 w-3" />
                       View Details
                     </Button>
-                    <Button variant="outline" size="sm" className="flex-1" onClick={() => handleExport("pdf")} disabled={exportReport.isLoading}>
+                    <Button variant="outline" size="sm" className="flex-1" disabled title="Report export is coming soon (preview)">
                       {exportReport.isLoading ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Download className="mr-2 h-3 w-3" />}
                       Report
                     </Button>
@@ -483,8 +488,8 @@ export default function SecurityPage() {
                             Discovered {issue.discoveredAt} • Affects: {issue.affectedResources.join(', ')}
                           </div>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => handleFixIssue(issue.id)} disabled={remediate.isLoading}>
-                          {remediate.isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Fix Issue"}
+                        <Button variant="outline" size="sm" disabled title="Auto-remediation is coming soon (preview)">
+                          Fix Issue (soon)
                         </Button>
                       </div>
                     </div>
@@ -501,9 +506,9 @@ export default function SecurityPage() {
               <h3 className="text-lg font-medium">Security Scans</h3>
               <p className="text-sm text-muted-foreground">Automated security scanning results</p>
             </div>
-            <Button onClick={handleStartScan} disabled={startScan.isLoading}>
-              {startScan.isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Scan className="mr-2 h-4 w-4" />}
-              Start New Scan
+            <Button disabled title="Live security scanning is coming soon (preview)">
+              <Scan className="mr-2 h-4 w-4" />
+              Start New Scan (soon)
             </Button>
           </div>
 
@@ -558,7 +563,7 @@ export default function SecurityPage() {
                       <Eye className="mr-2 h-3 w-3" />
                       View Results
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleExport("json")} disabled={exportReport.isLoading}>
+                    <Button variant="outline" size="sm" disabled title="Report export is coming soon (preview)">
                       {exportReport.isLoading ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Download className="mr-2 h-3 w-3" />}
                       Export
                     </Button>

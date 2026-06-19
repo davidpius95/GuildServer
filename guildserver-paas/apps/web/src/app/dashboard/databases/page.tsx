@@ -348,9 +348,9 @@ export default function DatabasesPage() {
                         <RefreshCw className="mr-2 h-3 w-3" />
                         Restart
                       </Button>
-                      <Button variant="outline" size="sm" className="flex-1" onClick={() => handleBackup(db.id)} disabled={backupDatabase.isLoading}>
-                        {backupDatabase.isLoading ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Download className="mr-2 h-3 w-3" />}
-                        Backup
+                      <Button variant="outline" size="sm" className="flex-1" disabled title="Real backups are coming soon (preview)">
+                        <Download className="mr-2 h-3 w-3" />
+                        Backup (soon)
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => openSettings(db)}>
                         <Settings className="h-3 w-3" />
@@ -409,23 +409,23 @@ export default function DatabasesPage() {
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => handleRestore(backup.id, backup.databaseName)}
-                          disabled={backup.status !== "completed" || restoreDatabase.isLoading}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled
+                          title="Real restore is coming soon (preview)"
                         >
                           <Upload className="mr-2 h-4 w-4" />
-                          Restore
+                          Restore (soon)
                         </Button>
-                        <Button 
-                          variant="secondary" 
-                          size="sm" 
-                          onClick={() => handleDownloadBackup(backup.id)}
-                          disabled={backup.status !== "completed"}
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled
+                          title="Real backup download is coming soon (preview)"
                         >
                           <Download className="mr-2 h-4 w-4" />
-                          Download
+                          Download (soon)
                         </Button>
                       </div>
                     </div>

@@ -4,6 +4,9 @@ import { createTRPCRouter, protectedProcedure } from "../trpc/trpc";
 import { databases, projects, members, databaseBackups } from "@guildserver/database";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { DatabaseBackupService } from "../services/db-backup";
+import { provisionDatabaseContainer } from "../services/database-provision";
+import { restartContainer, removeExistingContainers } from "../services/docker/container";
+import { logger } from "../utils/logger";
 
 const createDatabaseSchema = z.object({
   name: z.string().min(1),
@@ -127,15 +130,38 @@ export const databaseRouter = createTRPCRouter({
         .values({
           ...input,
           dockerImage: input.dockerImage || defaultImages[input.type],
-          environment: {
-            [`${input.type.toUpperCase()}_DB`]: input.databaseName,
-            [`${input.type.toUpperCase()}_USER`]: input.username,
-            [`${input.type.toUpperCase()}_PASSWORD`]: input.password,
-          },
+          status: "provisioning",
         })
         .returning();
 
-      return newDatabase;
+      // Provision and start a real container for the database.
+      try {
+        const { hostPort } = await provisionDatabaseContainer({
+          databaseId: newDatabase.id,
+          name: newDatabase.name,
+          type: input.type,
+          dockerImage: newDatabase.dockerImage,
+          databaseName: input.databaseName,
+          username: input.username,
+          password: input.password,
+        });
+        const [updated] = await ctx.db
+          .update(databases)
+          .set({ externalPort: hostPort, status: "running", updatedAt: new Date() })
+          .where(eq(databases.id, newDatabase.id))
+          .returning();
+        return updated;
+      } catch (err: any) {
+        logger.error(`Database provisioning failed for ${newDatabase.id}: ${err.message}`);
+        await ctx.db
+          .update(databases)
+          .set({ status: "error", updatedAt: new Date() })
+          .where(eq(databases.id, newDatabase.id));
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Database created but failed to start: ${err.message}`,
+        });
+      }
     }),
 
   update: protectedProcedure
@@ -208,6 +234,13 @@ export const databaseRouter = createTRPCRouter({
         });
       }
 
+      // Remove the running container before deleting the record.
+      try {
+        await removeExistingContainers(input.id);
+      } catch (err: any) {
+        logger.warn(`Failed to remove container for database ${input.id}: ${err.message}`);
+      }
+
       await ctx.db.delete(databases).where(eq(databases.id, input.id));
 
       return { success: true };
@@ -241,8 +274,18 @@ export const databaseRouter = createTRPCRouter({
         });
       }
 
-      // TODO: Implement real database restart
-      return { success: true, message: "Database restart initiated" };
+      const restarted = await restartContainer(input.id);
+      if (!restarted) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "No running container found for this database.",
+        });
+      }
+      await ctx.db
+        .update(databases)
+        .set({ status: "running", updatedAt: new Date() })
+        .where(eq(databases.id, input.id));
+      return { success: true, message: "Database restarted successfully" };
     }),
 
   getConnectionInfo: protectedProcedure

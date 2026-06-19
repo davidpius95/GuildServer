@@ -307,13 +307,13 @@ export default function WorkflowsPage() {
                     </div>
 
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm" className="flex-1" onClick={() => handleRun(workflow)} disabled={executeWorkflow.isLoading}>
+                      <Button variant="outline" size="sm" className="flex-1" disabled title="Workflow execution engine is coming soon (preview)">
                         <Play className="mr-2 h-3 w-3" />
-                        Run
+                        Run (soon)
                       </Button>
-                      <Button variant="outline" size="sm" className="flex-1" onClick={() => {}}>
+                      <Button variant="outline" size="sm" className="flex-1" disabled title="Editing workflows is coming soon (preview)">
                         <Edit className="mr-2 h-3 w-3" />
-                        Edit
+                        Edit (soon)
                       </Button>
                     </div>
                   </CardContent>
