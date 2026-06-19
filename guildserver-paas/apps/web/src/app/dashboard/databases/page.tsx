@@ -78,15 +78,15 @@ export default function DatabasesPage() {
 
   const utils = trpc.useUtils()
 
-  const databasesQuery = trpc.database.list.useQuery(
-    { projectId },
-    { enabled: isValidUUID(projectId), refetchInterval: 30000 }
+  const databasesQuery = trpc.database.listByOrg.useQuery(
+    { organizationId: orgId },
+    { enabled: isValidUUID(orgId), refetchInterval: 30000 }
   )
 
   const createDatabase = trpc.database.create.useMutation({
     onSuccess: () => {
       toast.success("Database created!")
-      utils.database.list.invalidate()
+      utils.database.listByOrg.invalidate({ organizationId: orgId })
       setShowCreateModal(false)
       resetForm()
     },
@@ -96,7 +96,7 @@ export default function DatabasesPage() {
   const restartDatabase = trpc.database.restart.useMutation({
     onSuccess: () => {
       toast.success("Database restart initiated!")
-      utils.database.list.invalidate()
+      utils.database.listByOrg.invalidate({ organizationId: orgId })
     },
     onError: (err) => toast.error(err.message),
   })
@@ -104,7 +104,7 @@ export default function DatabasesPage() {
   const deleteDatabase = trpc.database.delete.useMutation({
     onSuccess: () => {
       toast.success("Database deleted!")
-      utils.database.list.invalidate()
+      utils.database.listByOrg.invalidate({ organizationId: orgId })
     },
     onError: (err) => toast.error(err.message),
   })
@@ -112,21 +112,21 @@ export default function DatabasesPage() {
   const updateDatabase = trpc.database.update.useMutation({
     onSuccess: () => {
       toast.success("Database updated!")
-      utils.database.list.invalidate()
+      utils.database.listByOrg.invalidate({ organizationId: orgId })
       setShowSettingsModal(false)
     },
     onError: (err) => toast.error(err.message),
   })
 
-  const backupsQuery = trpc.database.listBackups.useQuery(
-    { projectId },
-    { enabled: isValidUUID(projectId), refetchInterval: 30000 }
+  const backupsQuery = trpc.database.listBackupsByOrg.useQuery(
+    { organizationId: orgId },
+    { enabled: isValidUUID(orgId), refetchInterval: 30000 }
   )
 
   const backupDatabase = trpc.database.backup.useMutation({
     onSuccess: () => {
       toast.success("Backup started!")
-      utils.database.listBackups.invalidate()
+      utils.database.listBackupsByOrg.invalidate({ organizationId: orgId })
     },
     onError: (err) => toast.error(err.message),
   })
@@ -134,7 +134,7 @@ export default function DatabasesPage() {
   const restoreDatabase = trpc.database.restore.useMutation({
     onSuccess: () => {
       toast.success("Restore started!")
-      utils.database.listBackups.invalidate()
+      utils.database.listBackupsByOrg.invalidate({ organizationId: orgId })
     },
     onError: (err) => toast.error(err.message),
   })

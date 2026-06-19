@@ -148,9 +148,9 @@ function DomainRow({ domain, appId, isPrimary, removeDomain, setPrimaryDomain, v
               variant="outline"
               size="sm"
               onClick={() => verifyDomain.mutate({ id: domain.id, applicationId: appId })}
-              disabled={verifyDomain.isLoading}
+              disabled={verifyDomain.isPending}
             >
-              {verifyDomain.isLoading && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+              {verifyDomain.isPending && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
               Verify
             </Button>
           )}
@@ -467,7 +467,7 @@ export default function ApplicationDetailPage() {
     }
   }, [deploymentStream.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (appQuery.isLoading) {
+  if (appQuery.isPending) {
     return <AppDetailSkeleton />
   }
 
@@ -523,9 +523,9 @@ export default function ApplicationDetailPage() {
         <div className="flex gap-2">
           <Button
             onClick={() => deployApp.mutate({ id: appId })}
-            disabled={deployApp.isLoading}
+            disabled={deployApp.isPending}
           >
-            {deployApp.isLoading ? (
+            {deployApp.isPending ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <Rocket className="mr-2 h-4 w-4" />
@@ -535,7 +535,7 @@ export default function ApplicationDetailPage() {
           <Button
             variant="outline"
             onClick={() => restartApp.mutate({ id: appId })}
-            disabled={restartApp.isLoading}
+            disabled={restartApp.isPending}
           >
             <RefreshCw className="mr-2 h-4 w-4" />
             Restart
@@ -978,9 +978,9 @@ export default function ApplicationDetailPage() {
                         isSecret: newEnvSecret,
                       })
                     }}
-                    disabled={setEnvVar.isLoading}
+                    disabled={setEnvVar.isPending}
                   >
-                    {setEnvVar.isLoading ? (
+                    {setEnvVar.isPending ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
                       <Plus className="mr-2 h-4 w-4" />
@@ -1017,9 +1017,9 @@ export default function ApplicationDetailPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => generateAutoUrl.mutate({ applicationId: appId })}
-                  disabled={generateAutoUrl.isLoading}
+                  disabled={generateAutoUrl.isPending}
                 >
-                  {generateAutoUrl.isLoading ? (
+                  {generateAutoUrl.isPending ? (
                     <Loader2 className="mr-2 h-3 w-3 animate-spin" />
                   ) : (
                     <Link2 className="mr-2 h-3 w-3" />
@@ -1075,9 +1075,9 @@ export default function ApplicationDetailPage() {
                         isPrimary: appDomains.length === 0,
                       })
                     }}
-                    disabled={addDomain.isLoading}
+                    disabled={addDomain.isPending}
                   >
-                    {addDomain.isLoading ? (
+                    {addDomain.isPending ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
                       <Plus className="mr-2 h-4 w-4" />
@@ -1302,7 +1302,7 @@ export default function ApplicationDetailPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {webhookUrlQuery.isLoading ? (
+              {webhookUrlQuery.isPending ? (
                 <div className="flex items-center justify-center py-4">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
@@ -1429,7 +1429,7 @@ export default function ApplicationDetailPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {webhookDeliveriesQuery.isLoading ? (
+              {webhookDeliveriesQuery.isPending ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>

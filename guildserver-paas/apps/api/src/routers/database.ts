@@ -62,6 +62,47 @@ export const databaseRouter = createTRPCRouter({
       return projectDatabases;
     }),
 
+  listByOrg: protectedProcedure
+    .input(z.object({ organizationId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      // Check if user has access to the organization
+      const member = await ctx.db.query.members.findFirst({
+        where: and(
+          eq(members.organizationId, input.organizationId),
+          eq(members.userId, ctx.user.id)
+        ),
+      });
+
+      if (!member) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You don't have access to this organization",
+        });
+      }
+
+      // Get all projects in the organization
+      const orgProjects = await ctx.db.query.projects.findMany({
+        where: eq(projects.organizationId, input.organizationId),
+        columns: { id: true },
+      });
+
+      if (orgProjects.length === 0) {
+        return [];
+      }
+
+      const projectIds = orgProjects.map((p) => p.id);
+
+      const orgDatabases = await ctx.db.query.databases.findMany({
+        where: inArray(databases.projectId, projectIds),
+        orderBy: [desc(databases.createdAt)],
+        with: {
+          project: true,
+        },
+      });
+
+      return orgDatabases;
+    }),
+
   getById: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
@@ -402,6 +443,54 @@ export const databaseRouter = createTRPCRouter({
       return backups.map(backup => ({
         ...backup,
         databaseName: projectDatabases.find(db => db.id === backup.databaseId)?.name || "Unknown",
+      }));
+    }),
+
+  listBackupsByOrg: protectedProcedure
+    .input(z.object({ organizationId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      // Check if user has access to the organization
+      const member = await ctx.db.query.members.findFirst({
+        where: and(
+          eq(members.organizationId, input.organizationId),
+          eq(members.userId, ctx.user.id)
+        ),
+      });
+
+      if (!member) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You don't have access to this organization",
+        });
+      }
+
+      // Get all projects in the organization
+      const orgProjects = await ctx.db.query.projects.findMany({
+        where: eq(projects.organizationId, input.organizationId),
+        columns: { id: true },
+      });
+
+      if (orgProjects.length === 0) {
+        return [];
+      }
+
+      const projectIds = orgProjects.map((p) => p.id);
+
+      const orgDatabases = await ctx.db.query.databases.findMany({
+        where: inArray(databases.projectId, projectIds),
+      });
+
+      const dbIds = orgDatabases.map(db => db.id);
+      if (dbIds.length === 0) return [];
+
+      const backups = await ctx.db.query.databaseBackups.findMany({
+        where: inArray(databaseBackups.databaseId, dbIds),
+        orderBy: [desc(databaseBackups.createdAt)],
+      });
+
+      return backups.map(backup => ({
+        ...backup,
+        databaseName: orgDatabases.find(db => db.id === backup.databaseId)?.name || "Unknown",
       }));
     }),
 

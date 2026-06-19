@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure, enforcePlanLimit } from "../trpc/trpc";
 import { applications, projects, members, deployments, computeProviders, oauthAccounts } from "@guildserver/database";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { deploymentQueue } from "../queues/deployment";
 import {
   restartContainer,
@@ -99,6 +99,49 @@ export const applicationRouter = createTRPCRouter({
         orderBy: [desc(applications.createdAt)],
         with: {
           domains: true,
+        },
+      });
+
+      // Never expose stored registry credentials to the client
+      return projectApplications.map(({ registryPassword, ...app }) => app);
+    }),
+
+  listByOrg: protectedProcedure
+    .input(z.object({ organizationId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      // Check if user has access to the organization
+      const member = await ctx.db.query.members.findFirst({
+        where: and(
+          eq(members.organizationId, input.organizationId),
+          eq(members.userId, ctx.user.id)
+        ),
+      });
+
+      if (!member) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You don't have access to this organization",
+        });
+      }
+
+      // Get all projects in the organization
+      const orgProjects = await ctx.db.query.projects.findMany({
+        where: eq(projects.organizationId, input.organizationId),
+        columns: { id: true },
+      });
+
+      if (orgProjects.length === 0) {
+        return [];
+      }
+
+      const projectIds = orgProjects.map((p) => p.id);
+
+      const projectApplications = await ctx.db.query.applications.findMany({
+        where: inArray(applications.projectId, projectIds),
+        orderBy: [desc(applications.createdAt)],
+        with: {
+          domains: true,
+          project: true,
         },
       });
 

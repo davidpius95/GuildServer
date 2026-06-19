@@ -153,10 +153,10 @@ export default function ApplicationsPage() {
   const isValidUUID = (s: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
 
-  // Real data queries - only fetch when we have a valid project UUID
-  const appsQuery = trpc.application.list.useQuery(
-    { projectId },
-    { enabled: isValidUUID(projectId), refetchInterval: 30000 }
+  // Real data queries - only fetch when we have a valid org UUID
+  const appsQuery = trpc.application.listByOrg.useQuery(
+    { organizationId: orgId },
+    { enabled: isValidUUID(orgId), refetchInterval: 30000 }
   )
 
   const utils = trpc.useUtils()
@@ -165,7 +165,7 @@ export default function ApplicationsPage() {
   const createApp = trpc.application.create.useMutation({
     onSuccess: () => {
       toast.success("Application created!")
-      utils.application.list.invalidate()
+      utils.application.listByOrg.invalidate({ organizationId: orgId })
       setShowCreateModal(false)
       resetForm()
     },
@@ -175,9 +175,9 @@ export default function ApplicationsPage() {
   const deployApp = trpc.application.deploy.useMutation({
     // Optimistic: immediately show "deploying" status
     onMutate: async ({ id }) => {
-      await utils.application.list.cancel()
-      const previous = utils.application.list.getData({ projectId })
-      utils.application.list.setData({ projectId }, (old: any) =>
+      await utils.application.listByOrg.cancel()
+      const previous = utils.application.listByOrg.getData({ organizationId: orgId })
+      utils.application.listByOrg.setData({ organizationId: orgId }, (old: any) =>
         old?.map((a: any) => (a.id === id ? { ...a, status: "deploying" } : a))
       )
       return { previous }
@@ -186,16 +186,16 @@ export default function ApplicationsPage() {
       toast.success("Deployment started!")
     },
     onError: (err, _vars, ctx: any) => {
-      if (ctx?.previous) utils.application.list.setData({ projectId }, ctx.previous)
+      if (ctx?.previous) utils.application.listByOrg.setData({ organizationId: orgId }, ctx.previous)
       toast.error(err.message)
     },
-    onSettled: () => utils.application.list.invalidate(),
+    onSettled: () => utils.application.listByOrg.invalidate({ organizationId: orgId }),
   })
 
   const restartApp = trpc.application.restart.useMutation({
     onSuccess: () => {
       toast.success("Application restarted!")
-      utils.application.list.invalidate()
+      utils.application.listByOrg.invalidate({ organizationId: orgId })
     },
     onError: (err) => toast.error(err.message),
   })
@@ -203,9 +203,9 @@ export default function ApplicationsPage() {
   const deleteApp = trpc.application.delete.useMutation({
     // Optimistic: remove from list immediately
     onMutate: async ({ id }) => {
-      await utils.application.list.cancel()
-      const previous = utils.application.list.getData({ projectId })
-      utils.application.list.setData({ projectId }, (old: any) =>
+      await utils.application.listByOrg.cancel()
+      const previous = utils.application.listByOrg.getData({ organizationId: orgId })
+      utils.application.listByOrg.setData({ organizationId: orgId }, (old: any) =>
         old?.filter((a: any) => a.id !== id)
       )
       return { previous }
@@ -214,10 +214,10 @@ export default function ApplicationsPage() {
       toast.success("Application deleted!")
     },
     onError: (err, _vars, ctx: any) => {
-      if (ctx?.previous) utils.application.list.setData({ projectId }, ctx.previous)
+      if (ctx?.previous) utils.application.listByOrg.setData({ organizationId: orgId }, ctx.previous)
       toast.error(err.message)
     },
-    onSettled: () => utils.application.list.invalidate(),
+    onSettled: () => utils.application.listByOrg.invalidate({ organizationId: orgId }),
   })
 
   // Git Provider integration queries
