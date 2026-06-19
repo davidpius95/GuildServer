@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, publicProcedure, protectedProcedure } from "../trpc/trpc";
 import {
   plans,
+  instanceTypes,
   subscriptions,
   invoices,
   usageRecords,
@@ -41,6 +42,32 @@ export const billingRouter = createTRPCRouter({
       limits: plan.limits as Record<string, number>,
       features: plan.features as Record<string, boolean>,
       sortOrder: plan.sortOrder,
+    }));
+  }),
+
+  /**
+   * Get the VPS instance catalog (public — visible on pricing page).
+   */
+  getInstanceTypes: publicProcedure.query(async ({ ctx }) => {
+    const types = await ctx.db.query.instanceTypes.findMany({
+      where: eq(instanceTypes.isActive, true),
+      orderBy: (t, { asc }) => [asc(t.sortOrder)],
+    });
+
+    return types.map((t) => ({
+      id: t.id,
+      slug: t.slug,
+      name: t.name,
+      family: t.family,
+      description: t.description,
+      vcpu: Number(t.vcpu),
+      ramMb: t.ramMb,
+      storageGb: t.storageGb,
+      transferTb: t.transferTb,
+      priceMonthly: t.priceMonthly, // cents
+      // Hourly stored as micro-cents (millionths of a cent) → expose cents for the UI.
+      priceHourlyCents: t.priceHourlyMicro / 1_000_000,
+      sortOrder: t.sortOrder,
     }));
   }),
 

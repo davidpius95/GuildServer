@@ -12,6 +12,7 @@ import { appRouter } from "./trpc/router";
 import { logger } from "./utils/logger";
 import { createWebSocketServer } from "./websocket/server";
 import { initializeQueues } from "./queues/setup";
+import "./queues/instances"; // self-contained instance provisioning queue/worker
 import { setupSwagger } from "./swagger";
 import { webhookRouter } from "./handlers/webhooks";
 import { oauthRouter } from "./handlers/oauth";

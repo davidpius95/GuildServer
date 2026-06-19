@@ -136,20 +136,35 @@ export function buildForwardingInstructions(input: {
 
   return {
     method: "redirect" as const,
+    summary: `Forward ${input.domain} to ${targetUrl} with a 301 redirect.`,
+    description:
+      `URL forwarding tells your registrar to send anyone who visits ${input.domain} ` +
+      `to your app's secure GuildServer address (${targetUrl}). Your app keeps running at ` +
+      `that address — the registrar just bounces visitors there. After you save the redirect ` +
+      `record below, come back and click Verify so we can confirm it's working. ` +
+      `Note: with forwarding, the GuildServer address shows in the browser bar; choose "Connect via DNS" ` +
+      `instead if you want ${input.domain} to stay in the bar with its own SSL certificate.`,
     isWildcard,
     isApex,
-    registrars,
+    registrars: registrars.map((r) => ({
+      ...r,
+      docUrl: REGISTRAR_DOC_URLS[r.name]?.forwarding,
+    })),
     generic: genericSteps,
   };
 }
 
 export interface DnsInstructionsResult {
   method: "dns";
+  /** Short one-line summary of the approach. */
+  summary: string;
+  /** Longer explanation of what is happening and what the user must do. */
+  description: string;
   isWildcard: boolean;
   isApex: boolean;
   /** The DNS record the user must create at their registrar. */
   record: { type: "CNAME" | "A"; name: string; value: string };
-  registrars: Array<{ name: string; steps: string[]; notes?: string }>;
+  registrars: RegistrarInstruction[];
 }
 
 /**
@@ -237,11 +252,27 @@ export function buildDnsInstructions(input: {
     },
   ];
 
+  const description =
+    `Connecting via DNS points ${input.domain} directly at your app so the domain stays ` +
+    `in the browser's address bar with its own automatically-issued SSL certificate. ` +
+    `Add the ${record.type} record shown below in your domain registrar's DNS settings ` +
+    (record.type === "A"
+      ? `(apex/root domains need an A record because CNAMEs aren't allowed at the root). `
+      : `(this points the subdomain at your app's GuildServer host). `) +
+    `DNS changes can take a few minutes to ~1 hour to propagate. Once you've saved the record, ` +
+    `click Verify — we'll confirm it resolves to our servers, then you redeploy the app once to ` +
+    `start serving the domain (and a free Let's Encrypt certificate is issued automatically).`;
+
   return {
     method: "dns",
+    summary: `Add a ${record.type} record: ${record.name} → ${record.value}`,
+    description,
     isWildcard,
     isApex,
     record,
-    registrars,
+    registrars: registrars.map((r) => ({
+      ...r,
+      docUrl: REGISTRAR_DOC_URLS[r.name]?.dns,
+    })),
   };
 }

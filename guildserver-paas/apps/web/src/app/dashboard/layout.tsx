@@ -36,6 +36,7 @@ const navigation = [
   { name: "Applications", href: "/dashboard/applications", icon: Rocket },
   { name: "Deployments", href: "/dashboard/deployments", icon: History },
   { name: "Databases", href: "/dashboard/databases", icon: Database },
+  { name: "VPS Instances", href: "/dashboard/instances", icon: Server },
   { name: "Templates", href: "/dashboard/templates", icon: Boxes },
   { name: "Workflows", href: "/dashboard/workflows", icon: Workflow },
   { name: "Monitoring", href: "/dashboard/monitoring", icon: BarChart3 },

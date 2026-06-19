@@ -36,6 +36,75 @@ function normalizeHostname(hostname: string): string {
   return normalized;
 }
 
+export interface VerifyDnsOptions {
+  domain: string;
+  /** Canonical host the CNAME should point at, e.g. "myapp.guildserver.io". */
+  cnameTarget: string;
+  /** Known public IPs of our server (resolved from BASE_DOMAIN). */
+  serverIps: string[];
+}
+
+export interface VerifyDnsResult {
+  status: "active" | "failed";
+  reason?: string;
+  /** What the domain currently resolves to, for surfacing in errors. */
+  resolved?: string[];
+}
+
+/**
+ * Verifies a "vanity" custom domain by checking its DNS points at our server:
+ *  - a CNAME whose target matches the canonical app host, OR
+ *  - A records that overlap with the server's IPs (covers apex A records and
+ *    CNAMEs that resolve through to us).
+ */
+export async function verifyDns(opts: VerifyDnsOptions): Promise<VerifyDnsResult> {
+  // For wildcard domains, verify against a concrete sample host under it.
+  const base = opts.domain.startsWith("*.") ? opts.domain.slice(2) : opts.domain;
+  const hostname = normalizeHostname(base);
+  const expectedCname = normalizeHostname(opts.cnameTarget);
+
+  // 1. CNAME match (typical for subdomains).
+  try {
+    const cnames = await dns.resolveCname(hostname);
+    const normalized = cnames.map(normalizeHostname);
+    if (normalized.includes(expectedCname)) {
+      return { status: "active", resolved: cnames };
+    }
+  } catch {
+    // No CNAME record (e.g. apex A record) — fall through to IP check.
+  }
+
+  // 2. A-record / resolved-IP match (covers apex A records and CNAME chains).
+  try {
+    const ips = await dns.resolve4(hostname);
+    if (opts.serverIps.length > 0 && ips.some((ip) => opts.serverIps.includes(ip))) {
+      return { status: "active", resolved: ips };
+    }
+    if (ips.length > 0) {
+      return {
+        status: "failed",
+        resolved: ips,
+        reason: opts.serverIps.length
+          ? `${hostname} resolves to ${ips.join(", ")} but should point to ${opts.serverIps.join(", ")}`
+          : `${hostname} resolves to ${ips.join(", ")}; could not determine our server IP to compare`,
+      };
+    }
+  } catch (e: any) {
+    if (e?.code === "ENOTFOUND" || e?.code === "ENODATA") {
+      return {
+        status: "failed",
+        reason: `No DNS records found for ${hostname} yet. Add the record and allow time to propagate.`,
+      };
+    }
+    return { status: "failed", reason: `DNS lookup failed: ${e?.message || "unknown error"}` };
+  }
+
+  return {
+    status: "failed",
+    reason: `${hostname} is not pointing to our servers yet. Check the record and DNS propagation.`,
+  };
+}
+
 export async function verifyRedirect(
   opts: VerifyRedirectOptions
 ): Promise<VerifyRedirectResult> {

@@ -108,7 +108,16 @@ export const providerStatusEnum = pgEnum("provider_status", [
 ]);
 
 // Billing enums
-export const planSlugEnum = pgEnum("plan_slug", ["hobby", "pro", "enterprise"]);
+export const planSlugEnum = pgEnum("plan_slug", ["hobby", "starter", "pro", "enterprise"]);
+export const instanceFamilyEnum = pgEnum("instance_family", ["shared", "dedicated"]);
+export const instanceStatusEnum = pgEnum("instance_status", [
+  "pending",
+  "provisioning",
+  "active",
+  "stopped",
+  "error",
+  "terminated",
+]);
 export const subscriptionStatusEnum = pgEnum("subscription_status", [
   "active",
   "trialing",
@@ -622,6 +631,82 @@ export const plans = pgTable("plans", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// VPS instance types (the IaaS catalog — sized compute, seeded not user-created)
+export const instanceTypes = pgTable("instance_types", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: varchar("slug", { length: 64 }).notNull().unique(), // e.g. "gs-s3"
+  name: varchar("name", { length: 255 }).notNull(),
+  family: instanceFamilyEnum("family").notNull(), // shared | dedicated
+  description: text("description"),
+
+  // Specs
+  vcpu: decimal("vcpu").notNull(),            // vCPU cores (supports fractional)
+  ramMb: integer("ram_mb").notNull(),         // RAM in MB
+  storageGb: integer("storage_gb").notNull(), // NVMe storage in GB
+  transferTb: integer("transfer_tb").notNull(), // included egress in TB
+
+  // Pricing (cents). priceHourly is stored as micro-cents (1e-6 USD) for sub-cent precision.
+  priceMonthly: integer("price_monthly").notNull(),     // cents
+  priceHourlyMicro: integer("price_hourly_micro").notNull(), // micro-cents per hour
+
+  stripePriceIdMonthly: varchar("stripe_price_id_monthly", { length: 255 }),
+  stripePriceIdHourly: varchar("stripe_price_id_hourly", { length: 255 }),
+
+  sortOrder: integer("sort_order").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Provisioned VPS instances (user-created compute)
+export const instances = pgTable("instances", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  instanceTypeId: uuid("instance_type_id").references(() => instanceTypes.id, { onDelete: "restrict" }),
+  providerId: uuid("provider_id").references(() => computeProviders.id, { onDelete: "set null" }),
+
+  region: varchar("region", { length: 64 }).default("default"),
+  billingPeriod: varchar("billing_period", { length: 16 }).default("monthly"), // monthly | hourly
+
+  // Optional add-ons captured at provision time
+  extraStorageGb: integer("extra_storage_gb").default(0),
+  backupsEnabled: boolean("backups_enabled").default(false),
+
+  status: instanceStatusEnum("status").default("pending"),
+  hostname: varchar("hostname", { length: 255 }),
+  ipv4: inet("ipv4"),
+  statusMessage: text("status_message"),
+
+  // Backing resource (Proxmox LXC) — used to manage/destroy the real instance
+  vmid: integer("vmid"),
+  node: varchar("node", { length: 128 }),
+
+  // Stripe billing
+  stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  organizationIdIdx: index("instances_organization_id_idx").on(table.organizationId),
+  statusIdx: index("instances_status_idx").on(table.status),
+}));
+
+export const instancesRelations = relations(instances, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [instances.organizationId],
+    references: [organizations.id],
+  }),
+  instanceType: one(instanceTypes, {
+    fields: [instances.instanceTypeId],
+    references: [instanceTypes.id],
+  }),
+  provider: one(computeProviders, {
+    fields: [instances.providerId],
+    references: [computeProviders.id],
+  }),
+}));
 
 // Subscriptions (links an organization to a plan)
 export const subscriptions = pgTable("subscriptions", {
