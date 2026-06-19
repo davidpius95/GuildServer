@@ -408,11 +408,17 @@ export const domains = pgTable("domains", {
 
   // DNS verification
   verificationToken: varchar("verification_token", { length: 255 }),
-  verificationMethod: varchar("verification_method", { length: 50 }).default("cname"), // cname, txt
+  verificationMethod: varchar("verification_method", { length: 50 }).default("cname"), // cname, txt, redirect
   verified: boolean("verified").default(false),
 
   // Status
   status: domainStatusEnum("status").default("pending"),
+
+  // Redirect alias specifics
+  redirectsTo: varchar("redirects_to", { length: 255 }),
+  lastCheckedAt: timestamp("last_checked_at"),
+  verificationError: text("verification_error"),
+  lastHttpStatus: integer("last_http_status"),
 
   // SSL/TLS
   certificateId: uuid("certificate_id"),
