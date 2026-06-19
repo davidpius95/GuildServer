@@ -31,11 +31,11 @@ export function ResponsiveModal({ open, onClose, title, children }: ResponsiveMo
   if (isMobile) {
     return (
       <Drawer open={open} onOpenChange={(o) => !o && onClose()}>
-        <DrawerContent className="max-h-[90vh]">
-          <DrawerHeader>
+        <DrawerContent className="max-h-[90vh] flex flex-col">
+          <DrawerHeader className="shrink-0">
             <DrawerTitle>{title}</DrawerTitle>
           </DrawerHeader>
-          <div className="px-4 pb-6 overflow-y-auto">
+          <div className="px-4 pb-6 overflow-y-auto flex-1 min-h-0">
             {children}
           </div>
         </DrawerContent>
@@ -45,9 +45,9 @@ export function ResponsiveModal({ open, onClose, title, children }: ResponsiveMo
 
   // Desktop: Centered modal
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <Card className="w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
-        <CardHeader>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <Card className="w-full max-w-lg max-h-[90vh] flex flex-col">
+        <CardHeader className="shrink-0">
           <div className="flex items-center justify-between">
             <CardTitle>{title}</CardTitle>
             <Button
@@ -59,7 +59,7 @@ export function ResponsiveModal({ open, onClose, title, children }: ResponsiveMo
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="overflow-y-auto">
+        <CardContent className="overflow-y-auto flex-1 min-h-0 relative">
           {children}
         </CardContent>
       </Card>
