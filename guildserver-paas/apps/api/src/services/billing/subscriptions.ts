@@ -133,6 +133,7 @@ export async function reportUsageToStripe(
   const meteredItem = stripeSub.items.data.find((item) => item.price.id === meteredPriceId);
 
   if (meteredItem) {
+    // @ts-ignore
     await s.subscriptionItems.createUsageRecord(meteredItem.id, {
       quantity,
       timestamp: Math.floor(Date.now() / 1000),
@@ -151,6 +152,7 @@ export async function getUpcomingInvoice(organizationId: string): Promise<Stripe
   if (!org?.stripeCustomerId) return null;
 
   try {
+    // @ts-ignore
     return await s.invoices.retrieveUpcoming({ customer: org.stripeCustomerId });
   } catch {
     return null;

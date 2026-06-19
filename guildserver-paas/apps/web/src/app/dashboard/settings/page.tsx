@@ -36,6 +36,8 @@ import {
 import { trpc } from "@/components/trpc-provider"
 import { useOrganization } from "@/hooks/use-auth"
 import { toast } from "sonner"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { useRouter } from "next/navigation"
 
 const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || ""
 
@@ -117,12 +119,14 @@ const NOTIFICATION_EVENT_CONFIG: Record<string, { label: string; description: st
 }
 
 export default function SettingsPage() {
+  const router = useRouter()
   const [editingOrg, setEditingOrg] = useState(false)
   const [orgName, setOrgName] = useState("")
   const [orgDesc, setOrgDesc] = useState("")
   const [slackUrl, setSlackUrl] = useState("")
   const [slackChannel, setSlackChannel] = useState("")
-  const { orgId, currentOrg } = useOrganization()
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const { orgId, currentOrg, refreshContext } = useOrganization()
 
   // Real data queries
   const orgQuery = trpc.organization.getById.useQuery(
@@ -152,7 +156,18 @@ export default function SettingsPage() {
     onSuccess: () => {
       setEditingOrg(false)
       orgQuery.refetch()
+      refreshContext()
     },
+  })
+
+  const deleteOrgMutation = trpc.organization.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Organization deleted successfully")
+      setDeleteDialogOpen(false)
+      refreshContext()
+      router.push("/dashboard")
+    },
+    onError: (err) => toast.error(err.message),
   })
 
   // Notification preferences
@@ -705,13 +720,30 @@ export default function SettingsPage() {
                 <p className="text-sm text-red-700 mb-3">
                   Permanently delete this organization and all associated data. This action cannot be undone.
                 </p>
-                <Button variant="destructive" size="sm" disabled>
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  onClick={() => setDeleteDialogOpen(true)}
+                  disabled={org?.members?.[0]?.role !== "owner"}
+                >
                   <Trash2 className="mr-2 h-4 w-4" />
                   Delete Organization
                 </Button>
               </div>
             </CardContent>
           </Card>
+          
+          <ConfirmDialog
+            isOpen={deleteDialogOpen}
+            onClose={() => setDeleteDialogOpen(false)}
+            onConfirm={() => deleteOrgMutation.mutate({ id: orgId })}
+            title="Delete Organization"
+            description={`Are you sure you want to delete ${org?.name}? This will permanently delete the organization, all projects, applications, databases, and associated data. This action cannot be undone.`}
+            confirmText="Delete Organization"
+            isDestructive={true}
+            isLoading={deleteOrgMutation.isPending}
+            requireConfirmationText={org?.slug}
+          />
         </TabsContent>
 
         {/* ======================== INTEGRATIONS TAB ======================== */}

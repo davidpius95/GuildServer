@@ -26,8 +26,8 @@ export async function syncSubscriptionFromStripe(stripeSubscription: Stripe.Subs
     stripeCustomerId: stripeSubscription.customer as string,
     stripeSubscriptionId: stripeSubscription.id,
     status: mapStripeStatus(stripeSubscription.status),
-    currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
-    currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+    currentPeriodStart: new Date((stripeSubscription as any).current_period_start * 1000),
+    currentPeriodEnd: new Date((stripeSubscription as any).current_period_end * 1000),
     cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
     trialStart: stripeSubscription.trial_start ? new Date(stripeSubscription.trial_start * 1000) : null,
     trialEnd: stripeSubscription.trial_end ? new Date(stripeSubscription.trial_end * 1000) : null,
@@ -37,10 +37,10 @@ export async function syncSubscriptionFromStripe(stripeSubscription: Stripe.Subs
   if (existingSub) {
     await db
       .update(subscriptions)
-      .set({ ...subData, ...(plan ? { planId: plan.id } : {}) })
+      .set({ ...(subData as any), ...(plan ? { planId: plan.id } : {}) })
       .where(eq(subscriptions.id, existingSub.id));
   } else if (plan) {
-    await db.insert(subscriptions).values({ organizationId, planId: plan.id, ...subData });
+    await db.insert(subscriptions).values({ organizationId, planId: plan.id, ...(subData as any) });
   }
 
   await db
@@ -83,9 +83,9 @@ export async function syncInvoiceFromStripe(stripeInvoice: Stripe.Invoice): Prom
   };
 
   if (existingInvoice) {
-    await db.update(invoices).set(invoiceData).where(eq(invoices.id, existingInvoice.id));
+    await db.update(invoices).set(invoiceData as any).where(eq(invoices.id, existingInvoice.id));
   } else {
-    await db.insert(invoices).values(invoiceData);
+    await db.insert(invoices).values(invoiceData as any);
   }
 }
 

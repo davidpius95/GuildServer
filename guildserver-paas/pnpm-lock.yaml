@@ -411,6 +411,9 @@ importers:
       '@types/node':
         specifier: ^20.10.5
         version: 20.19.9
+      '@types/ws':
+        specifier: ^8.5.10
+        version: 8.18.1
       tsx:
         specifier: ^4.6.2
         version: 4.20.3

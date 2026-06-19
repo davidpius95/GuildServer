@@ -34,7 +34,7 @@ export async function trpcCall(
         throw new Error(`API error (${response.status}): ${extractErrorMessage(body)}`);
       }
 
-      const data = await response.json();
+      const data = await response.json() as any;
       return data.result?.data?.json;
     } else {
       const response = await fetch(url, {
@@ -51,7 +51,7 @@ export async function trpcCall(
         throw new Error(`API error (${response.status}): ${extractErrorMessage(body)}`);
       }
 
-      const data = await response.json();
+      const data = await response.json() as any;
       return data.result?.data?.json;
     }
   } catch (error: any) {
@@ -142,7 +142,7 @@ export async function loginApi(
     throw new Error(`Login failed: ${extractErrorMessage(body)}`);
   }
 
-  const data = await response.json();
+  const data = await response.json() as any;
   return data.result?.data?.json;
 }
 
@@ -166,6 +166,6 @@ export async function registerApi(
     throw new Error(`Registration failed: ${extractErrorMessage(body)}`);
   }
 
-  const data = await response.json();
+  const data = await response.json() as any;
   return data.result?.data?.json;
 }

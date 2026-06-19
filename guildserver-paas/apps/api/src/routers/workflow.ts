@@ -396,7 +396,7 @@ export const workflowRouter = createTRPCRouter({
       let whereClause = eq(approvalRequests.approverId, ctx.user.id);
       
       if (input.status) {
-        whereClause = and(whereClause, eq(approvalRequests.status, input.status));
+        whereClause = and(whereClause, eq(approvalRequests.status, input.status)) as any;
       }
 
       const requests = await ctx.db.query.approvalRequests.findMany({

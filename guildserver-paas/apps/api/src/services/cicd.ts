@@ -174,8 +174,9 @@ class CICDService {
       throw new Error("Pipeline is not active");
     }
 
+    const executionId = `execution-${Date.now()}`;
     const execution: PipelineExecution = {
-      id: `execution-${Date.now()}`,
+      id: executionId,
       pipelineId,
       status: "queued",
       trigger,
@@ -187,7 +188,7 @@ class CICDService {
         logs: [],
       })),
       startedAt: new Date(),
-      logs: [`Pipeline execution started: ${execution.id}`],
+      logs: [`Pipeline execution started: ${executionId}`],
     };
 
     this.executions.set(execution.id, execution);
@@ -237,7 +238,7 @@ class CICDService {
         stageExecution.completedAt = new Date();
         stageExecution.duration = stageExecution.completedAt.getTime() - (stageExecution.startedAt?.getTime() || 0);
 
-        if (stageExecution.status === "failed") {
+        if ((stageExecution.status as string) === "failed") {
           execution.status = "failed";
           execution.logs.push(`Pipeline failed at stage: ${stage.name}`);
           break;

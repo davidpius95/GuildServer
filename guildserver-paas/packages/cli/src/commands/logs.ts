@@ -127,7 +127,7 @@ async function streamLogs(
       }
     });
 
-    ws.on("error", (err) => {
+    ws.on("error", (err: any) => {
       console.error(`  ❌ WebSocket error: ${err.message}`);
       reject(err);
     });
