@@ -19,6 +19,7 @@ import { startMetricsCollection, stopMetricsCollection, collectAndStoreMetrics }
 import { notify } from "../services/notification";
 import { trackDeployment, trackBuildMinutes } from "../services/usage-meter";
 import { checkSpendLimit, checkSpendThresholds } from "../services/spend-manager";
+import { decryptSecret } from "../utils/crypto";
 import { deploymentsTotal, deploymentDuration, queueDepth } from "../services/prometheus-metrics";
 import crypto from "crypto";
 import path from "path";
@@ -557,7 +558,7 @@ const deploymentWorker = new Worker(
         registryAuth: app.registryUsername
           ? {
               username: app.registryUsername,
-              password: app.registryPassword || "",
+              password: decryptSecret(app.registryPassword) || "",
               serveraddress: app.registryUrl || undefined,
             }
           : undefined,

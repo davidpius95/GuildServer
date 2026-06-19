@@ -18,6 +18,7 @@ import { healthCheck } from "../services/container-manager";
 import { listGithubRepos, listGithubBranches } from "../services/git-provider";
 import { getProvider } from "../providers/factory";
 import { registerGithubWebhook } from "../services/github";
+import { encryptSecret } from "../utils/crypto";
 
 const createApplicationSchema = z.object({
   name: z.string().min(1),
@@ -204,6 +205,8 @@ export const applicationRouter = createTRPCRouter({
           environment: input.environment || {},
           // Convert cpuLimit from number to string (DB column is decimal)
           cpuLimit: input.cpuLimit != null ? String(input.cpuLimit) : undefined,
+          // Encrypt the registry password at rest
+          registryPassword: encryptSecret(input.registryPassword),
         } as any)
         .returning();
 
@@ -267,10 +270,17 @@ export const applicationRouter = createTRPCRouter({
         });
       }
 
+      // Only re-encrypt the registry password when the client actually sent one;
+      // leave the stored value untouched otherwise.
+      const encryptedUpdates =
+        updates.registryPassword !== undefined
+          ? { ...updates, registryPassword: encryptSecret(updates.registryPassword) }
+          : updates;
+
       const [updatedApplication] = await ctx.db
         .update(applications)
         .set({
-          ...updates,
+          ...encryptedUpdates,
           updatedAt: new Date(),
         })
         .where(eq(applications.id, id))
