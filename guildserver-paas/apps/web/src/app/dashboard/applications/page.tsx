@@ -140,7 +140,6 @@ export default function ApplicationsPage() {
   // GitHub repo browser state
   const [repoSearch, setRepoSearch] = useState("")
   const [selectedRepo, setSelectedRepo] = useState<{ owner: string; name: string; fullName: string; url: string; defaultBranch: string } | null>(null)
-  const [showBranchDropdown, setShowBranchDropdown] = useState(false)
   const [selectedGitProvider, setSelectedGitProvider] = useState<"github" | "gitlab" | "bitbucket">("github")
 
 
@@ -1023,52 +1022,41 @@ export default function ApplicationsPage() {
                           {/* Branch Selector */}
                           <div className="space-y-2">
                             <Label>Branch</Label>
-                            <div className="relative">
-                              <button
-                                type="button"
-                                className="w-full flex items-center justify-between px-3 py-2 border rounded-md text-sm hover:bg-accent transition-colors"
-                                onClick={() => setShowBranchDropdown(!showBranchDropdown)}
-                              >
-                                <span className="flex items-center gap-2">
+                            <Select 
+                              value={branch} 
+                              onValueChange={setBranch} 
+                              disabled={branchesQuery.isLoading || branchesQuery.isError}
+                            >
+                              <SelectTrigger className="w-full">
+                                <div className="flex items-center gap-2">
                                   <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
-                                  {branch}
-                                </span>
-                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                              </button>
-                              {showBranchDropdown && (
-                                <div className="absolute z-10 mt-1 w-full border rounded-md bg-popover shadow-md max-h-40 overflow-y-auto">
-                                  {branchesQuery.isLoading ? (
-                                    <div className="flex items-center justify-center py-3">
-                                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                                    </div>
-                                  ) : branchesQuery.isError ? (
-                                    <div className="px-3 py-3 text-sm text-muted-foreground">
-                                      <p>Could not load branches.</p>
-                                      <p className="text-xs mt-1">You may need to grant repo access in Settings.</p>
-                                    </div>
-                                  ) : (
-                                    (branchesQuery.data ?? []).map((branchName: string) => (
-                                      <button
-                                        key={branchName}
-                                        type="button"
-                                        className={`w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors ${
-                                          branchName === branch ? "bg-accent font-medium" : ""
-                                        }`}
-                                        onClick={() => {
-                                          setBranch(branchName)
-                                          setShowBranchDropdown(false)
-                                        }}
-                                      >
-                                        {branchName}
-                                        {branchName === selectedRepo.defaultBranch && (
-                                          <span className="ml-2 text-xs text-muted-foreground">(default)</span>
-                                        )}
-                                      </button>
-                                    ))
-                                  )}
+                                  <SelectValue placeholder="Select branch" />
                                 </div>
-                              )}
-                            </div>
+                              </SelectTrigger>
+                              <SelectContent>
+                                {branchesQuery.isLoading ? (
+                                  <div className="flex items-center justify-center py-3">
+                                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                  </div>
+                                ) : branchesQuery.isError ? (
+                                  <div className="px-3 py-3 text-sm text-muted-foreground">
+                                    <p>Could not load branches.</p>
+                                  </div>
+                                ) : (
+                                  (branchesQuery.data ?? []).map((branchName: string) => (
+                                    <SelectItem key={branchName} value={branchName}>
+                                      {branchName}
+                                      {branchName === selectedRepo?.defaultBranch && (
+                                        <span className="ml-2 text-xs text-muted-foreground">(default)</span>
+                                      )}
+                                    </SelectItem>
+                                  ))
+                                )}
+                              </SelectContent>
+                            </Select>
+                            {branchesQuery.isError && (
+                              <p className="text-xs text-muted-foreground mt-1">You may need to grant repo access in Settings.</p>
+                            )}
                           </div>
                         </div>
                       )}
