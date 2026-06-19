@@ -1228,7 +1228,7 @@ export default function ApplicationsPage() {
               />
 
               {/* Actions */}
-              <div className="flex gap-3">
+              <div className="sticky bottom-[-1px] left-0 right-0 z-10 flex gap-3 bg-background/95 backdrop-blur-sm py-4 border-t mt-4">
                 <Button
                   variant="outline"
                   className="flex-1"
