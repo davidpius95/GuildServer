@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { trpc } from "@/components/trpc-provider"
 import { useOrganization, useProjects, useCurrentUser } from "@/hooks/use-auth"
 import { formatDateTime } from "@/lib/utils"
@@ -38,6 +39,10 @@ import {
   Server,
   Monitor,
   Info,
+  Star,
+  Download,
+  Lock,
+  ShieldCheck,
 } from "lucide-react"
 import { AppListSkeleton } from "@/components/skeletons/app-list-skeleton"
 import { EmptyState } from "@/components/empty-state"
@@ -70,6 +75,9 @@ function BitbucketIcon({ className }: { className?: string }) {
   )
 }
 
+
+const compactFormatter = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 })
+const formatCompact = (n: number) => compactFormatter.format(n || 0)
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -113,6 +121,14 @@ export default function ApplicationsPage() {
   const [appName, setAppName] = useState("")
   const [dockerImage, setDockerImage] = useState("nginx")
   const [dockerTag, setDockerTag] = useState("alpine")
+  // Docker source sub-mode: search Docker Hub, type manually, or use a private registry
+  const [dockerMode, setDockerMode] = useState<"search" | "manual" | "registry">("search")
+  const [imageSearch, setImageSearch] = useState("")
+  const [debouncedImageSearch, setDebouncedImageSearch] = useState("")
+  const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [registryUrl, setRegistryUrl] = useState("")
+  const [registryUsername, setRegistryUsername] = useState("")
+  const [registryPassword, setRegistryPassword] = useState("")
   const [repository, setRepository] = useState("")
   const [branch, setBranch] = useState("main")
   const [createEnvVars, setCreateEnvVars] = useState<EnvVarEntry[]>([{ key: "", value: "" }])
@@ -242,6 +258,25 @@ export default function ApplicationsPage() {
     ).slice(0, 20)
   }, [reposQuery.data, repoSearch])
 
+  // Debounce the Docker Hub search input to avoid hammering the API
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedImageSearch(imageSearch.trim()), 300)
+    return () => clearTimeout(t)
+  }, [imageSearch])
+
+  const imageSearchQuery = trpc.application.searchDockerImages.useQuery(
+    { query: debouncedImageSearch },
+    {
+      enabled: showCreateModal && createMode === "docker" && dockerMode === "search" && debouncedImageSearch.length > 0,
+      retry: false,
+    }
+  )
+
+  const imageTagsQuery = trpc.application.listDockerImageTags.useQuery(
+    { repository: selectedImage ?? "" },
+    { enabled: !!selectedImage, retry: false }
+  )
+
   const resetForm = () => {
     setAppName("")
     setDockerImage("nginx")
@@ -249,6 +284,13 @@ export default function ApplicationsPage() {
     setRepository("")
     setBranch("main")
     setCreateMode("docker")
+    setDockerMode("search")
+    setImageSearch("")
+    setDebouncedImageSearch("")
+    setSelectedImage(null)
+    setRegistryUrl("")
+    setRegistryUsername("")
+    setRegistryPassword("")
     setCreateEnvVars([{ key: "", value: "" }])
     setSelectedRepo(null)
     setRepoSearch("")
@@ -289,9 +331,23 @@ export default function ApplicationsPage() {
     }
 
     if (createMode === "docker") {
+      if (!dockerImage.trim()) {
+        toast.error("Please select or enter a Docker image")
+        return
+      }
       data.sourceType = "docker"
-      data.dockerImage = dockerImage
-      data.dockerTag = dockerTag
+      data.dockerTag = (dockerTag || "latest").trim()
+      if (dockerMode === "registry") {
+        const host = registryUrl.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")
+        const img = dockerImage.trim().replace(/^\/+/, "")
+        // Include the registry host in the image reference so Docker pulls from the right registry
+        data.dockerImage = host && !img.startsWith(`${host}/`) ? `${host}/${img}` : img
+        data.registryUrl = host || null
+        data.registryUsername = registryUsername.trim() || null
+        data.registryPassword = registryPassword || null
+      } else {
+        data.dockerImage = dockerImage.trim()
+      }
     } else {
       if (repository.includes("gitlab.com")) {
         data.sourceType = "gitlab"
@@ -588,24 +644,242 @@ export default function ApplicationsPage() {
               {/* Docker fields */}
               {createMode === "docker" && (
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="dockerImage">Docker Image</Label>
-                    <Input
-                      id="dockerImage"
-                      value={dockerImage}
-                      onChange={(e) => setDockerImage(e.target.value)}
-                      placeholder="nginx"
-                    />
+                  {/* Docker source mode */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={dockerMode === "search" ? "default" : "outline"}
+                      onClick={() => setDockerMode("search")}
+                    >
+                      <Search className="mr-1.5 h-3.5 w-3.5" />
+                      Docker Hub
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={dockerMode === "manual" ? "default" : "outline"}
+                      onClick={() => setDockerMode("manual")}
+                    >
+                      <Container className="mr-1.5 h-3.5 w-3.5" />
+                      Manual
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={dockerMode === "registry" ? "default" : "outline"}
+                      onClick={() => setDockerMode("registry")}
+                    >
+                      <Lock className="mr-1.5 h-3.5 w-3.5" />
+                      Private
+                    </Button>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="dockerTag">Tag</Label>
-                    <Input
-                      id="dockerTag"
-                      value={dockerTag}
-                      onChange={(e) => setDockerTag(e.target.value)}
-                      placeholder="latest"
-                    />
-                  </div>
+
+                  {/* Search Docker Hub */}
+                  {dockerMode === "search" && (
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={imageSearch}
+                          onChange={(e) => setImageSearch(e.target.value)}
+                          placeholder="Search Docker Hub — e.g. nginx, redis, postgres"
+                          className="pl-9"
+                          autoFocus
+                        />
+                      </div>
+
+                      {imageSearchQuery.isFetching && (
+                        <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Searching Docker Hub…
+                        </div>
+                      )}
+
+                      {imageSearchQuery.isError && (
+                        <p className="text-sm text-red-600">
+                          Couldn&apos;t reach Docker Hub. Try again or enter the image manually.
+                        </p>
+                      )}
+
+                      {!imageSearchQuery.isFetching &&
+                        debouncedImageSearch.length > 0 &&
+                        (imageSearchQuery.data?.length ?? 0) === 0 &&
+                        !imageSearchQuery.isError && (
+                          <p className="py-4 text-center text-sm text-muted-foreground">
+                            No images found for &quot;{debouncedImageSearch}&quot;
+                          </p>
+                        )}
+
+                      {!imageSearchQuery.isFetching && (imageSearchQuery.data?.length ?? 0) > 0 && (
+                        <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border p-1">
+                          {imageSearchQuery.data!.map((img: any) => {
+                            const isSelected = selectedImage === img.name
+                            return (
+                              <button
+                                key={img.name}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedImage(img.name)
+                                  setDockerImage(img.name)
+                                  setDockerTag("latest")
+                                }}
+                                className={`flex w-full items-start gap-2 rounded-md px-3 py-2 text-left transition-colors hover:bg-muted ${
+                                  isSelected ? "bg-muted ring-1 ring-ring" : ""
+                                }`}
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="truncate font-mono text-sm font-medium">{img.displayName}</span>
+                                    {img.isOfficial && (
+                                      <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[10px]">
+                                        <ShieldCheck className="mr-0.5 h-2.5 w-2.5" />
+                                        Official
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {img.description && (
+                                    <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{img.description}</p>
+                                  )}
+                                </div>
+                                <div className="flex shrink-0 flex-col items-end gap-0.5 text-[11px] text-muted-foreground">
+                                  <span className="flex items-center gap-0.5">
+                                    <Star className="h-3 w-3" />
+                                    {formatCompact(img.starCount)}
+                                  </span>
+                                  <span className="flex items-center gap-0.5">
+                                    <Download className="h-3 w-3" />
+                                    {formatCompact(img.pullCount)}
+                                  </span>
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {/* Tag selector for the chosen image */}
+                      {selectedImage && (
+                        <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs">Tag for <span className="font-mono">{selectedImage}</span></Label>
+                            {imageTagsQuery.isFetching && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                          </div>
+                          <Select value={dockerTag} onValueChange={setDockerTag}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="latest" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {!imageTagsQuery.data?.some((t: any) => t.name === "latest") && (
+                                <SelectItem value="latest">latest</SelectItem>
+                              )}
+                              {(imageTagsQuery.data ?? []).map((t: any) => (
+                                <SelectItem key={t.name} value={t.name}>
+                                  {t.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Manual entry */}
+                  {dockerMode === "manual" && (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="dockerImage">Docker Image</Label>
+                        <Input
+                          id="dockerImage"
+                          value={dockerImage}
+                          onChange={(e) => setDockerImage(e.target.value)}
+                          placeholder="nginx or grafana/grafana"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="dockerTag">Tag</Label>
+                        <Input
+                          id="dockerTag"
+                          value={dockerTag}
+                          onChange={(e) => setDockerTag(e.target.value)}
+                          placeholder="latest"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Private registry */}
+                  {dockerMode === "registry" && (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="registryUrl">Registry URL</Label>
+                        <Input
+                          id="registryUrl"
+                          value={registryUrl}
+                          onChange={(e) => setRegistryUrl(e.target.value)}
+                          placeholder="ghcr.io or registry.example.com:5000"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="dockerImage">Image</Label>
+                          <Input
+                            id="dockerImage"
+                            value={dockerImage}
+                            onChange={(e) => setDockerImage(e.target.value)}
+                            placeholder="org/app"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="dockerTag">Tag</Label>
+                          <Input
+                            id="dockerTag"
+                            value={dockerTag}
+                            onChange={(e) => setDockerTag(e.target.value)}
+                            placeholder="latest"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="registryUsername">Username</Label>
+                          <Input
+                            id="registryUsername"
+                            value={registryUsername}
+                            onChange={(e) => setRegistryUsername(e.target.value)}
+                            placeholder="username"
+                            autoComplete="off"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="registryPassword">Password / Token</Label>
+                          <Input
+                            id="registryPassword"
+                            type="password"
+                            value={registryPassword}
+                            onChange={(e) => setRegistryPassword(e.target.value)}
+                            placeholder="••••••••"
+                            autoComplete="new-password"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Credentials are used only to pull the image at deploy time. Leave blank for a public image.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Resolved selection */}
+                  {dockerImage.trim() && (
+                    <p className="text-xs text-muted-foreground">
+                      Deploys{" "}
+                      <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
+                        {registryUrl.trim() ? `${registryUrl.trim()}/` : ""}
+                        {dockerImage.trim()}:{(dockerTag || "latest").trim()}
+                      </code>
+                    </p>
+                  )}
                 </div>
               )}
 

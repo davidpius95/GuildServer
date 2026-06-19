@@ -11,6 +11,8 @@ import {
   getAppContainerInfo,
   removeExistingContainers,
   stopContainer,
+  searchDockerHubImages,
+  listDockerHubTags,
 } from "../services/docker";
 import { healthCheck } from "../services/container-manager";
 import { listGithubRepos, listGithubBranches } from "../services/git-provider";
@@ -28,6 +30,9 @@ const createApplicationSchema = z.object({
   buildType: z.enum(["dockerfile", "nixpacks", "heroku", "paketo", "static", "railpack"]),
   dockerImage: z.string().optional(),
   dockerTag: z.string().default("latest"),
+  registryUrl: z.string().optional().nullable(),
+  registryUsername: z.string().optional().nullable(),
+  registryPassword: z.string().optional().nullable(),
   containerPort: z.number().optional(),
   environment: z.record(z.string()).default({}),
   memoryLimit: z.number().optional(),
@@ -46,6 +51,9 @@ const updateApplicationSchema = z.object({
   branch: z.string().optional(),
   dockerImage: z.string().optional(),
   dockerTag: z.string().optional(),
+  registryUrl: z.string().optional().nullable(),
+  registryUsername: z.string().optional().nullable(),
+  registryPassword: z.string().optional().nullable(),
   environment: z.record(z.string()).optional(),
   memoryLimit: z.number().optional(),
   cpuLimit: z.number().optional(),
@@ -93,7 +101,8 @@ export const applicationRouter = createTRPCRouter({
         },
       });
 
-      return projectApplications;
+      // Never expose stored registry credentials to the client
+      return projectApplications.map(({ registryPassword, ...app }) => app);
     }),
 
   getById: protectedProcedure
@@ -127,7 +136,9 @@ export const applicationRouter = createTRPCRouter({
         });
       }
 
-      return application;
+      // Never expose the stored registry password to the client
+      const { registryPassword, ...safeApplication } = application;
+      return safeApplication;
     }),
 
   create: protectedProcedure
@@ -222,7 +233,8 @@ export const applicationRouter = createTRPCRouter({
         }
       }
 
-      return newApplication;
+      const { registryPassword: _pw, ...safeApplication } = newApplication;
+      return safeApplication;
     }),
 
   update: protectedProcedure
@@ -286,7 +298,8 @@ export const applicationRouter = createTRPCRouter({
         }
       }
 
-      return updatedApplication;
+      const { registryPassword: _pw, ...safeApplication } = updatedApplication;
+      return safeApplication;
     }),
 
   // Toggle preview deployments and update main branch
@@ -713,5 +726,24 @@ export const applicationRouter = createTRPCRouter({
     .input(z.object({ token: z.string(), owner: z.string(), repo: z.string() }))
     .query(async ({ input }) => {
       return await listGithubBranches(input.token, input.owner, input.repo);
+    }),
+
+  // Docker Hub image discovery
+  searchDockerImages: protectedProcedure
+    .input(
+      z.object({
+        query: z.string().min(1),
+        page: z.number().int().min(1).default(1),
+        pageSize: z.number().int().min(1).max(50).default(25),
+      })
+    )
+    .query(async ({ input }) => {
+      return await searchDockerHubImages(input.query, input.page, input.pageSize);
+    }),
+
+  listDockerImageTags: protectedProcedure
+    .input(z.object({ repository: z.string().min(1) }))
+    .query(async ({ input }) => {
+      return await listDockerHubTags(input.repository);
     }),
 });

@@ -20,6 +20,7 @@ export interface DeployOptions {
   sourceType: string;
   domains?: string[];
   containerPort?: number;
+  registryAuth?: { username: string; password: string; serveraddress?: string };
 }
 
 export interface ContainerInfo {
@@ -145,7 +146,7 @@ export async function deployContainer(
 
     const isLocalImage = opts.dockerImage.startsWith("gs-");
     if (!isLocalImage) {
-      const pullLogs = await pullImage(opts.dockerImage, opts.dockerTag, opts.userId, opts.deploymentId, d);
+      const pullLogs = await pullImage(opts.dockerImage, opts.dockerTag, opts.userId, opts.deploymentId, d, opts.registryAuth);
       logs.push(...pullLogs);
     } else {
       log(`Using locally built image: ${opts.dockerImage}:${opts.dockerTag}`);
