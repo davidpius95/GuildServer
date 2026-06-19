@@ -6,6 +6,11 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ResponsiveModal } from "@/components/ui/responsive-modal"
+import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog"
+import { toast } from "sonner"
 import {
   Users,
   Plus,
@@ -20,10 +25,12 @@ import {
   UserMinus,
   Edit,
   Key,
-  RefreshCw
+  RefreshCw,
+  Loader2,
+  Trash2
 } from "lucide-react"
 import { trpc } from "@/components/trpc-provider"
-import { useOrganization } from "@/hooks/use-auth"
+import { useOrganization, useCurrentUser } from "@/hooks/use-auth"
 
 const getRoleColor = (role: string) => {
   switch (role) {
@@ -43,9 +50,16 @@ const getRoleColor = (role: string) => {
 
 export default function TeamPage() {
   const [searchQuery, setSearchQuery] = useState("")
-  const { orgId, currentOrg } = useOrganization()
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState("")
+  const [inviteRole, setInviteRole] = useState<"admin" | "member">("member")
+  
+  const { orgId, currentOrg, isLoading: orgLoading } = useOrganization()
+  const { user: currentUser } = useCurrentUser()
+  const { confirm: showConfirm, dialogProps: confirmDialogProps } = useConfirmDialog()
 
-  // Real data queries
+  const utils = trpc.useUtils()
+
   const membersQuery = trpc.organization.getMembers.useQuery(
     { organizationId: orgId },
     { enabled: !!orgId }
@@ -55,6 +69,47 @@ export default function TeamPage() {
     { organizationId: orgId, limit: 20 },
     { enabled: !!orgId }
   )
+
+  const inviteMember = trpc.organization.inviteMember.useMutation({
+    onSuccess: () => {
+      toast.success("Member invited successfully!")
+      utils.organization.getMembers.invalidate()
+      setShowInviteModal(false)
+      setInviteEmail("")
+      setInviteRole("member")
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const removeMember = trpc.organization.removeMember.useMutation({
+    onSuccess: () => {
+      toast.success("Member removed successfully!")
+      utils.organization.getMembers.invalidate()
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const handleInvite = () => {
+    if (!inviteEmail) {
+      toast.error("Please enter an email address")
+      return
+    }
+    inviteMember.mutate({
+      organizationId: orgId,
+      email: inviteEmail,
+      role: inviteRole
+    })
+  }
+
+  const handleRemove = (userId: string, userName: string) => {
+    showConfirm({
+      title: `Remove ${userName}?`,
+      description: "This will remove them from the organization and revoke all access. This action cannot be undone.",
+      confirmLabel: "Remove Member",
+      variant: "danger",
+      onConfirm: () => removeMember.mutate({ organizationId: orgId, userId }),
+    })
+  }
 
   const members = membersQuery.data ?? []
   const auditLogs = auditQuery.data ?? []
@@ -67,9 +122,26 @@ export default function TeamPage() {
   const activeMembers = members.filter((m: any) => m.user)
   const adminCount = members.filter((m: any) => m.role === "admin" || m.role === "owner").length
 
+  if (!orgLoading && !currentOrg) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">Team</h1>
+          <p className="text-muted-foreground">Manage team members, roles, and permissions</p>
+        </div>
+        <Card className="text-center py-12">
+          <CardContent>
+            <Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Create an organization first</h3>
+            <p className="text-muted-foreground mb-6">You need an organization before managing your team</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Team</h1>
@@ -77,13 +149,18 @@ export default function TeamPage() {
             Manage team members, roles, and permissions
           </p>
         </div>
-        <Button onClick={() => membersQuery.refetch()}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => membersQuery.refetch()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+          <Button onClick={() => setShowInviteModal(true)}>
+            <UserPlus className="mr-2 h-4 w-4" />
+            Invite Member
+          </Button>
+        </div>
       </div>
 
-      {/* Stats */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -146,7 +223,6 @@ export default function TeamPage() {
         </TabsList>
 
         <TabsContent value="members" className="space-y-4">
-          {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -157,7 +233,6 @@ export default function TeamPage() {
             />
           </div>
 
-          {/* Members List */}
           <Card>
             <CardHeader>
               <CardTitle>Team Members</CardTitle>
@@ -165,11 +240,12 @@ export default function TeamPage() {
             </CardHeader>
             <CardContent>
               {membersQuery.isLoading ? (
-                <div className="text-center py-8 text-muted-foreground">Loading members...</div>
+                <div className="flex justify-center py-8"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
               ) : filteredMembers.length > 0 ? (
                 <div className="space-y-4">
                   {filteredMembers.map((member: any) => {
                     const user = member.user
+                    const isCurrentUser = user?.id === currentUser?.id
                     const initials = user?.name
                       ? user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
                       : user?.email?.slice(0, 2).toUpperCase() || "?"
@@ -181,7 +257,10 @@ export default function TeamPage() {
                             {initials}
                           </div>
                           <div>
-                            <h4 className="font-medium">{user?.name || "Unknown"}</h4>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-medium">{user?.name || "Unknown"}</h4>
+                              {isCurrentUser && <Badge variant="secondary" className="text-xs">You</Badge>}
+                            </div>
                             <p className="text-sm text-muted-foreground">{user?.email || ""}</p>
                             <div className="flex gap-2 mt-1">
                               <Badge variant="outline" className={getRoleColor(member.role)}>
@@ -190,13 +269,18 @@ export default function TeamPage() {
                             </div>
                           </div>
                         </div>
-                        <div className="text-right">
+                        <div className="text-right flex items-center gap-4">
                           <div className="text-sm text-muted-foreground">
                             <div>Joined {member.createdAt ? new Date(member.createdAt).toLocaleDateString() : "N/A"}</div>
                             {user?.lastLogin && (
                               <div>Last login {new Date(user.lastLogin).toLocaleDateString()}</div>
                             )}
                           </div>
+                          {!isCurrentUser && member.role !== "owner" && (
+                            <Button variant="ghost" size="icon" onClick={() => handleRemove(user.id, user.name || user.email)}>
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          )}
                         </div>
                       </div>
                     )
@@ -296,7 +380,7 @@ export default function TeamPage() {
             </CardHeader>
             <CardContent>
               {auditQuery.isLoading ? (
-                <div className="text-center py-8 text-muted-foreground">Loading audit logs...</div>
+                <div className="flex justify-center py-8"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
               ) : auditLogs.length > 0 ? (
                 <div className="space-y-4">
                   {auditLogs.map((log: any) => (
@@ -340,6 +424,39 @@ export default function TeamPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog {...confirmDialogProps} />
+
+      <ResponsiveModal open={showInviteModal} onClose={() => setShowInviteModal(false)} title="Invite Team Member">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Email Address</Label>
+            <Input 
+              type="email" 
+              value={inviteEmail} 
+              onChange={e => setInviteEmail(e.target.value)} 
+              placeholder="colleague@example.com" 
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Role</Label>
+            <Select value={inviteRole} onValueChange={(v: any) => setInviteRole(v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="member">Member</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="pt-4 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowInviteModal(false)}>Cancel</Button>
+            <Button onClick={handleInvite} disabled={inviteMember.isLoading}>
+              {inviteMember.isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Send Invite
+            </Button>
+          </div>
+        </div>
+      </ResponsiveModal>
     </div>
   )
 }

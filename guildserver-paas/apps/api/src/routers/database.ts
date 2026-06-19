@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc/trpc";
-import { databases, projects, members } from "@guildserver/database";
-import { eq, and, desc } from "drizzle-orm";
+import { databases, projects, members, databaseBackups } from "@guildserver/database";
+import { eq, and, desc, inArray } from "drizzle-orm";
+import { DatabaseBackupService } from "../services/db-backup";
 
 const createDatabaseSchema = z.object({
   name: z.string().min(1),
@@ -285,6 +286,166 @@ export const databaseRouter = createTRPCRouter({
       };
 
       return connectionInfo;
+    }),
+
+  backup: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      // Check if user has access to the database
+      const database = await ctx.db.query.databases.findFirst({
+        where: eq(databases.id, input.id),
+        with: {
+          project: {
+            with: {
+              organization: {
+                with: {
+                  members: {
+                    where: eq(members.userId, ctx.user.id),
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!database || database.project.organization.members.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Database not found or access denied",
+        });
+      }
+
+      const backup = await DatabaseBackupService.triggerBackup(input.id);
+      return backup;
+    }),
+
+  listBackups: protectedProcedure
+    .input(z.object({ projectId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      // Check if user has access to the project
+      const project = await ctx.db.query.projects.findFirst({
+        where: eq(projects.id, input.projectId),
+        with: {
+          organization: {
+            with: {
+              members: {
+                where: eq(members.userId, ctx.user.id),
+              },
+            },
+          },
+        },
+      });
+
+      if (!project || project.organization.members.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Project not found or access denied",
+        });
+      }
+
+      const projectDatabases = await ctx.db.query.databases.findMany({
+        where: eq(databases.projectId, input.projectId),
+      });
+
+      const dbIds = projectDatabases.map(db => db.id);
+      if (dbIds.length === 0) return [];
+
+      const backups = await ctx.db.query.databaseBackups.findMany({
+        where: inArray(databaseBackups.databaseId, dbIds),
+        orderBy: [desc(databaseBackups.createdAt)],
+      });
+
+      return backups.map(backup => ({
+        ...backup,
+        databaseName: projectDatabases.find(db => db.id === backup.databaseId)?.name || "Unknown",
+      }));
+    }),
+
+  restore: protectedProcedure
+    .input(z.object({ backupId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const backup = await ctx.db.query.databaseBackups.findFirst({
+        where: eq(databaseBackups.id, input.backupId),
+      });
+
+      if (!backup) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Backup not found",
+        });
+      }
+
+      // Check if user has access to the database
+      const database = await ctx.db.query.databases.findFirst({
+        where: eq(databases.id, backup.databaseId),
+        with: {
+          project: {
+            with: {
+              organization: {
+                with: {
+                  members: {
+                    where: eq(members.userId, ctx.user.id),
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!database || database.project.organization.members.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Database not found or access denied",
+        });
+      }
+
+      const success = await DatabaseBackupService.restoreBackup(input.backupId);
+      return { success };
+    }),
+
+  downloadBackup: protectedProcedure
+    .input(z.object({ backupId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const backup = await ctx.db.query.databaseBackups.findFirst({
+        where: eq(databaseBackups.id, input.backupId),
+      });
+
+      if (!backup) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Backup not found",
+        });
+      }
+
+      // Check if user has access to the database
+      const database = await ctx.db.query.databases.findFirst({
+        where: eq(databases.id, backup.databaseId),
+        with: {
+          project: {
+            with: {
+              organization: {
+                with: {
+                  members: {
+                    where: eq(members.userId, ctx.user.id),
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!database || database.project.organization.members.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Database not found or access denied",
+        });
+      }
+
+      const url = await DatabaseBackupService.getDownloadUrl(input.backupId);
+      return { url };
     }),
 });
 

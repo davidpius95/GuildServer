@@ -81,6 +81,13 @@ export const approvalStatusEnum = pgEnum("approval_status", [
   "expired"
 ]);
 
+export const backupStatusEnum = pgEnum("backup_status", [
+  "pending",
+  "in_progress",
+  "completed",
+  "failed"
+]);
+
 // Infrastructure provider enums
 export const providerTypeEnum = pgEnum("provider_type", [
   "docker-local",
@@ -300,6 +307,19 @@ export const databases = pgTable("databases", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   projectIdIdx: index("databases_project_id_idx").on(table.projectId),
+}));
+
+// Database Backups
+export const databaseBackups = pgTable("database_backups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  databaseId: uuid("database_id").references(() => databases.id, { onDelete: "cascade" }),
+  sizeBytes: integer("size_bytes").default(0),
+  status: backupStatusEnum("status").default("pending"),
+  fileUrl: text("file_url"),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => ({
+  databaseIdIdx: index("database_backups_database_id_idx").on(table.databaseId),
 }));
 
 // Deployments
@@ -854,6 +874,14 @@ export const databasesRelations = relations(databases, ({ one, many }) => ({
     references: [projects.id],
   }),
   deployments: many(deployments),
+  backups: many(databaseBackups),
+}));
+
+export const databaseBackupsRelations = relations(databaseBackups, ({ one }) => ({
+  database: one(databases, {
+    fields: [databaseBackups.databaseId],
+    references: [databases.id],
+  }),
 }));
 
 export const workflowTemplatesRelations = relations(workflowTemplates, ({ one, many }) => ({

@@ -37,7 +37,7 @@ export async function collectAndStoreMetrics(): Promise<void> {
         },
       });
 
-      if (!app) continue;
+      if (!app || !app.project) continue;
       const orgId = app.project.organizationId;
 
       // Store CPU metric

@@ -23,6 +23,10 @@ import {
   TrendingUp,
   TrendingDown
 } from "lucide-react"
+import { trpc } from "@/components/trpc-provider"
+import { useOrganization } from "@/hooks/use-auth"
+import { toast } from "sonner"
+import { Loader2 } from "lucide-react"
 
 const complianceFrameworks = [
   {
@@ -218,16 +222,68 @@ const getStatusIcon = (status: string) => {
 }
 
 export default function SecurityPage() {
-  const [refreshing, setRefreshing] = useState(false)
+  const { orgId } = useOrganization()
+  const utils = trpc.useUtils()
+
+  const postureQuery = trpc.security.getPosture.useQuery(
+    { organizationId: orgId },
+    { enabled: !!orgId }
+  )
+
+  const scansQuery = trpc.security.listScans.useQuery(
+    { organizationId: orgId },
+    { enabled: !!orgId }
+  )
+
+  const startScan = trpc.security.startScan.useMutation({
+    onSuccess: () => {
+      toast.success("Security scan started successfully")
+      utils.security.listScans.invalidate()
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const exportReport = trpc.security.exportReport.useMutation({
+    onSuccess: (data) => {
+      toast.success("Report generated")
+      window.open(data.url, "_blank")
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const remediate = trpc.security.remediate.useMutation({
+    onSuccess: () => {
+      toast.success("Auto-remediation started")
+      utils.security.getPosture.invalidate()
+    },
+    onError: (err) => toast.error(err.message),
+  })
 
   const handleRefresh = () => {
-    setRefreshing(true)
-    setTimeout(() => setRefreshing(false), 2000)
+    postureQuery.refetch()
+    scansQuery.refetch()
+    toast.success("Security data refreshed")
   }
 
-  const totalIssues = securityIssues.length
-  const criticalIssues = securityIssues.filter(i => i.severity === 'critical').length
-  const openIssues = securityIssues.filter(i => i.status === 'open').length
+  const handleStartScan = () => {
+    startScan.mutate({ organizationId: orgId })
+  }
+
+  const handleExport = (format: "pdf" | "csv" | "json") => {
+    exportReport.mutate({ organizationId: orgId, format })
+  }
+
+  const handleFixIssue = (issueId: string) => {
+    remediate.mutate({ organizationId: orgId, issueId })
+  }
+
+  const posture = postureQuery.data
+  const scanHistory = scansQuery.data || vulnerabilityScans
+
+  const totalIssues = posture ? posture.totalIssues : securityIssues.length
+  const criticalIssues = posture ? posture.criticalIssues : securityIssues.filter(i => i.severity === 'critical').length
+  const openIssues = posture ? posture.totalIssues - posture.lowIssues : securityIssues.filter(i => i.status === 'open').length
+  const score = posture ? posture.score : 82
 
   return (
     <div className="space-y-6">
@@ -239,8 +295,8 @@ export default function SecurityPage() {
             Monitor security posture and compliance status
           </p>
         </div>
-        <Button onClick={handleRefresh} disabled={refreshing}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+        <Button onClick={handleRefresh} disabled={postureQuery.isFetching || scansQuery.isFetching}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${(postureQuery.isFetching || scansQuery.isFetching) ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
       </div>
@@ -253,11 +309,17 @@ export default function SecurityPage() {
             <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-semibold font-mono tabular-nums">82/100</div>
-            <Progress value={82} className="mt-2" />
-            <p className="text-xs text-muted-foreground mt-2">
-              <span className="text-green-600">+5</span> from last week
-            </p>
+            {postureQuery.isLoading ? (
+              <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading...</div>
+            ) : (
+              <>
+                <div className="text-2xl font-semibold font-mono tabular-nums">{score}/100</div>
+                <Progress value={score} className="mt-2" />
+                <p className="text-xs text-muted-foreground mt-2">
+                  <span className="text-green-600">+5</span> from last week
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -267,10 +329,16 @@ export default function SecurityPage() {
             <AlertTriangle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-semibold font-mono tabular-nums text-red-600">{criticalIssues}</div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Require immediate attention
-            </p>
+            {postureQuery.isLoading ? (
+              <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading...</div>
+            ) : (
+              <>
+                <div className="text-2xl font-semibold font-mono tabular-nums text-red-600">{criticalIssues}</div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Require immediate attention
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -280,10 +348,16 @@ export default function SecurityPage() {
             <XCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-semibold font-mono tabular-nums">{openIssues}</div>
-            <p className="text-xs text-muted-foreground mt-2">
-              of {totalIssues} total issues
-            </p>
+            {postureQuery.isLoading ? (
+              <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading...</div>
+            ) : (
+              <>
+                <div className="text-2xl font-semibold font-mono tabular-nums">{openIssues}</div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  of {totalIssues} total issues
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -365,8 +439,8 @@ export default function SecurityPage() {
                       <Eye className="mr-2 h-3 w-3" />
                       View Details
                     </Button>
-                    <Button variant="outline" size="sm" className="flex-1">
-                      <Download className="mr-2 h-3 w-3" />
+                    <Button variant="outline" size="sm" className="flex-1" onClick={() => handleExport("pdf")} disabled={exportReport.isLoading}>
+                      {exportReport.isLoading ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Download className="mr-2 h-3 w-3" />}
                       Report
                     </Button>
                   </div>
@@ -409,8 +483,8 @@ export default function SecurityPage() {
                             Discovered {issue.discoveredAt} • Affects: {issue.affectedResources.join(', ')}
                           </div>
                         </div>
-                        <Button variant="outline" size="sm">
-                          Fix Issue
+                        <Button variant="outline" size="sm" onClick={() => handleFixIssue(issue.id)} disabled={remediate.isLoading}>
+                          {remediate.isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Fix Issue"}
                         </Button>
                       </div>
                     </div>
@@ -427,14 +501,14 @@ export default function SecurityPage() {
               <h3 className="text-lg font-medium">Security Scans</h3>
               <p className="text-sm text-muted-foreground">Automated security scanning results</p>
             </div>
-            <Button>
-              <Scan className="mr-2 h-4 w-4" />
+            <Button onClick={handleStartScan} disabled={startScan.isLoading}>
+              {startScan.isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Scan className="mr-2 h-4 w-4" />}
               Start New Scan
             </Button>
           </div>
 
           <div className="grid gap-4">
-            {vulnerabilityScans.map((scan) => (
+            {scanHistory.map((scan) => (
               <Card key={scan.id}>
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
@@ -484,8 +558,8 @@ export default function SecurityPage() {
                       <Eye className="mr-2 h-3 w-3" />
                       View Results
                     </Button>
-                    <Button variant="outline" size="sm">
-                      <Download className="mr-2 h-3 w-3" />
+                    <Button variant="outline" size="sm" onClick={() => handleExport("json")} disabled={exportReport.isLoading}>
+                      {exportReport.isLoading ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Download className="mr-2 h-3 w-3" />}
                       Export
                     </Button>
                   </div>

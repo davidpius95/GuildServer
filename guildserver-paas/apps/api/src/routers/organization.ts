@@ -245,6 +245,67 @@ export const organizationRouter = createTRPCRouter({
       return organizationMembers;
     }),
 
+  inviteMember: protectedProcedure
+    .input(inviteMemberSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, email, role } = input;
+
+      // Check if user is owner or admin
+      const userMember = await ctx.db.query.members.findFirst({
+        where: and(
+          eq(members.organizationId, organizationId),
+          eq(members.userId, ctx.user.id)
+        ),
+      });
+
+      if (!userMember || (userMember.role !== "owner" && userMember.role !== "admin")) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You don't have permission to invite members",
+        });
+      }
+
+      // Find user by email
+      const userToInvite = await ctx.db.query.users.findFirst({
+        where: eq(users.email, email),
+      });
+
+      if (!userToInvite) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User with this email not found in the system.",
+        });
+      }
+
+      // Check if already a member
+      const existingMember = await ctx.db.query.members.findFirst({
+        where: and(
+          eq(members.organizationId, organizationId),
+          eq(members.userId, userToInvite.id)
+        ),
+      });
+
+      if (existingMember) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "User is already a member of this organization",
+        });
+      }
+
+      // Add user to organization
+      const [newMember] = await ctx.db
+        .insert(members)
+        .values({
+          userId: userToInvite.id,
+          organizationId,
+          role,
+          permissions: role === "admin" ? { admin: true } : {},
+        })
+        .returning();
+
+      return newMember;
+    }),
+
   updateMember: protectedProcedure
     .input(updateMemberSchema)
     .mutation(async ({ ctx, input }) => {

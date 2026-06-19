@@ -66,11 +66,11 @@ export async function getCurrentUsage(
   const { periodStart, periodEnd } = await getCurrentPeriod(organizationId);
 
   const records = await db.query.usageRecords.findMany({
-    where: and(
-      eq(usageRecords.organizationId, organizationId),
-      gte(usageRecords.periodStart, periodStart),
-      lte(usageRecords.periodEnd, periodEnd)
-    ),
+      where: and(
+        eq(usageRecords.organizationId, organizationId),
+        gte(usageRecords.periodStart, periodStart.toISOString().split('T')[0]),
+        lte(usageRecords.periodEnd, periodEnd.toISOString().split('T')[0])
+      ),
   });
 
   // Aggregate by metric
@@ -228,8 +228,8 @@ async function incrementUsage(
     where: and(
       eq(usageRecords.organizationId, organizationId),
       eq(usageRecords.metric, metric),
-      eq(usageRecords.periodStart, periodStart),
-      eq(usageRecords.periodEnd, periodEnd)
+      eq(usageRecords.periodStart, periodStart.toISOString().split('T')[0]),
+      eq(usageRecords.periodEnd, periodEnd.toISOString().split('T')[0])
     ),
   });
 
@@ -247,8 +247,8 @@ async function incrementUsage(
       organizationId,
       metric,
       value: String(value),
-      periodStart,
-      periodEnd,
+      periodStart: periodStart.toISOString().split('T')[0],
+      periodEnd: periodEnd.toISOString().split('T')[0],
     });
   }
 }

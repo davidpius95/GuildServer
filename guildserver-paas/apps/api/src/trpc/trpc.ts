@@ -1,5 +1,6 @@
 import { TRPCError, initTRPC } from "@trpc/server";
 import superjson from "superjson";
+import { ZodError } from "zod";
 import { type Context } from "./context";
 import { checkLimit } from "../services/usage-meter";
 import { db, members, subscriptions, plans } from "@guildserver/database";
@@ -13,7 +14,7 @@ const t = initTRPC.context<Context>().create({
       data: {
         ...shape.data,
         zodError:
-          error.code === "BAD_REQUEST" && error.cause?.name === "ZodError"
+          error.code === "BAD_REQUEST" && error.cause instanceof ZodError
             ? error.cause.flatten()
             : null,
       },

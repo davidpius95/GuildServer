@@ -5,95 +5,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Label } from "@/components/ui/label"
 import { 
-  Database,
-  Plus,
-  Search,
-  Settings,
-  Play,
-  Pause,
-  Download,
-  Upload,
-  HardDrive,
-  Activity,
-  Clock,
-  Users,
-  MoreHorizontal,
-  Copy,
-  ExternalLink
+  Database, Plus, Search, Settings, Download, Upload,
+  HardDrive, Activity, Clock, Users, Copy,
+  Loader2, Trash2, RefreshCw
 } from "lucide-react"
-
-const mockDatabases = [
-  {
-    id: "1",
-    name: "production-db",
-    type: "PostgreSQL",
-    version: "15.2",
-    status: "running",
-    environment: "production",
-    size: "2.4 GB",
-    connections: 24,
-    maxConnections: 100,
-    cpuUsage: 45,
-    memoryUsage: 67,
-    lastBackup: "2 hours ago",
-    connectionString: "postgresql://user:pass@prod-db.guildserver.com:5432/production",
-  },
-  {
-    id: "2",
-    name: "analytics-db",
-    type: "PostgreSQL", 
-    version: "15.2",
-    status: "running",
-    environment: "production",
-    size: "8.7 GB",
-    connections: 12,
-    maxConnections: 50,
-    cpuUsage: 23,
-    memoryUsage: 43,
-    lastBackup: "4 hours ago",
-    connectionString: "postgresql://user:pass@analytics-db.guildserver.com:5432/analytics",
-  },
-  {
-    id: "3",
-    name: "cache-redis",
-    type: "Redis",
-    version: "7.0",
-    status: "running",
-    environment: "production",
-    size: "256 MB",
-    connections: 8,
-    maxConnections: 1000,
-    cpuUsage: 12,
-    memoryUsage: 28,
-    lastBackup: "1 hour ago",
-    connectionString: "redis://cache-redis.guildserver.com:6379",
-  },
-  {
-    id: "4",
-    name: "staging-db",
-    type: "MySQL",
-    version: "8.0",
-    status: "stopped",
-    environment: "staging",
-    size: "1.2 GB",
-    connections: 0,
-    maxConnections: 50,
-    cpuUsage: 0,
-    memoryUsage: 0,
-    lastBackup: "1 day ago",
-    connectionString: "mysql://user:pass@staging-db.guildserver.com:3306/staging",
-  },
-]
-
-const backupHistory = [
-  { id: 1, database: "production-db", size: "2.4 GB", time: "2 hours ago", status: "completed" },
-  { id: 2, database: "analytics-db", size: "8.7 GB", time: "4 hours ago", status: "completed" },
-  { id: 3, database: "cache-redis", size: "256 MB", time: "1 hour ago", status: "completed" },
-  { id: 4, database: "production-db", size: "2.3 GB", time: "1 day ago", status: "completed" },
-]
+import { trpc } from "@/components/trpc-provider"
+import { useOrganization, useProjects } from "@/hooks/use-auth"
+import { toast } from "sonner"
+import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog"
+import { ResponsiveModal } from "@/components/ui/responsive-modal"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { EmptyState } from "@/components/empty-state"
+import { formatDateTime } from "@/lib/utils"
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -101,6 +27,8 @@ const getStatusColor = (status: string) => {
       return "bg-green-50 text-green-700 border-green-200"
     case "stopped":
       return "bg-red-50 text-red-700 border-red-200"
+    case "starting":
+      return "bg-blue-50 text-blue-700 border-blue-200"
     case "maintenance":
       return "bg-yellow-50 text-yellow-700 border-yellow-200"
     default:
@@ -114,6 +42,7 @@ const getTypeIcon = (type: string) => {
     case "postgresql":
       return <Database className={iconClass} />
     case "mysql":
+    case "mariadb":
       return <Database className={iconClass} />
     case "redis":
       return <Activity className={iconClass} />
@@ -124,46 +53,221 @@ const getTypeIcon = (type: string) => {
 
 export default function DatabasesPage() {
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedDatabase, setSelectedDatabase] = useState<string | null>(null)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [selectedDatabase, setSelectedDatabase] = useState<any>(null)
 
-  const filteredDatabases = mockDatabases.filter(db =>
+  // Form state
+  const [name, setName] = useState("")
+  const [type, setType] = useState<"postgresql" | "mysql" | "mongodb" | "redis" | "mariadb">("postgresql")
+  const [databaseName, setDatabaseName] = useState("")
+  const [username, setUsername] = useState("")
+  const [password, setPassword] = useState("")
+  
+  // Settings form state
+  const [settingsMemory, setSettingsMemory] = useState("")
+  const [settingsCpu, setSettingsCpu] = useState("")
+  const [settingsPort, setSettingsPort] = useState("")
+
+  const { confirm: showConfirm, dialogProps: confirmDialogProps } = useConfirmDialog()
+  const { orgId, currentOrg, isLoading: orgLoading } = useOrganization()
+  const { projectId } = useProjects(orgId)
+
+  const isValidUUID = (s: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
+
+  const utils = trpc.useUtils()
+
+  const databasesQuery = trpc.database.list.useQuery(
+    { projectId },
+    { enabled: isValidUUID(projectId), refetchInterval: 30000 }
+  )
+
+  const createDatabase = trpc.database.create.useMutation({
+    onSuccess: () => {
+      toast.success("Database created!")
+      utils.database.list.invalidate()
+      setShowCreateModal(false)
+      resetForm()
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const restartDatabase = trpc.database.restart.useMutation({
+    onSuccess: () => {
+      toast.success("Database restart initiated!")
+      utils.database.list.invalidate()
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const deleteDatabase = trpc.database.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Database deleted!")
+      utils.database.list.invalidate()
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const updateDatabase = trpc.database.update.useMutation({
+    onSuccess: () => {
+      toast.success("Database updated!")
+      utils.database.list.invalidate()
+      setShowSettingsModal(false)
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const backupsQuery = trpc.database.listBackups.useQuery(
+    { projectId },
+    { enabled: isValidUUID(projectId), refetchInterval: 30000 }
+  )
+
+  const backupDatabase = trpc.database.backup.useMutation({
+    onSuccess: () => {
+      toast.success("Backup started!")
+      utils.database.listBackups.invalidate()
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const restoreDatabase = trpc.database.restore.useMutation({
+    onSuccess: () => {
+      toast.success("Restore started!")
+      utils.database.listBackups.invalidate()
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const resetForm = () => {
+    setName("")
+    setType("postgresql")
+    setDatabaseName("")
+    setUsername("")
+    setPassword("")
+  }
+
+  const handleCreate = () => {
+    if (!name || !databaseName || !username || !password) {
+      toast.error("Please fill in all required fields.")
+      return
+    }
+    createDatabase.mutate({
+      projectId,
+      name,
+      type,
+      databaseName,
+      username,
+      password,
+    })
+  }
+
+  const handleDelete = (id: string, dbName: string) => {
+    showConfirm({
+      title: `Delete "${dbName}"?`,
+      description: "This will permanently delete the database and all its data. This action cannot be undone.",
+      confirmLabel: "Delete Database",
+      variant: "danger",
+      onConfirm: () => deleteDatabase.mutate({ id }),
+    })
+  }
+
+  const handleRestart = (id: string) => {
+    restartDatabase.mutate({ id })
+  }
+
+  const handleBackup = (id: string) => {
+    backupDatabase.mutate({ id })
+  }
+
+  const handleRestore = (backupId: string, dbName: string) => {
+    showConfirm({
+      title: `Restore "${dbName}"?`,
+      description: "This will overwrite current database data with the backup. Existing data will be lost.",
+      confirmLabel: "Restore Database",
+      variant: "danger",
+      onConfirm: () => restoreDatabase.mutate({ backupId }),
+    })
+  }
+
+  const handleDownloadBackup = async (backupId: string) => {
+    try {
+      const { url } = await utils.database.downloadBackup.fetch({ backupId })
+      window.open(url, "_blank")
+    } catch (e: any) {
+      toast.error(e.message || "Failed to download backup")
+    }
+  }
+
+  const openSettings = (db: any) => {
+    setSelectedDatabase(db)
+    setSettingsMemory(db.memoryLimit?.toString() || "")
+    setSettingsCpu(db.cpuLimit?.toString() || "")
+    setSettingsPort(db.externalPort?.toString() || "")
+    setShowSettingsModal(true)
+  }
+
+  const handleUpdateSettings = () => {
+    if (!selectedDatabase) return
+    updateDatabase.mutate({
+      id: selectedDatabase.id,
+      memoryLimit: settingsMemory ? parseInt(settingsMemory) : undefined,
+      cpuLimit: settingsCpu ? parseInt(settingsCpu) : undefined,
+      externalPort: settingsPort ? parseInt(settingsPort) : undefined,
+    })
+  }
+
+  const copyConnectionString = async (dbId: string) => {
+    try {
+      const info = await utils.database.getConnectionInfo.fetch({ id: dbId })
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(info.connectionString)
+        toast.success("Connection string copied!")
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to get connection string")
+    }
+  }
+
+  const databases = databasesQuery.data || []
+  const filteredDatabases = databases.filter((db: any) =>
     db.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     db.type.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  const copyConnectionString = (connectionString: string) => {
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(connectionString).catch(() => {
-        // Fallback for non-HTTPS contexts
-        const ta = document.createElement("textarea")
-        ta.value = connectionString
-        ta.style.position = "fixed"
-        ta.style.opacity = "0"
-        document.body.appendChild(ta)
-        ta.select()
-        document.execCommand("copy")
-        document.body.removeChild(ta)
-      })
-    }
+  const backups = backupsQuery.data || []
+
+  if (!orgLoading && !currentOrg) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">Databases</h1>
+          <p className="text-muted-foreground">Manage your database instances and backups</p>
+        </div>
+        <Card className="text-center py-12">
+          <CardContent>
+            <Database className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Create an organization first</h3>
+            <p className="text-muted-foreground mb-6">You need an organization and project before creating databases</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Databases</h1>
-          <p className="text-muted-foreground">
-            Manage your database instances and backups
-          </p>
+          <p className="text-muted-foreground">Manage your database instances and backups</p>
         </div>
-        <Button>
+        <Button onClick={() => setShowCreateModal(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Create Database
         </Button>
       </div>
 
-      {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
@@ -182,165 +286,152 @@ export default function DatabasesPage() {
         </TabsList>
 
         <TabsContent value="databases" className="space-y-4">
-          {/* Database Grid */}
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {filteredDatabases.map((db) => (
-              <Card key={db.id} className="relative">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      {getTypeIcon(db.type)}
-                      <CardTitle className="text-lg">{db.name}</CardTitle>
-                    </div>
-                    <Button variant="ghost" size="icon">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className={getStatusColor(db.status)}>
-                      {db.status}
-                    </Badge>
-                    <Badge variant="secondary">{db.environment}</Badge>
-                  </div>
-                </CardHeader>
-
-                <CardContent className="space-y-4">
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Type:</span>
-                      <span>{db.type} {db.version}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Size:</span>
-                      <span>{db.size}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Connections:</span>
-                      <span>{db.connections}/{db.maxConnections}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Last Backup:</span>
-                      <span>{db.lastBackup}</span>
-                    </div>
-                  </div>
-
-                  {/* Resource Usage */}
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>CPU Usage</span>
-                      <span>{db.cpuUsage}%</span>
-                    </div>
-                    <Progress value={db.cpuUsage} className="h-2" />
-                    
-                    <div className="flex justify-between text-sm">
-                      <span>Memory Usage</span>
-                      <span>{db.memoryUsage}%</span>
-                    </div>
-                    <Progress value={db.memoryUsage} className="h-2" />
-                  </div>
-
-                  {/* Connection String */}
-                  <div className="space-y-2">
-                    <span className="text-sm font-medium">Connection String</span>
-                    <div className="flex gap-2">
-                      <Input 
-                        value={db.connectionString}
-                        readOnly
-                        className="text-xs"
-                      />
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => copyConnectionString(db.connectionString)}
-                      >
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-2">
-                    {db.status === "running" ? (
-                      <Button variant="outline" size="sm" className="flex-1">
-                        <Pause className="mr-2 h-3 w-3" />
-                        Stop
-                      </Button>
-                    ) : (
-                      <Button variant="outline" size="sm" className="flex-1">
-                        <Play className="mr-2 h-3 w-3" />
-                        Start
-                      </Button>
-                    )}
-                    <Button variant="outline" size="sm" className="flex-1">
-                      <Download className="mr-2 h-3 w-3" />
-                      Backup
-                    </Button>
-                    <Button variant="outline" size="sm">
-                      <Settings className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {/* Empty State */}
-          {filteredDatabases.length === 0 && (
+          {databasesQuery.isLoading ? (
+            <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+          ) : filteredDatabases.length === 0 ? (
             <Card className="text-center py-12">
               <CardContent>
-                <Database className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No databases found</h3>
-                <p className="text-muted-foreground mb-4">
-                  {searchQuery 
-                    ? "No databases match your search criteria"
-                    : "Get started by creating your first database"
-                  }
-                </p>
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Database
-                </Button>
+                <EmptyState
+                  icon={Database}
+                  title={searchQuery ? "No databases found" : "No databases yet"}
+                  description={searchQuery ? "No databases match your search criteria" : "Get started by creating your first database"}
+                  action={{ label: "Create Database", onClick: () => setShowCreateModal(true), icon: Plus }}
+                />
               </CardContent>
             </Card>
+          ) : (
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {filteredDatabases.map((db: any) => (
+                <Card key={db.id} className="relative">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {getTypeIcon(db.type)}
+                        <CardTitle className="text-lg">{db.name}</CardTitle>
+                      </div>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(db.id, db.name)}>
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Badge variant="outline" className={getStatusColor(db.status || "running")}>
+                        {db.status || "running"}
+                      </Badge>
+                      <Badge variant="secondary">{db.environment?.NODE_ENV || "production"}</Badge>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Type:</span>
+                        <span className="capitalize">{db.type}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Created:</span>
+                        <span>{formatDateTime(db.createdAt)}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <span className="text-sm font-medium">Connection</span>
+                      <div className="flex gap-2">
+                        <Input value="••••••••••••••••••••" readOnly className="text-xs text-muted-foreground" />
+                        <Button variant="outline" size="sm" onClick={() => copyConnectionString(db.id)}>
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" className="flex-1" onClick={() => handleRestart(db.id)} disabled={restartDatabase.isLoading}>
+                        <RefreshCw className="mr-2 h-3 w-3" />
+                        Restart
+                      </Button>
+                      <Button variant="outline" size="sm" className="flex-1" onClick={() => handleBackup(db.id)} disabled={backupDatabase.isLoading}>
+                        {backupDatabase.isLoading ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Download className="mr-2 h-3 w-3" />}
+                        Backup
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => openSettings(db)}>
+                        <Settings className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           )}
         </TabsContent>
 
         <TabsContent value="backups" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Backup History</CardTitle>
-              <CardDescription>Recent database backups and snapshots</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <div>
+                <CardTitle>Backup History</CardTitle>
+                <CardDescription>Recent database backups for your project</CardDescription>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => backupsQuery.refetch()}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh
+              </Button>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {backupHistory.map((backup) => (
-                  <div key={backup.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center gap-4">
-                      <Download className="h-8 w-8 text-muted-foreground" />
-                      <div>
-                        <h4 className="font-medium">{backup.database}</h4>
-                        <div className="flex gap-4 text-sm text-muted-foreground">
-                          <span>{backup.size}</span>
-                          <span>{backup.time}</span>
+              {backupsQuery.isLoading ? (
+                <div className="flex justify-center py-8"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+              ) : backups.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Download className="mx-auto h-8 w-8 mb-4 opacity-50" />
+                  <p>No backups found. Create one from the Databases tab.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {backups.map((backup: any) => (
+                    <div key={backup.id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex items-center gap-4">
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                          <HardDrive className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium">{backup.databaseName}</h4>
+                            <Badge variant={backup.status === 'completed' ? 'secondary' : 'outline'}>
+                              {backup.status}
+                            </Badge>
+                          </div>
+                          <div className="text-sm text-muted-foreground flex items-center gap-3">
+                            <span className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {formatDateTime(backup.createdAt)}
+                            </span>
+                            <span>•</span>
+                            <span>{(backup.sizeBytes / 1024 / 1024).toFixed(2)} MB</span>
+                          </div>
                         </div>
                       </div>
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => handleRestore(backup.id, backup.databaseName)}
+                          disabled={backup.status !== "completed" || restoreDatabase.isLoading}
+                        >
+                          <Upload className="mr-2 h-4 w-4" />
+                          Restore
+                        </Button>
+                        <Button 
+                          variant="secondary" 
+                          size="sm" 
+                          onClick={() => handleDownloadBackup(backup.id)}
+                          disabled={backup.status !== "completed"}
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          Download
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="bg-green-50 text-green-700">
-                        {backup.status}
-                      </Badge>
-                      <Button variant="outline" size="sm">
-                        <Download className="mr-2 h-3 w-3" />
-                        Download
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <Upload className="mr-2 h-3 w-3" />
-                        Restore
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -353,54 +444,81 @@ export default function DatabasesPage() {
                 <Database className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-semibold font-mono tabular-nums">{mockDatabases.length}</div>
-                <p className="text-xs text-muted-foreground">
-                  {mockDatabases.filter(db => db.status === 'running').length} running
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Storage</CardTitle>
-                <HardDrive className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-semibold font-mono tabular-nums">12.6 GB</div>
-                <p className="text-xs text-muted-foreground">
-                  <span className="text-green-600">+2.1 GB</span> this month
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Connections</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-semibold font-mono tabular-nums">44</div>
-                <p className="text-xs text-muted-foreground">
-                  of 1200 total
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Last Backup</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-semibold font-mono tabular-nums">1h ago</div>
-                <p className="text-xs text-muted-foreground">
-                  All databases backed up
-                </p>
+                <div className="text-2xl font-semibold font-mono tabular-nums">{databases.length}</div>
               </CardContent>
             </Card>
           </div>
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog {...confirmDialogProps} />
+
+      {/* Create Modal */}
+      <ResponsiveModal open={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create Database">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Instance Name</Label>
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. prod-db" />
+          </div>
+          <div className="space-y-2">
+            <Label>Database Type</Label>
+            <Select value={type} onValueChange={(v: any) => setType(v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="postgresql">PostgreSQL</SelectItem>
+                <SelectItem value="mysql">MySQL</SelectItem>
+                <SelectItem value="mariadb">MariaDB</SelectItem>
+                <SelectItem value="mongodb">MongoDB</SelectItem>
+                <SelectItem value="redis">Redis</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Logical Database Name</Label>
+            <Input value={databaseName} onChange={e => setDatabaseName(e.target.value)} placeholder="e.g. main_db" />
+          </div>
+          <div className="space-y-2">
+            <Label>Username</Label>
+            <Input value={username} onChange={e => setUsername(e.target.value)} placeholder="e.g. dbuser" />
+          </div>
+          <div className="space-y-2">
+            <Label>Password</Label>
+            <Input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Minimum 8 characters" />
+          </div>
+          <div className="pt-4 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowCreateModal(false)}>Cancel</Button>
+            <Button onClick={handleCreate} disabled={createDatabase.isLoading}>
+              {createDatabase.isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Create
+            </Button>
+          </div>
+        </div>
+      </ResponsiveModal>
+
+      {/* Settings Modal */}
+      <ResponsiveModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} title="Database Settings">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Memory Limit (MB)</Label>
+            <Input type="number" value={settingsMemory} onChange={e => setSettingsMemory(e.target.value)} placeholder="e.g. 512" />
+          </div>
+          <div className="space-y-2">
+            <Label>CPU Limit (Cores)</Label>
+            <Input type="number" step="0.1" value={settingsCpu} onChange={e => setSettingsCpu(e.target.value)} placeholder="e.g. 1.0" />
+          </div>
+          <div className="space-y-2">
+            <Label>External Port (Optional)</Label>
+            <Input type="number" value={settingsPort} onChange={e => setSettingsPort(e.target.value)} placeholder="e.g. 5432" />
+          </div>
+          <div className="pt-4 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowSettingsModal(false)}>Cancel</Button>
+            <Button onClick={handleUpdateSettings} disabled={updateDatabase.isLoading}>
+              {updateDatabase.isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Changes
+            </Button>
+          </div>
+        </div>
+      </ResponsiveModal>
     </div>
   )
 }
