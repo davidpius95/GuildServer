@@ -73,6 +73,7 @@ services:
     container_name: guildserver-api
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - api_backups:/app/data/backups
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://guildserver:${POSTGRES_PASSWORD:-password123}@postgres:5432/guildserver
@@ -344,6 +345,7 @@ volumes:
   prometheus_data:
   grafana_data:
   loki_data:
+  api_backups:
 
 networks:
   default:

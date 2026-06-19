@@ -409,18 +409,18 @@ export default function DatabasesPage() {
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => handleRestore(backup.id, backup.databaseName)}
                           disabled={backup.status !== "completed" || restoreDatabase.isLoading}
                         >
                           <Upload className="mr-2 h-4 w-4" />
                           Restore
                         </Button>
-                        <Button 
-                          variant="secondary" 
-                          size="sm" 
+                        <Button
+                          variant="secondary"
+                          size="sm"
                           onClick={() => handleDownloadBackup(backup.id)}
                           disabled={backup.status !== "completed"}
                         >

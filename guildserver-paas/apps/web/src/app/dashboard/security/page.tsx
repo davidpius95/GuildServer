@@ -279,6 +279,8 @@ export default function SecurityPage() {
 
   const posture = postureQuery.data
   const scanHistory = scansQuery.data || vulnerabilityScans
+  // Real findings from the live scan (falls back to empty before first load).
+  const issues = (posture?.issues as typeof securityIssues | undefined) || []
 
   const totalIssues = posture ? posture.totalIssues : securityIssues.length
   const criticalIssues = posture ? posture.criticalIssues : securityIssues.filter(i => i.severity === 'critical').length
@@ -299,6 +301,11 @@ export default function SecurityPage() {
           <RefreshCw className={`mr-2 h-4 w-4 ${(postureQuery.isFetching || scansQuery.isFetching) ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
+      </div>
+
+      {/* Posture and findings are computed live from your infrastructure. Export & auto-remediation are still in development. */}
+      <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+        Posture and findings are scanned live from your infrastructure. Report export and one-click remediation are coming soon.
       </div>
 
       {/* Security Overview */}
@@ -439,7 +446,7 @@ export default function SecurityPage() {
                       <Eye className="mr-2 h-3 w-3" />
                       View Details
                     </Button>
-                    <Button variant="outline" size="sm" className="flex-1" onClick={() => handleExport("pdf")} disabled={exportReport.isLoading}>
+                    <Button variant="outline" size="sm" className="flex-1" disabled title="Report export is coming soon (preview)">
                       {exportReport.isLoading ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Download className="mr-2 h-3 w-3" />}
                       Report
                     </Button>
@@ -458,7 +465,7 @@ export default function SecurityPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {securityIssues.map((issue) => (
+                {issues.map((issue) => (
                   <div key={issue.id} className="flex items-start gap-4 p-4 border rounded-lg">
                     <AlertTriangle className={`h-5 w-5 flex-shrink-0 mt-0.5 ${
                       issue.severity === 'critical' ? 'text-red-500' :
@@ -483,8 +490,8 @@ export default function SecurityPage() {
                             Discovered {issue.discoveredAt} • Affects: {issue.affectedResources.join(', ')}
                           </div>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => handleFixIssue(issue.id)} disabled={remediate.isLoading}>
-                          {remediate.isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Fix Issue"}
+                        <Button variant="outline" size="sm" disabled title="Auto-remediation is coming soon (preview)">
+                          Fix Issue (soon)
                         </Button>
                       </div>
                     </div>
@@ -558,7 +565,7 @@ export default function SecurityPage() {
                       <Eye className="mr-2 h-3 w-3" />
                       View Results
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleExport("json")} disabled={exportReport.isLoading}>
+                    <Button variant="outline" size="sm" disabled title="Report export is coming soon (preview)">
                       {exportReport.isLoading ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Download className="mr-2 h-3 w-3" />}
                       Export
                     </Button>

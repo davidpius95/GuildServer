@@ -311,9 +311,9 @@ export default function WorkflowsPage() {
                         <Play className="mr-2 h-3 w-3" />
                         Run
                       </Button>
-                      <Button variant="outline" size="sm" className="flex-1" onClick={() => {}}>
+                      <Button variant="outline" size="sm" className="flex-1" disabled title="Editing workflows is coming soon (preview)">
                         <Edit className="mr-2 h-3 w-3" />
-                        Edit
+                        Edit (soon)
                       </Button>
                     </div>
                   </CardContent>
