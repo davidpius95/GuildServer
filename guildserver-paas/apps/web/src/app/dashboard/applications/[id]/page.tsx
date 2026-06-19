@@ -1335,7 +1335,7 @@ export default function ApplicationDetailPage() {
                     <p className="text-xs text-muted-foreground mt-2">
                       Go to your repo → Settings → Webhooks → Add webhook → Paste this URL.
                       Set content type to <code className="bg-muted px-1 rounded">application/json</code> and
-                      select "Just the push event".
+                      select &quot;Just the push event&quot;.
                     </p>
                   </div>
 
@@ -1365,7 +1365,7 @@ export default function ApplicationDetailPage() {
                     </code>
                     <p className="text-xs text-muted-foreground mt-2">
                       Go to your project → Settings → Webhooks → Add webhook → Paste this URL.
-                      Select "Push events" trigger.
+                      Select &quot;Push events&quot; trigger.
                     </p>
                   </div>
 
