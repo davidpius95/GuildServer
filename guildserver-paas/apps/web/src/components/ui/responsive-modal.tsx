@@ -1,7 +1,7 @@
 "use client"
 
 import { type ReactNode } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { X } from "lucide-react"
 import {
@@ -9,6 +9,7 @@ import {
   DrawerContent,
   DrawerHeader,
   DrawerTitle,
+  DrawerFooter,
 } from "@/components/ui/drawer"
 import { useMediaQuery } from "@/hooks/use-media-query"
 
@@ -17,12 +18,13 @@ interface ResponsiveModalProps {
   onClose: () => void
   title: string
   children: ReactNode
+  footer?: ReactNode
 }
 
 /**
  * Renders a centered modal card on desktop, a bottom drawer on mobile.
  */
-export function ResponsiveModal({ open, onClose, title, children }: ResponsiveModalProps) {
+export function ResponsiveModal({ open, onClose, title, children, footer }: ResponsiveModalProps) {
   const isMobile = useMediaQuery("(max-width: 640px)")
 
   if (!open) return null
@@ -38,6 +40,11 @@ export function ResponsiveModal({ open, onClose, title, children }: ResponsiveMo
           <div className="px-4 pb-6 overflow-y-auto flex-1 min-h-0">
             {children}
           </div>
+          {footer && (
+            <DrawerFooter className="pt-2 shrink-0 border-t">
+              {footer}
+            </DrawerFooter>
+          )}
         </DrawerContent>
       </Drawer>
     )
@@ -62,6 +69,11 @@ export function ResponsiveModal({ open, onClose, title, children }: ResponsiveMo
         <CardContent className="overflow-y-auto flex-1 min-h-0 relative">
           {children}
         </CardContent>
+        {footer && (
+          <CardFooter className="pt-4 shrink-0 border-t">
+            {footer}
+          </CardFooter>
+        )}
       </Card>
     </div>
   )

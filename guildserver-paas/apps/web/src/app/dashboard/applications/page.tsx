@@ -606,6 +606,29 @@ export default function ApplicationsPage() {
         open={showCreateModal}
         onClose={() => { setShowCreateModal(false); resetForm() }}
         title="New Application"
+        footer={
+          <div className="flex w-full gap-3">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => { setShowCreateModal(false); resetForm() }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={handleCreate}
+              disabled={createApp.isPending}
+            >
+              {createApp.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="mr-2 h-4 w-4" />
+              )}
+              Create Application
+            </Button>
+          </div>
+        }
       >
         <div className="space-y-6">
               {/* App Name */}
@@ -1226,29 +1249,6 @@ export default function ApplicationsPage() {
                 collapsible={true}
                 label="Environment Variables (optional)"
               />
-
-              {/* Actions */}
-              <div className="sticky bottom-[-1px] left-0 right-0 z-10 flex gap-3 bg-background/95 backdrop-blur-sm py-4 border-t mt-4">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => { setShowCreateModal(false); resetForm() }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={handleCreate}
-                  disabled={createApp.isPending}
-                >
-                  {createApp.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plus className="mr-2 h-4 w-4" />
-                  )}
-                  Create Application
-                </Button>
-              </div>
         </div>
       </ResponsiveModal>
     </div>

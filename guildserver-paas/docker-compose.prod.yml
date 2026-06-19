@@ -270,21 +270,6 @@ services:
       - default
     restart: unless-stopped
 
-  # Cloudflare Metrics Exporter
-  cloudflare-exporter:
-    image: ghcr.io/lablabs/cloudflare-exporter:latest
-    container_name: guildserver-cloudflare-exporter
-    environment:
-      - CF_API_TOKEN=${CLOUDFLARE_API_TOKEN}
-      - CF_ZONES=${CF_ZONES:-}
-      - CF_ACCOUNTS=${CF_ACCOUNTS:-}
-      - FREE_TIER=${FREE_TIER:-true}
-    ports:
-      - "8080"
-    networks:
-      - default
-    restart: unless-stopped
-
   # Postgres Exporter
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
