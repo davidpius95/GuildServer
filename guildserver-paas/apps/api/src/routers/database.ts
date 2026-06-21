@@ -4,9 +4,18 @@ import { createTRPCRouter, protectedProcedure } from "../trpc/trpc";
 import { databases, projects, members, databaseBackups } from "@guildserver/database";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { DatabaseBackupService } from "../services/db-backup";
-import { provisionDatabaseContainer } from "../services/database-provision";
+import { provisionDatabaseContainer, removeDatabaseVolume } from "../services/database-provision";
 import { restartContainer, removeExistingContainers } from "../services/docker/container";
+import { addBackupJob, addRestoreJob, syncBackupSchedule } from "../queues/backups";
 import { logger } from "../utils/logger";
+
+const backupSettingsSchema = z.object({
+  backupEnabled: z.boolean().optional(),
+  backupFrequency: z.enum(["hourly", "daily", "weekly"]).optional(),
+  backupHour: z.number().int().min(0).max(23).optional(),
+  backupRetentionDays: z.number().int().min(1).max(365).optional(),
+  backupDir: z.string().optional(),
+});
 
 const createDatabaseSchema = z.object({
   name: z.string().min(1),
@@ -19,6 +28,11 @@ const createDatabaseSchema = z.object({
   memoryLimit: z.number().optional(),
   cpuLimit: z.number().optional(),
   externalPort: z.number().optional(),
+  backupEnabled: z.boolean().optional(),
+  backupFrequency: z.enum(["hourly", "daily", "weekly"]).optional(),
+  backupHour: z.number().int().min(0).max(23).optional(),
+  backupRetentionDays: z.number().int().min(1).max(365).optional(),
+  backupDir: z.string().optional(),
 });
 
 const updateDatabaseSchema = z.object({
@@ -177,7 +191,7 @@ export const databaseRouter = createTRPCRouter({
 
       // Provision and start a real container for the database.
       try {
-        const { hostPort } = await provisionDatabaseContainer({
+        const { hostPort, containerId, volumeName } = await provisionDatabaseContainer({
           databaseId: newDatabase.id,
           name: newDatabase.name,
           type: input.type,
@@ -188,9 +202,23 @@ export const databaseRouter = createTRPCRouter({
         });
         const [updated] = await ctx.db
           .update(databases)
-          .set({ externalPort: hostPort, status: "running", updatedAt: new Date() })
+          .set({
+            externalPort: hostPort,
+            hostPort,
+            containerId,
+            volumeName,
+            status: "running",
+            updatedAt: new Date(),
+          })
           .where(eq(databases.id, newDatabase.id))
           .returning();
+
+        // Register the automatic-backup schedule if the user enabled it.
+        if (updated.backupEnabled) {
+          await syncBackupSchedule(updated).catch((err) =>
+            logger.error(`Failed to sync backup schedule for ${updated.id}: ${err.message}`),
+          );
+        }
         return updated;
       } catch (err: any) {
         logger.error(`Database provisioning failed for ${newDatabase.id}: ${err.message}`);
@@ -247,8 +275,40 @@ export const databaseRouter = createTRPCRouter({
       return updatedDatabase;
     }),
 
+  updateBackupSettings: protectedProcedure
+    .input(backupSettingsSchema.extend({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...settings } = input;
+
+      const database = await ctx.db.query.databases.findFirst({
+        where: eq(databases.id, id),
+        with: {
+          project: {
+            with: { organization: { with: { members: { where: eq(members.userId, ctx.user.id) } } } },
+          },
+        },
+      });
+
+      if (!database || database.project.organization.members.length === 0) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Database not found or access denied" });
+      }
+
+      const [updated] = await ctx.db
+        .update(databases)
+        .set({ ...settings, updatedAt: new Date() })
+        .where(eq(databases.id, id))
+        .returning();
+
+      // Re-register / remove the automatic-backup schedule to match new settings.
+      await syncBackupSchedule(updated).catch((err) =>
+        logger.error(`Failed to sync backup schedule for ${id}: ${err.message}`),
+      );
+
+      return updated;
+    }),
+
   delete: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.string().uuid(), destroyData: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       // Check if user has access to the database
       const database = await ctx.db.query.databases.findFirst({
@@ -275,11 +335,21 @@ export const databaseRouter = createTRPCRouter({
         });
       }
 
+      // Cancel any automatic-backup schedule for this database.
+      await syncBackupSchedule({ ...database, backupEnabled: false }).catch((err) =>
+        logger.warn(`Failed to remove backup schedule for ${input.id}: ${err.message}`),
+      );
+
       // Remove the running container before deleting the record.
       try {
         await removeExistingContainers(input.id);
       } catch (err: any) {
         logger.warn(`Failed to remove container for database ${input.id}: ${err.message}`);
+      }
+
+      // Only destroy the persistent data volume when explicitly requested.
+      if (input.destroyData) {
+        await removeDatabaseVolume(input.id);
       }
 
       await ctx.db.delete(databases).where(eq(databases.id, input.id));
@@ -400,7 +470,10 @@ export const databaseRouter = createTRPCRouter({
         });
       }
 
-      const backup = await DatabaseBackupService.triggerBackup(input.id);
+      // Create the record immediately (UI shows "in_progress"), then run the
+      // real dump asynchronously on the backup worker.
+      const backup = await DatabaseBackupService.triggerBackup(input.id, "manual");
+      await addBackupJob(input.id, backup.id, "manual");
       return backup;
     }),
 
@@ -533,8 +606,9 @@ export const databaseRouter = createTRPCRouter({
         });
       }
 
-      const success = await DatabaseBackupService.restoreBackup(input.backupId);
-      return { success };
+      // Restore can be slow; run it on the worker.
+      await addRestoreJob(input.backupId);
+      return { success: true, message: "Restore started" };
     }),
 
   downloadBackup: protectedProcedure
@@ -576,8 +650,8 @@ export const databaseRouter = createTRPCRouter({
         });
       }
 
-      const url = await DatabaseBackupService.getDownloadUrl(input.backupId);
-      return { url };
+      const { filePath, fileName } = await DatabaseBackupService.getDownloadFile(input.backupId);
+      return { filePath, fileName };
     }),
 });
 

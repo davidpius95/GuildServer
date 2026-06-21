@@ -18,6 +18,7 @@ import { toast } from "sonner"
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog"
 import { ResponsiveModal } from "@/components/ui/responsive-modal"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { EmptyState } from "@/components/empty-state"
 import { formatDateTime } from "@/lib/utils"
 
@@ -63,7 +64,14 @@ export default function DatabasesPage() {
   const [databaseName, setDatabaseName] = useState("")
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
-  
+
+  // Backup configuration (shared by create + settings)
+  const [backupEnabled, setBackupEnabled] = useState(false)
+  const [backupFrequency, setBackupFrequency] = useState<"hourly" | "daily" | "weekly">("daily")
+  const [backupHour, setBackupHour] = useState("3")
+  const [backupRetentionDays, setBackupRetentionDays] = useState("7")
+  const [backupDir, setBackupDir] = useState("")
+
   // Settings form state
   const [settingsMemory, setSettingsMemory] = useState("")
   const [settingsCpu, setSettingsCpu] = useState("")
@@ -139,12 +147,26 @@ export default function DatabasesPage() {
     onError: (err) => toast.error(err.message),
   })
 
+  const updateBackupSettings = trpc.database.updateBackupSettings.useMutation({
+    onSuccess: () => {
+      toast.success("Backup settings saved!")
+      utils.database.listByOrg.invalidate({ organizationId: orgId })
+      setShowSettingsModal(false)
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
   const resetForm = () => {
     setName("")
     setType("postgresql")
     setDatabaseName("")
     setUsername("")
     setPassword("")
+    setBackupEnabled(false)
+    setBackupFrequency("daily")
+    setBackupHour("3")
+    setBackupRetentionDays("7")
+    setBackupDir("")
   }
 
   const handleCreate = () => {
@@ -159,6 +181,11 @@ export default function DatabasesPage() {
       databaseName,
       username,
       password,
+      backupEnabled,
+      backupFrequency,
+      backupHour: parseInt(backupHour) || 3,
+      backupRetentionDays: parseInt(backupRetentionDays) || 7,
+      backupDir: backupDir || undefined,
     })
   }
 
@@ -190,13 +217,13 @@ export default function DatabasesPage() {
     })
   }
 
-  const handleDownloadBackup = async (backupId: string) => {
-    try {
-      const { url } = await utils.database.downloadBackup.fetch({ backupId })
-      window.open(url, "_blank")
-    } catch (e: any) {
-      toast.error(e.message || "Failed to download backup")
-    }
+  const handleDownloadBackup = (backupId: string) => {
+    // The backup is streamed by the API's authenticated /downloads route. The
+    // browser navigation can't send an auth header, so pass the JWT as a query
+    // param (same short-lived token the SPA already holds).
+    const token = typeof window !== "undefined" ? localStorage.getItem("guildserver-token") : ""
+    const apiBase = (process.env.NEXT_PUBLIC_API_URL || "/trpc").replace(/\/trpc$/, "")
+    window.open(`${apiBase}/downloads/backup/${backupId}?token=${encodeURIComponent(token || "")}`, "_blank")
   }
 
   const openSettings = (db: any) => {
@@ -204,6 +231,11 @@ export default function DatabasesPage() {
     setSettingsMemory(db.memoryLimit?.toString() || "")
     setSettingsCpu(db.cpuLimit?.toString() || "")
     setSettingsPort(db.externalPort?.toString() || "")
+    setBackupEnabled(!!db.backupEnabled)
+    setBackupFrequency(db.backupFrequency || "daily")
+    setBackupHour(db.backupHour?.toString() || "3")
+    setBackupRetentionDays(db.backupRetentionDays?.toString() || "7")
+    setBackupDir(db.backupDir || "")
     setShowSettingsModal(true)
   }
 
@@ -214,6 +246,18 @@ export default function DatabasesPage() {
       memoryLimit: settingsMemory ? parseInt(settingsMemory) : undefined,
       cpuLimit: settingsCpu ? parseInt(settingsCpu) : undefined,
       externalPort: settingsPort ? parseInt(settingsPort) : undefined,
+    })
+  }
+
+  const handleSaveBackupSettings = () => {
+    if (!selectedDatabase) return
+    updateBackupSettings.mutate({
+      id: selectedDatabase.id,
+      backupEnabled,
+      backupFrequency,
+      backupHour: parseInt(backupHour) || 3,
+      backupRetentionDays: parseInt(backupRetentionDays) || 7,
+      backupDir: backupDir || undefined,
     })
   }
 
@@ -228,6 +272,69 @@ export default function DatabasesPage() {
       toast.error(e.message || "Failed to get connection string")
     }
   }
+
+  // Shared backup-configuration fields (used in both Create and Settings modals).
+  const backupConfigFields = (
+    <div className="space-y-4 rounded-lg border p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <Label>Automatic Backups</Label>
+          <p className="text-xs text-muted-foreground">Schedule recurring engine-native backups</p>
+        </div>
+        <Switch checked={backupEnabled} onCheckedChange={setBackupEnabled} />
+      </div>
+      {backupEnabled && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Frequency</Label>
+              <Select value={backupFrequency} onValueChange={(v: any) => setBackupFrequency(v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hourly">Hourly</SelectItem>
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Preferred Hour (0-23)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={23}
+                value={backupHour}
+                onChange={e => setBackupHour(e.target.value)}
+                disabled={backupFrequency === "hourly"}
+                placeholder="3"
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Retention (days)</Label>
+            <Input
+              type="number"
+              min={1}
+              max={365}
+              value={backupRetentionDays}
+              onChange={e => setBackupRetentionDays(e.target.value)}
+              placeholder="7"
+            />
+            <p className="text-xs text-muted-foreground">Backups older than this are deleted automatically.</p>
+          </div>
+        </div>
+      )}
+      <div className="space-y-2">
+        <Label>Backup Directory (optional)</Label>
+        <Input
+          value={backupDir}
+          onChange={e => setBackupDir(e.target.value)}
+          placeholder="Default: /var/lib/guildserver/backups/<db-id>"
+        />
+        <p className="text-xs text-muted-foreground">Host path where dump files are stored.</p>
+      </div>
+    </div>
+  )
 
   const databases = databasesQuery.data || []
   const filteredDatabases = databases.filter((db: any) =>
@@ -348,9 +455,9 @@ export default function DatabasesPage() {
                         <RefreshCw className="mr-2 h-3 w-3" />
                         Restart
                       </Button>
-                      <Button variant="outline" size="sm" className="flex-1" disabled title="Real backups are coming soon (preview)">
+                      <Button variant="outline" size="sm" className="flex-1" onClick={() => handleBackup(db.id)} disabled={backupDatabase.isLoading}>
                         <Download className="mr-2 h-3 w-3" />
-                        Backup (soon)
+                        Backup
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => openSettings(db)}>
                         <Settings className="h-3 w-3" />
@@ -394,9 +501,10 @@ export default function DatabasesPage() {
                         <div>
                           <div className="flex items-center gap-2">
                             <h4 className="font-medium">{backup.databaseName}</h4>
-                            <Badge variant={backup.status === 'completed' ? 'secondary' : 'outline'}>
+                            <Badge variant={backup.status === 'completed' ? 'secondary' : backup.status === 'failed' ? 'destructive' : 'outline'}>
                               {backup.status}
                             </Badge>
+                            <Badge variant="outline" className="capitalize">{backup.backupType || 'manual'}</Badge>
                           </div>
                           <div className="text-sm text-muted-foreground flex items-center gap-3">
                             <span className="flex items-center gap-1">
@@ -412,20 +520,20 @@ export default function DatabasesPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled
-                          title="Real restore is coming soon (preview)"
+                          disabled={backup.status !== 'completed' || restoreDatabase.isLoading}
+                          onClick={() => handleRestore(backup.id, backup.databaseName)}
                         >
                           <Upload className="mr-2 h-4 w-4" />
-                          Restore (soon)
+                          Restore
                         </Button>
                         <Button
                           variant="secondary"
                           size="sm"
-                          disabled
-                          title="Real backup download is coming soon (preview)"
+                          disabled={backup.status !== 'completed'}
+                          onClick={() => handleDownloadBackup(backup.id)}
                         >
                           <Download className="mr-2 h-4 w-4" />
-                          Download (soon)
+                          Download
                         </Button>
                       </div>
                     </div>
@@ -485,6 +593,7 @@ export default function DatabasesPage() {
             <Label>Password</Label>
             <Input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Minimum 8 characters" />
           </div>
+          {backupConfigFields}
           <div className="pt-4 flex justify-end gap-2">
             <Button variant="outline" onClick={() => setShowCreateModal(false)}>Cancel</Button>
             <Button onClick={handleCreate} disabled={createDatabase.isLoading}>
@@ -510,11 +619,22 @@ export default function DatabasesPage() {
             <Label>External Port (Optional)</Label>
             <Input type="number" value={settingsPort} onChange={e => setSettingsPort(e.target.value)} placeholder="e.g. 5432" />
           </div>
-          <div className="pt-4 flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowSettingsModal(false)}>Cancel</Button>
-            <Button onClick={handleUpdateSettings} disabled={updateDatabase.isLoading}>
+          <div className="pt-2 flex justify-end">
+            <Button variant="outline" size="sm" onClick={handleUpdateSettings} disabled={updateDatabase.isLoading}>
               {updateDatabase.isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save Changes
+              Save Resources
+            </Button>
+          </div>
+
+          <div className="border-t pt-4 space-y-4">
+            <h4 className="text-sm font-medium">Backups</h4>
+            {backupConfigFields}
+          </div>
+          <div className="pt-4 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowSettingsModal(false)}>Close</Button>
+            <Button onClick={handleSaveBackupSettings} disabled={updateBackupSettings.isLoading}>
+              {updateBackupSettings.isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Backup Settings
             </Button>
           </div>
         </div>

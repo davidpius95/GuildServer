@@ -313,7 +313,19 @@ export const databases = pgTable("databases", {
   
   // External access
   externalPort: integer("external_port"),
-  
+
+  // Persistence / runtime (populated by the provisioner)
+  volumeName: text("volume_name"),
+  containerId: text("container_id"),
+  hostPort: integer("host_port"),
+
+  // Automatic backup configuration
+  backupEnabled: boolean("backup_enabled").default(false),
+  backupFrequency: varchar("backup_frequency", { length: 20 }).default("daily"), // hourly | daily | weekly
+  backupHour: integer("backup_hour"), // preferred hour-of-day (0-23) for the backup window
+  backupRetentionDays: integer("backup_retention_days").default(7),
+  backupDir: text("backup_dir"), // host directory for dumps (null = derived default)
+
   // Status
   status: varchar("status", { length: 50 }).default("inactive"),
 
@@ -329,9 +341,14 @@ export const databaseBackups = pgTable("database_backups", {
   databaseId: uuid("database_id").references(() => databases.id, { onDelete: "cascade" }),
   sizeBytes: integer("size_bytes").default(0),
   status: backupStatusEnum("status").default("pending"),
+  backupType: varchar("backup_type", { length: 20 }).default("manual"), // manual | automatic
+  filePath: text("file_path"), // absolute path of the dump on the host
   fileUrl: text("file_url"),
+  error: text("error"),
   startedAt: timestamp("started_at").defaultNow(),
   completedAt: timestamp("completed_at"),
+  expiresAt: timestamp("expires_at"), // completedAt + retentionDays; used by the retention sweep
+  createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   databaseIdIdx: index("database_backups_database_id_idx").on(table.databaseId),
 }));

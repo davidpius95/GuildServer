@@ -22,6 +22,13 @@
       "when": 1781884772346,
       "tag": "0002_parallel_sunspot",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1782053508349,
+      "tag": "0003_late_chronomancer",
+      "breakpoints": true
     }
   ]
 }

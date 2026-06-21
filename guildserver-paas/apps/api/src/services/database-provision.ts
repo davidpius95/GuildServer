@@ -13,6 +13,32 @@ const DB_PORTS: Record<string, number> = {
   redis: 6379,
 };
 
+/** In-container data directory per engine, mounted on a persistent volume. */
+const DB_DATA_DIRS: Record<string, string> = {
+  postgresql: "/var/lib/postgresql/data",
+  mysql: "/var/lib/mysql",
+  mariadb: "/var/lib/mysql",
+  mongodb: "/data/db",
+  redis: "/data",
+};
+
+/** Stable named-volume identifier for a database's persistent data. */
+export function dbVolumeName(databaseId: string): string {
+  return `gs-db-${databaseId.slice(0, 12)}-data`;
+}
+
+/** Create the data volume if it does not already exist (idempotent). */
+async function ensureVolume(name: string): Promise<void> {
+  try {
+    await docker.getVolume(name).inspect();
+  } catch {
+    await docker.createVolume({
+      Name: name,
+      Labels: { [GS_LABELS.MANAGED]: "true", [GS_LABELS.TYPE]: "database" },
+    });
+  }
+}
+
 /** Default image per engine (matches database router defaults). */
 const DEFAULT_IMAGES: Record<string, string> = {
   postgresql: "postgres:15",
@@ -80,6 +106,7 @@ async function findAvailablePort(): Promise<number> {
 export interface ProvisionResult {
   containerId: string;
   hostPort: number;
+  volumeName: string;
 }
 
 /**
@@ -101,9 +128,15 @@ export async function provisionDatabaseContainer(opts: {
   if (!containerPort) throw new Error(`Unknown database type: ${opts.type}`);
 
   await ensureNetwork();
-  // Clean up any prior container for this database id (idempotent).
+  // Clean up any prior container for this database id (idempotent). The data
+  // volume is intentionally left intact so data survives redeploys/restarts.
   await removeExistingContainers(opts.databaseId);
   await pullImage(image, "latest", "system", `db-${opts.databaseId}`);
+
+  // Ensure a persistent volume backs the engine's data directory.
+  const volumeName = dbVolumeName(opts.databaseId);
+  const dataDir = DB_DATA_DIRS[opts.type];
+  await ensureVolume(volumeName);
 
   const hostPort = await findAvailablePort();
   const { env, cmd } = buildEngineConfig(
@@ -130,10 +163,22 @@ export async function provisionDatabaseContainer(opts: {
       PortBindings: { [portKey]: [{ HostPort: String(hostPort) }] },
       RestartPolicy: { Name: "unless-stopped" },
       NetworkMode: NETWORK_NAME,
+      ...(dataDir ? { Binds: [`${volumeName}:${dataDir}`] } : {}),
     },
   });
 
   await container.start();
   logger.info(`Provisioned ${opts.type} database ${opts.name} (${opts.databaseId}) on host port ${hostPort}`);
-  return { containerId: container.id, hostPort };
+  return { containerId: container.id, hostPort, volumeName };
+}
+
+/** Remove a database's persistent data volume. Only call when destroying data. */
+export async function removeDatabaseVolume(databaseId: string): Promise<void> {
+  const name = dbVolumeName(databaseId);
+  try {
+    await docker.getVolume(name).remove({ force: true });
+    logger.info(`Removed data volume ${name} for database ${databaseId}`);
+  } catch (err: any) {
+    logger.warn(`Failed to remove volume ${name}: ${err.message}`);
+  }
 }

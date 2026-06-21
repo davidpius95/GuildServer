@@ -1,4 +1,5 @@
 import Docker from "dockerode";
+import { Writable } from "stream";
 import { logger } from "../../utils/logger";
 import { broadcastToUser } from "../../websocket/server";
 import { docker, NETWORK_NAME, CONTAINER_PREFIX, GS_LABELS, isLocalhostDomain } from "./client";
@@ -280,6 +281,74 @@ export async function getAppContainer(applicationId: string, dockerClient?: Dock
 
   if (containers.length === 0) return null;
   return d.getContainer(containers[0].Id);
+}
+
+export interface ExecResult {
+  stdout: Buffer;
+  stderr: string;
+  exitCode: number;
+}
+
+/**
+ * Run a command inside an existing container and capture its output.
+ * Optionally pipe `stdin` (a Buffer) into the process — used to stream a backup
+ * dump back into the engine's restore command.
+ *
+ * `stdout` is returned as a raw Buffer because engine dumps (e.g. pg_dump -Fc,
+ * Redis RDB, mongodump archives) are binary.
+ */
+export async function execInContainer(
+  containerId: string,
+  cmd: string[],
+  options?: { stdin?: Buffer; dockerClient?: Docker },
+): Promise<ExecResult> {
+  const d = options?.dockerClient || docker;
+  const container = d.getContainer(containerId);
+  const hasStdin = !!options?.stdin;
+
+  const exec = await container.exec({
+    Cmd: cmd,
+    AttachStdout: true,
+    AttachStderr: true,
+    AttachStdin: hasStdin,
+  });
+
+  const stream = await exec.start({ hijack: true, stdin: hasStdin });
+
+  const stdoutChunks: Buffer[] = [];
+  const stderrChunks: Buffer[] = [];
+
+  // dockerode multiplexes stdout/stderr over a single stream; demux them.
+  const stdoutWritable = new Writable({
+    write(chunk: Buffer, _enc, next) {
+      stdoutChunks.push(chunk);
+      next();
+    },
+  });
+  const stderrWritable = new Writable({
+    write(chunk: Buffer, _enc, next) {
+      stderrChunks.push(chunk);
+      next();
+    },
+  });
+  d.modem.demuxStream(stream, stdoutWritable, stderrWritable);
+
+  if (hasStdin && options?.stdin) {
+    stream.write(options.stdin);
+    stream.end();
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    stream.on("end", resolve);
+    stream.on("error", reject);
+  });
+
+  const inspect = await exec.inspect();
+  return {
+    stdout: Buffer.concat(stdoutChunks),
+    stderr: Buffer.concat(stderrChunks).toString("utf8"),
+    exitCode: inspect.ExitCode ?? 0,
+  };
 }
 
 export async function getAppContainerInfo(applicationId: string, dockerClient?: Docker): Promise<ContainerInfo | null> {
