@@ -89,6 +89,21 @@ function buildEngineConfig(
   }
 }
 
+/**
+ * Split an image reference into repository + tag. The default engine images
+ * (e.g. "postgres:15") already include a tag, so we must not pass a separate
+ * tag to pullImage or it would build a malformed "postgres:15:latest" ref.
+ * Handles registry host:port prefixes by only treating the final ":" segment
+ * as a tag when it contains no "/".
+ */
+function splitImageTag(image: string): { repo: string; tag: string } {
+  const lastColon = image.lastIndexOf(":");
+  if (lastColon > image.lastIndexOf("/")) {
+    return { repo: image.slice(0, lastColon), tag: image.slice(lastColon + 1) };
+  }
+  return { repo: image, tag: "latest" };
+}
+
 async function findAvailablePort(): Promise<number> {
   // Pick a free host port in a high range, avoiding ones already bound by managed containers.
   const inUse = new Set<number>();
@@ -131,7 +146,8 @@ export async function provisionDatabaseContainer(opts: {
   // Clean up any prior container for this database id (idempotent). The data
   // volume is intentionally left intact so data survives redeploys/restarts.
   await removeExistingContainers(opts.databaseId);
-  await pullImage(image, "latest", "system", `db-${opts.databaseId}`);
+  const { repo, tag } = splitImageTag(image);
+  await pullImage(repo, tag, "system", `db-${opts.databaseId}`);
 
   // Ensure a persistent volume backs the engine's data directory.
   const volumeName = dbVolumeName(opts.databaseId);
