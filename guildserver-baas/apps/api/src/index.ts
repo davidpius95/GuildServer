@@ -22,8 +22,10 @@ import {
 import {
   collectAllMetrics, pruneOldMetrics,
 } from "@guildserver/baas-scheduler";
-import { db, baasProjects } from "@guildserver/baas-db";
-import { eq } from "drizzle-orm";
+import { db, baasProjects, baasNodes } from "@guildserver/baas-db";
+import { eq, inArray } from "drizzle-orm";
+import { createProxyMiddleware } from "http-proxy-middleware";
+import { jwtVerify } from "jose";
 
 const PORT = parseInt(process.env.BAAS_API_PORT ?? "4001", 10);
 const REDIS = { host: process.env.REDIS_HOST ?? "localhost", port: parseInt(process.env.REDIS_PORT ?? "6379") };
@@ -41,6 +43,108 @@ app.use("/trpc", createExpressMiddleware({ router: appRouter, createContext }));
 app.use(logsRouter);
 
 app.get("/health", (_, res) => res.json({ ok: true, ts: new Date().toISOString() }));
+
+// ── Traefik HTTP provider — dynamic Studio subdomain routes ───────────────────
+// Traefik polls this endpoint every 10s and registers a {slug}.baas.{domain}
+// host-rule route pointing directly at the Studio container on each compute node.
+const BASE_DOMAIN = process.env.BAAS_FALLBACK_DOMAIN ?? "baas.guildserver.com";
+
+app.get("/traefik/config", async (_req, res) => {
+  try {
+    const projects = await db
+      .select({
+        slug:         baasProjects.slug,
+        status:       baasProjects.status,
+        hostPortBase: baasProjects.hostPortBase,
+        externalIp:   baasNodes.externalIp,
+        hostname:     baasNodes.hostname,
+      })
+      .from(baasProjects)
+      .leftJoin(baasNodes, eq(baasNodes.id, baasProjects.nodeId))
+      .where(inArray(baasProjects.status, ["active", "provisioning"]));
+
+    const routers:  Record<string, object> = {};
+    const services: Record<string, object> = {};
+
+    for (const p of projects) {
+      if (!p.hostPortBase || (!p.externalIp && !p.hostname)) continue;
+      const studioPort = p.hostPortBase + 2;
+      const host       = p.externalIp ?? p.hostname;
+      const key        = `studio-${p.slug}`;
+
+      routers[key] = {
+        rule:        `Host(\`${p.slug}.baas.${BASE_DOMAIN}\`)`,
+        service:     key,
+        entryPoints: ["web", "websecure"],
+        middlewares: ["strip-xframe"],
+      };
+      services[key] = {
+        loadBalancer: { servers: [{ url: `http://${host}:${studioPort}` }] },
+      };
+    }
+
+    const middlewares = {
+      "strip-xframe": {
+        headers: {
+          customResponseHeaders: {
+            "X-Frame-Options":              "",
+            "Content-Security-Policy":      "frame-ancestors *",
+          },
+        },
+      },
+    };
+
+    res.json({ http: { routers, services, middlewares } });
+  } catch (e) {
+    console.error("[traefik/config]", e);
+    res.json({ http: { routers: {}, services: {}, middlewares: {} } });
+  }
+});
+
+// ── Studio proxy — authenticated pass-through for in-app embed ────────────────
+// GET /studio/:projectId  →  proxies the project's Studio container.
+// Requires valid Bearer JWT; the proxy rewrites the request path.
+app.use("/studio/:projectId", async (req, res, next) => {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+
+  try {
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET!);
+    await jwtVerify(auth.slice(7), secret);
+  } catch {
+    return res.status(401).json({ error: "Invalid token" });
+  }
+
+  const { projectId } = req.params as { projectId: string };
+  const [project] = await db
+    .select({ hostPortBase: baasProjects.hostPortBase, nodeId: baasProjects.nodeId })
+    .from(baasProjects)
+    .where(eq(baasProjects.id, projectId));
+
+  if (!project?.nodeId || !project.hostPortBase) return res.status(404).json({ error: "Project not found or not provisioned" });
+
+  const [node] = await db
+    .select({ externalIp: baasNodes.externalIp, hostname: baasNodes.hostname })
+    .from(baasNodes)
+    .where(eq(baasNodes.id, project.nodeId));
+
+  if (!node) return res.status(404).json({ error: "Node not found" });
+
+  const host       = node.externalIp ?? node.hostname;
+  const studioPort = project.hostPortBase + 2;
+
+  createProxyMiddleware({
+    target:      `http://${host}:${studioPort}`,
+    changeOrigin: true,
+    pathRewrite: { [`^/studio/${projectId}`]: "" },
+    on: {
+      proxyRes: (proxyRes) => {
+        delete proxyRes.headers["x-frame-options"];
+        proxyRes.headers["content-security-policy"] = "frame-ancestors *";
+      },
+    },
+  })(req, res, next);
+});
 
 app.listen(PORT, () => console.log(`[baas-api] Listening on :${PORT}`));
 

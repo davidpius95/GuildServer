@@ -5,7 +5,8 @@ import { selectNode, allocatePortBase, incrementNodeUsage, decrementNodeUsage } 
 import { generateProjectSecrets } from "./secrets";
 import { generateComposeYml, generateKongConfig, generatePostgresqlConf } from "./compose-template";
 
-const BASE_DOMAIN = process.env.BAAS_BASE_DOMAIN ?? "baas.localhost";
+const BASE_DOMAIN     = process.env.BAAS_BASE_DOMAIN     ?? "baas.localhost";
+const FALLBACK_DOMAIN = process.env.BAAS_FALLBACK_DOMAIN ?? "baas.guildserver.com";
 
 export interface ProvisionInput {
   projectId: string;
@@ -49,7 +50,8 @@ export async function provisionProject(input: ProvisionInput): Promise<void> {
   const secrets     = await generateProjectSecrets();
   const portBase    = await allocatePortBase(nodeId);
   const apiUrl      = `http://${node.externalIp ?? node.hostname}:${portBase}`;
-  const studioUrl   = `http://${node.externalIp ?? node.hostname}:${portBase + 2}`;
+  // Studio is routed via Traefik HTTP provider to {slug}.baas.{domain}
+  const studioUrl   = `https://${slug}.${FALLBACK_DOMAIN}`;
 
   // 3. Generate compose files
   const composeYml   = generateComposeYml({

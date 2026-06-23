@@ -17,6 +17,10 @@ services:
       - "--metrics.prometheus.addEntryPointsLabels=true"
       - "--metrics.prometheus.addServicesLabels=true"
       - "--log.level=INFO"
+      # HTTP provider polls BaaS API for per-project Studio routes (*.baas.<domain>)
+      - "--providers.http.endpoint=http://baas-api:4001/traefik/config"
+      - "--providers.http.pollInterval=10s"
+      - "--providers.http.pollTimeout=5s"
     ports:
       - "80:80"
       - "443:443"
@@ -366,7 +370,7 @@ services:
       - "traefik.http.routers.baas-api.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && PathPrefix(`/baas-api`)"
       - "traefik.http.routers.baas-api.entrypoints=web"
       - "traefik.http.routers.baas-api.service=baas-api-svc"
-      - "traefik.http.routers.baas-api.priority=10"
+      - "traefik.http.routers.baas-api.priority=20"
       - "traefik.http.middlewares.baas-strip.stripprefix.prefixes=/baas-api"
       - "traefik.http.routers.baas-api.middlewares=baas-strip"
     networks:
