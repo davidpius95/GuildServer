@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  basePath: "/baas",
+  output: "standalone",
   transpilePackages: ["@guildserver/baas-api"],
   env: {
     NEXT_PUBLIC_BAAS_API_URL:  process.env.NEXT_PUBLIC_BAAS_API_URL  || "http://localhost:4001",
@@ -7,3 +9,4 @@ const nextConfig = {
   },
 }
 module.exports = nextConfig;
+

@@ -178,7 +178,18 @@ export default function DashboardLayout({
             </Badge>
           </div>
           <SidebarNav pathname={pathname} isAdmin={isAdmin} />
-          <div className="border-t p-4">
+          <div className="border-t p-4 space-y-2">
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-3 bg-indigo-500/5 hover:bg-indigo-500/10 border-indigo-500/20 text-indigo-500 hover:text-indigo-600 transition-colors"
+              onClick={() => {
+                localStorage.setItem("guildserver-preferred-product", "baas")
+                window.location.href = "/baas/dashboard"
+              }}
+            >
+              <Database className="h-4 w-4" />
+              Switch to BaaS
+            </Button>
             <Button
               variant="ghost"
               className="w-full justify-start gap-3"
@@ -221,7 +232,18 @@ export default function DashboardLayout({
                   </Badge>
                 </div>
                 <SidebarNav pathname={pathname} isAdmin={isAdmin} />
-                <div className="border-t p-4">
+                <div className="border-t p-4 space-y-2">
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start gap-3 bg-indigo-500/5 hover:bg-indigo-500/10 border-indigo-500/20 text-indigo-500 hover:text-indigo-600 transition-colors"
+                    onClick={() => {
+                      localStorage.setItem("guildserver-preferred-product", "baas")
+                      window.location.href = "/baas/dashboard"
+                    }}
+                  >
+                    <Database className="h-4 w-4" />
+                    Switch to BaaS
+                  </Button>
                   <Button
                     variant="ghost"
                     className="w-full justify-start gap-3"

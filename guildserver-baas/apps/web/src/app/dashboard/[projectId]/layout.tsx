@@ -65,7 +65,14 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
         </nav>
 
         {/* Pause / wake control */}
-        <div className="p-3 border-t">
+        <div className="p-3 border-t space-y-2">
+          <button onClick={() => {
+            localStorage.setItem("guildserver-preferred-product", "paas");
+            window.location.href = "/dashboard";
+          }}
+            className="w-full text-xs py-1.5 border border-primary/20 bg-primary/5 rounded-lg hover:bg-primary/10 text-primary transition-colors">
+            Switch to PaaS
+          </button>
           {project?.status === "active" ? (
             <button onClick={() => pause.mutate({ projectId })} disabled={pause.isLoading}
               className="w-full text-xs py-1.5 border rounded-lg hover:bg-muted disabled:opacity-50 text-muted-foreground">

@@ -49,10 +49,19 @@ export default function DashboardPage() {
           <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">G</div>
           <span className="font-semibold text-sm">GuildServer BaaS</span>
         </div>
-        <button onClick={() => setShowModal(true)}
-          className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90">
-          New project
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => {
+            localStorage.setItem("guildserver-preferred-product", "paas");
+            window.location.href = "/dashboard";
+          }}
+            className="px-3 py-1.5 border border-primary/20 text-primary text-xs font-medium rounded-lg hover:bg-primary/5">
+            Switch to PaaS
+          </button>
+          <button onClick={() => setShowModal(true)}
+            className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90">
+            New project
+          </button>
+        </div>
       </header>
 
       <main className="max-w-5xl mx-auto p-6 space-y-4">

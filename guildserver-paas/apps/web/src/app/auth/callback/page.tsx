@@ -51,7 +51,7 @@ function OAuthCallbackContent() {
       if (returnTo && returnTo.startsWith("/")) {
         router.replace(returnTo)
       } else {
-        router.replace("/dashboard")
+        router.replace("/select-product")
       }
     } else {
       setError("No authentication token received.")

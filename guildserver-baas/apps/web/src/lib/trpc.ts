@@ -7,15 +7,15 @@ export const trpc = createTRPCReact<AppRouter>();
 
 export function getToken() {
   if (typeof window === "undefined") return "";
-  return localStorage.getItem("baas-token") ?? "";
+  return localStorage.getItem("guildserver-token") ?? "";
 }
 
 export function setToken(token: string) {
-  localStorage.setItem("baas-token", token);
+  localStorage.setItem("guildserver-token", token);
 }
 
 export function clearToken() {
-  localStorage.removeItem("baas-token");
+  localStorage.removeItem("guildserver-token");
 }
 
 export function makeTrpcClient() {
