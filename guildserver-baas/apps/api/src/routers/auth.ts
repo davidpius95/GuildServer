@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { SignJWT } from "jose";
-import { hash, verify } from "crypto";
+import { hash, verify, randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
 import { router, publicProcedure, protectedProcedure } from "../trpc/trpc";
 import { db, users, organizations, members } from "@guildserver/baas-db";
@@ -32,6 +32,7 @@ export const authRouter = router({
 
       const passwordHash = await bcrypt.hash(input.password, 12);
       const [user] = await db.insert(users).values({
+        id: randomUUID(),
         email: input.email,
         name:  input.name,
         password: passwordHash,
@@ -39,6 +40,7 @@ export const authRouter = router({
 
       const slug = `${makeSlug(input.name)}-baas-${Date.now().toString(36)}`;
       const [org] = await db.insert(organizations).values({
+        id: randomUUID(),
         name:    `${input.name}'s BaaS`,
         slug,
         ownerId: user.id,
@@ -46,6 +48,7 @@ export const authRouter = router({
       }).returning();
 
       await db.insert(members).values({
+        id: randomUUID(),
         userId:         user.id,
         organizationId: org.id,
         role:           "owner",

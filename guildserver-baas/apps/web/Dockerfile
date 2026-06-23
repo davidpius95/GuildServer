@@ -4,7 +4,7 @@ WORKDIR /app
 
 # ── Install dependencies ──────────────────────────────────────────────────────
 FROM base AS deps
-COPY package.json pnpm-workspace.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages/database/package.json  ./packages/database/
 COPY packages/scheduler/package.json ./packages/scheduler/
 COPY apps/api/package.json           ./apps/api/

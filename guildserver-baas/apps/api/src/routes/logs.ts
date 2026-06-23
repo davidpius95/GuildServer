@@ -5,7 +5,7 @@ import { jwtVerify } from "jose";
 import { db, baasProjects, baasNodes } from "@guildserver/baas-db";
 import { eq } from "drizzle-orm";
 
-export const logsRouter = Router();
+export const logsRouter: Router = Router();
 
 const VALID_SERVICES = new Set(["kong", "auth", "rest", "realtime", "storage", "db", "functions", "meta"]);
 
@@ -96,7 +96,7 @@ logsRouter.get("/api/logs/stream", async (req: Request, res: Response) => {
     });
 
     const containerName = `baas-${projectSlug}-${service}`;
-    ssh.connection!.exec(`docker logs -f --timestamps ${containerName} 2>&1`, (err, stream) => {
+    ssh.connection!.exec(`docker logs -f --timestamps ${containerName} 2>&1`, (err: any, stream: any) => {
       if (err) { res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`); res.end(); return; }
 
       stream.on("data", (chunk: Buffer) => {

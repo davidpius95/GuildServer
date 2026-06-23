@@ -75,9 +75,9 @@ export async function provisionProject(input: ProvisionInput): Promise<void> {
   try {
     await ssh.execCommand(`mkdir -p ${projectDir}/volumes/api ${projectDir}/volumes/db ${projectDir}/volumes/storage ${projectDir}/volumes/functions`);
     const sftp = await ssh.requestSFTP();
-    await new Promise<void>((res, rej) => sftp.writeFile(`${projectDir}/docker-compose.yml`, composeYml, {}, (e) => e ? rej(e) : res()));
-    await new Promise<void>((res, rej) => sftp.writeFile(`${projectDir}/volumes/api/kong.yml`, kongYml, {}, (e) => e ? rej(e) : res()));
-    await new Promise<void>((res, rej) => sftp.writeFile(`${projectDir}/volumes/db/postgresql.conf`, pgConf, {}, (e) => e ? rej(e) : res()));
+    await new Promise<void>((res, rej) => sftp.writeFile(`${projectDir}/docker-compose.yml`, composeYml, {}, (e: any) => e ? rej(e) : res()));
+    await new Promise<void>((res, rej) => sftp.writeFile(`${projectDir}/volumes/api/kong.yml`, kongYml, {}, (e: any) => e ? rej(e) : res()));
+    await new Promise<void>((res, rej) => sftp.writeFile(`${projectDir}/volumes/db/postgresql.conf`, pgConf, {}, (e: any) => e ? rej(e) : res()));
 
     const pull = await ssh.execCommand("docker compose pull", { cwd: projectDir });
     if (pull.code !== 0) throw new Error(`docker compose pull failed: ${pull.stderr}`);
