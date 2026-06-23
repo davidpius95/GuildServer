@@ -360,8 +360,18 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.baas-api-svc.loadbalancer.server.port=4001"
+      - "traefik.http.routers.baas-api.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && PathPrefix(`/baas-api`)"
+      - "traefik.http.routers.baas-api.entrypoints=web"
+      - "traefik.http.routers.baas-api.service=baas-api-svc"
+      - "traefik.http.routers.baas-api.priority=10"
+      - "traefik.http.middlewares.baas-strip.stripprefix.prefixes=/baas-api"
+      - "traefik.http.routers.baas-api.middlewares=baas-strip"
     networks:
       - default
+      - guildserver
     restart: unless-stopped
 
   baas-web:
@@ -387,14 +397,6 @@ services:
       - "traefik.http.routers.baas-web.entrypoints=web"
       - "traefik.http.routers.baas-web.service=baas-web"
       - "traefik.http.routers.baas-web.priority=10"
-      # ── BaaS API: route /baas-api/* → baas-api:4001 on same subdomain ─────────
-      - "traefik.http.services.baas-api-svc.loadbalancer.server.port=4001"
-      - "traefik.http.routers.baas-api.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && PathPrefix(`/baas-api`)"
-      - "traefik.http.routers.baas-api.entrypoints=web"
-      - "traefik.http.routers.baas-api.service=baas-api-svc"
-      - "traefik.http.routers.baas-api.priority=10"
-      - "traefik.http.middlewares.baas-strip.stripprefix.prefixes=/baas-api"
-      - "traefik.http.routers.baas-api.middlewares=baas-strip"
     networks:
       - default
       - guildserver
