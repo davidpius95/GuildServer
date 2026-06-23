@@ -1,9 +1,9 @@
 "use client";
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { setToken } from "@/lib/trpc";
 
-export default function CallbackPage() {
+function CallbackContent() {
   const router = useRouter();
   const params = useSearchParams();
   useEffect(() => {
@@ -15,5 +15,13 @@ export default function CallbackPage() {
     <div className="min-h-screen flex items-center justify-center">
       <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
     </div>
+  );
+}
+
+export default function CallbackPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" /></div>}>
+      <CallbackContent />
+    </Suspense>
   );
 }
