@@ -383,23 +383,14 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.baas-web.loadbalancer.server.port=3001"
-      # ── HTTP → HTTPS redirect ────────────────────────────────────────────────
-      - "traefik.http.routers.baas-web-http.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && PathPrefix(`/baas`)"
-      - "traefik.http.routers.baas-web-http.entrypoints=web"
-      - "traefik.http.routers.baas-web-http.middlewares=redirect-to-https"
-      # ── HTTPS (TLS termination by Traefik + Let's Encrypt) ────────────────────
       - "traefik.http.routers.baas-web.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && PathPrefix(`/baas`)"
-      - "traefik.http.routers.baas-web.entrypoints=websecure"
-      - "traefik.http.routers.baas-web.tls=true"
-      - "traefik.http.routers.baas-web.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.baas-web.entrypoints=web"
       - "traefik.http.routers.baas-web.service=baas-web"
       - "traefik.http.routers.baas-web.priority=10"
       # ── BaaS API: route /baas-api/* → baas-api:4001 on same subdomain ─────────
       - "traefik.http.services.baas-api-svc.loadbalancer.server.port=4001"
       - "traefik.http.routers.baas-api.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && PathPrefix(`/baas-api`)"
-      - "traefik.http.routers.baas-api.entrypoints=websecure"
-      - "traefik.http.routers.baas-api.tls=true"
-      - "traefik.http.routers.baas-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.baas-api.entrypoints=web"
       - "traefik.http.routers.baas-api.service=baas-api-svc"
       - "traefik.http.routers.baas-api.priority=10"
       - "traefik.http.middlewares.baas-strip.stripprefix.prefixes=/baas-api"
