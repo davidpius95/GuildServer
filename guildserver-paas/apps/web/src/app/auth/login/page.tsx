@@ -11,6 +11,7 @@ import { trpc } from "@/components/trpc-provider"
 import { toast } from "sonner"
 
 const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || ""
+const BAAS_WEB_URL = process.env.NEXT_PUBLIC_BAAS_WEB_URL || "http://localhost:3001"
 
 function GitHubIcon({ className }: { className?: string }) {
   return (
@@ -39,9 +40,13 @@ export default function LoginPage() {
 
   const loginMutation = trpc.auth.login.useMutation({
     onSuccess: (data) => {
-      localStorage.setItem('guildserver-token', data.token)
+      localStorage.setItem("guildserver-token", data.token)
       toast.success("Successfully logged in!")
-      router.push('/dashboard')
+      if (data.product === "baas") {
+        window.location.href = `${BAAS_WEB_URL}/auth/callback?token=${data.token}`
+      } else {
+        router.push("/dashboard")
+      }
     },
     onError: (error) => {
       toast.error(error.message)

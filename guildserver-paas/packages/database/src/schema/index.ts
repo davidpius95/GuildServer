@@ -88,6 +88,23 @@ export const backupStatusEnum = pgEnum("backup_status", [
   "failed"
 ]);
 
+// BaaS enums
+export const productEnum = pgEnum("product", ["paas", "baas"]);
+export const baasProjectStatusEnum = pgEnum("baas_project_status", [
+  "provisioning",
+  "active",
+  "paused",
+  "error",
+  "deleting",
+]);
+export const baasNodeRoleEnum = pgEnum("baas_node_role", ["edge", "compute", "storage"]);
+export const baasNodeStatusEnum = pgEnum("baas_node_status", [
+  "online",
+  "offline",
+  "maintenance",
+  "error",
+]);
+
 // Infrastructure provider enums
 export const providerTypeEnum = pgEnum("provider_type", [
   "docker-local",
@@ -148,6 +165,7 @@ export const organizations = pgTable("organizations", {
   metadata: jsonb("metadata").default({}),
   ownerId: uuid("owner_id").notNull(),
   stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+  product: productEnum("product").default("paas"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -909,6 +927,144 @@ export const auditLogs = pgTable("audit_logs", {
 }));
 
 // =====================
+// BAAS TABLES
+// =====================
+
+// Fleet nodes — each mini-PC (or pod of mini-PCs) registered as a BaaS compute node
+export const baasNodes = pgTable("baas_nodes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  hostname: varchar("hostname", { length: 255 }).notNull(),
+  internalIp: inet("internal_ip").notNull(), // WireGuard / mesh IP
+  externalIp: inet("external_ip"),
+  role: baasNodeRoleEnum("role").notNull().default("compute"),
+  status: baasNodeStatusEnum("status").notNull().default("offline"),
+
+  // Hardware capacity
+  vcpuTotal: integer("vcpu_total").notNull(),
+  ramMbTotal: integer("ram_mb_total").notNull(),
+  storageGbTotal: integer("storage_gb_total").notNull(),
+
+  // Live utilization (updated by health-reconciler)
+  vcpuUsed: integer("vcpu_used").default(0),
+  ramMbUsed: integer("ram_mb_used").default(0),
+  storageGbUsed: integer("storage_gb_used").default(0),
+
+  // SSH access for the scheduler to run docker compose on the node
+  sshUser: varchar("ssh_user", { length: 64 }).default("root"),
+  sshPort: integer("ssh_port").default(22),
+  // SSH private key stored encrypted; null means agent-based auth
+  sshPrivateKey: text("ssh_private_key"),
+
+  // Linked computeProvider (so IaaS layer can manage the VM if on Proxmox)
+  providerId: uuid("provider_id").references(() => computeProviders.id, { onDelete: "set null" }),
+
+  podName: varchar("pod_name", { length: 128 }),
+  location: varchar("location", { length: 255 }),
+
+  lastHeartbeat: timestamp("last_heartbeat"),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  statusIdx: index("baas_nodes_status_idx").on(table.status),
+  roleIdx: index("baas_nodes_role_idx").on(table.role),
+}));
+
+// One BaaS project = one complete Supabase stack on one compute node
+export const baasProjects = pgTable("baas_projects", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 255 }).notNull().unique(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+
+  // Placement
+  nodeId: uuid("node_id").references(() => baasNodes.id, { onDelete: "set null" }),
+
+  // Per-project secrets (encrypt at rest via ENCRYPTION_KEY env var in production)
+  dbPassword: text("db_password").notNull(),
+  jwtSecret: text("jwt_secret").notNull(),
+  anonKey: text("anon_key").notNull(),
+  serviceRoleKey: text("service_role_key").notNull(),
+
+  // Database connection
+  dbHost: varchar("db_host", { length: 255 }),
+  dbPort: integer("db_port").default(5432),
+  dbName: varchar("db_name", { length: 255 }).notNull(),
+  dbUser: varchar("db_user", { length: 255 }).notNull(),
+
+  // Public API endpoints (set after provisioning; routed through edge node)
+  apiUrl: text("api_url"),       // https://<slug>.baas.<domain>
+  realtimeUrl: text("realtime_url"),
+  storageUrl: text("storage_url"),
+  studioUrl: text("studio_url"),
+
+  // Host-port base on the compute node (each project gets a range, e.g. 9000-9010)
+  hostPortBase: integer("host_port_base"),
+
+  // Resource allocation per project
+  vcpuLimit: decimal("vcpu_limit").default("1"),
+  ramMbLimit: integer("ram_mb_limit").default(2048),
+  storageGbLimit: integer("storage_gb_limit").default(8),
+
+  status: baasProjectStatusEnum("status").default("provisioning"),
+  statusMessage: text("status_message"),
+
+  // Running container IDs on the node (keyed by service name)
+  containerIds: jsonb("container_ids").default({}),
+
+  // Backup config
+  backupEnabled: boolean("backup_enabled").default(true),
+  backupRetentionDays: integer("backup_retention_days").default(7),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("baas_projects_org_id_idx").on(table.organizationId),
+  nodeIdIdx: index("baas_projects_node_id_idx").on(table.nodeId),
+  statusIdx: index("baas_projects_status_idx").on(table.status),
+}));
+
+// BaaS project database backups (separate from PaaS databaseBackups)
+export const baasBackups = pgTable("baas_backups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").notNull().references(() => baasProjects.id, { onDelete: "cascade" }),
+  status: backupStatusEnum("status").default("pending"),
+  backupType: varchar("backup_type", { length: 20 }).default("automatic"), // manual | automatic
+  sizeBytes: integer("size_bytes").default(0),
+  filePath: text("file_path"),
+  error: text("error"),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  projectIdIdx: index("baas_backups_project_id_idx").on(table.projectId),
+  statusIdx: index("baas_backups_status_idx").on(table.status),
+}));
+
+// Cloudflare for SaaS custom hostname tracking (per BaaS project)
+export const baasCustomHostnames = pgTable("baas_custom_hostnames", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").notNull().references(() => baasProjects.id, { onDelete: "cascade" }),
+  hostname: varchar("hostname", { length: 255 }).notNull().unique(),
+
+  // Cloudflare for SaaS API response fields
+  cfCustomHostnameId: varchar("cf_custom_hostname_id", { length: 255 }),
+  cfOwnershipTxtName: text("cf_ownership_txt_name"),
+  cfOwnershipTxtValue: text("cf_ownership_txt_value"),
+  cfSslStatus: varchar("cf_ssl_status", { length: 64 }),
+
+  status: domainStatusEnum("status").default("pending"),
+  verified: boolean("verified").default(false),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  projectIdIdx: index("baas_custom_hostnames_project_id_idx").on(table.projectId),
+}));
+
+// =====================
 // RELATIONS
 // =====================
 
@@ -1173,4 +1329,45 @@ export const paymentMethodsRelations = relations(paymentMethods, ({ one }) => ({
     fields: [paymentMethods.organizationId],
     references: [organizations.id],
   }),
+}));
+
+// BaaS relations
+export const baasNodesRelations = relations(baasNodes, ({ one, many }) => ({
+  provider: one(computeProviders, {
+    fields: [baasNodes.providerId],
+    references: [computeProviders.id],
+  }),
+  projects: many(baasProjects),
+}));
+
+export const baasProjectsRelations = relations(baasProjects, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [baasProjects.organizationId],
+    references: [organizations.id],
+  }),
+  node: one(baasNodes, {
+    fields: [baasProjects.nodeId],
+    references: [baasNodes.id],
+  }),
+  backups: many(baasBackups),
+  customHostnames: many(baasCustomHostnames),
+}));
+
+export const baasBackupsRelations = relations(baasBackups, ({ one }) => ({
+  project: one(baasProjects, {
+    fields: [baasBackups.projectId],
+    references: [baasProjects.id],
+  }),
+}));
+
+export const baasCustomHostnamesRelations = relations(baasCustomHostnames, ({ one }) => ({
+  project: one(baasProjects, {
+    fields: [baasCustomHostnames.projectId],
+    references: [baasProjects.id],
+  }),
+}));
+
+// Extend organizationsRelations to include BaaS
+export const organizationsBaasRelations = relations(organizations, ({ many }) => ({
+  baasProjects: many(baasProjects),
 }));
