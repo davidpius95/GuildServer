@@ -22,12 +22,9 @@ export default function DashboardPage() {
   const meQuery = trpc.auth.me.useQuery(undefined, { retry: false,
     onError: () => router.push("/auth/login") });
 
-  // Derive orgId from membership — in a real app you'd store it in context
   useEffect(() => {
-    if (meQuery.data) {
-      // Org ID is returned via connectionInfo; for now we pass from localStorage
-      const stored = localStorage.getItem("baas-org-id");
-      if (stored) setOrgId(stored);
+    if (meQuery.data?.organizationId) {
+      setOrgId(meQuery.data.organizationId);
     }
   }, [meQuery.data]);
 

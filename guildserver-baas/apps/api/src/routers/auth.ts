@@ -74,6 +74,7 @@ export const authRouter = router({
   me: protectedProcedure.query(async ({ ctx }) => {
     const [user] = await db.select().from(users).where(eq(users.id, ctx.userId));
     if (!user) throw new TRPCError({ code: "NOT_FOUND" });
-    return { id: user.id, email: user.email, name: user.name, role: user.role };
+    const [membership] = await db.select().from(members).where(eq(members.userId, ctx.userId));
+    return { id: user.id, email: user.email, name: user.name, role: user.role, organizationId: membership?.organizationId ?? null };
   }),
 });
