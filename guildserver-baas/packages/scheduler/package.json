@@ -18,13 +18,13 @@
   "dependencies": {
     "@guildserver/baas-db": "workspace:*",
     "bullmq": "^5.7.0",
+    "dockerode": "^4.0.4",
     "jose": "^5.2.4",
-    "node-ssh": "^13.2.0",
-    "js-yaml": "^4.1.0",
+    "postgres": "^3.4.4",
     "drizzle-orm": "^0.30.10"
   },
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
+    "@types/dockerode": "^3.3.29",
     "@types/node": "^20.12.7",
     "typescript": "^5.4.5"
   }

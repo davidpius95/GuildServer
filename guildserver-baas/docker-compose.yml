@@ -1,0 +1,46 @@
+# GuildServer BaaS — shared platform services
+# Run once per host. All tenant DB live in baas-postgres.
+# Per-tenant containers (baas-{slug}-rest, baas-{slug}-auth) are
+# started/stopped by the scheduler via Docker API — not defined here.
+name: baas-platform
+
+services:
+  baas-postgres:
+    image: supabase/postgres:17.6.1.136
+    container_name: baas-postgres
+    restart: unless-stopped
+    shm_size: 256mb
+    ports:
+      - "${BAAS_PG_PORT:-5434}:5432"
+    environment:
+      POSTGRES_PASSWORD: ${BAAS_PG_ADMIN_PASSWORD}
+      PGDATA: /var/lib/postgresql/data
+    volumes:
+      - baas-postgres-data:/var/lib/postgresql/data
+    networks:
+      - guildserver
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  baas-imgproxy:
+    image: darthsim/imgproxy:v3.30.1
+    container_name: baas-imgproxy
+    restart: unless-stopped
+    environment:
+      IMGPROXY_BIND: ":8080"
+      IMGPROXY_LOCAL_FILESYSTEM_ROOT: /
+      IMGPROXY_USE_ETAG: "true"
+      IMGPROXY_ENABLE_WEBP_DETECTION: "true"
+    networks:
+      - guildserver
+
+volumes:
+  baas-postgres-data:
+
+networks:
+  guildserver:
+    external: true
+    name: guildserver

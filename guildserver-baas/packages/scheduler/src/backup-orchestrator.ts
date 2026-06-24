@@ -1,55 +1,72 @@
-import { NodeSSH } from "node-ssh";
-import { db, baasNodes, baasProjects, baasBackups } from "@guildserver/baas-db";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import { createWriteStream, mkdirSync, statSync, unlinkSync } from "fs";
+import { createGzip } from "zlib";
+import { pipeline } from "stream/promises";
+import { spawn } from "child_process";
+import { db, baasProjects, baasBackups } from "@guildserver/baas-db";
 import { eq, and, lt } from "drizzle-orm";
+import postgres from "postgres";
 
-async function sshConnect(node: typeof baasNodes.$inferSelect) {
-  const { NodeSSH: SSH } = await import("node-ssh");
-  const ssh = new SSH();
-  await ssh.connect({
-    host: node.internalIp as string,
-    port: node.sshPort ?? 22,
-    username: node.sshUser ?? "root",
-    ...(node.sshPrivateKey
-      ? { privateKey: node.sshPrivateKey }
-      : { agent: process.env.SSH_AUTH_SOCK }),
-  });
-  return ssh;
+const execFileAsync = promisify(execFile);
+
+const PG_HOST     = process.env.BAAS_PG_HOST         ?? "localhost";
+const PG_PORT     = process.env.BAAS_PG_PORT          ?? "5432";
+const PG_ADMIN    = process.env.BAAS_PG_ADMIN_USER    ?? "postgres";
+const PG_PASS     = process.env.BAAS_PG_ADMIN_PASSWORD ?? "";
+const BACKUP_DIR  = process.env.BAAS_BACKUP_DIR       ?? "/opt/baas-backups";
+
+function backupPath(slug: string, timestamp: string): string {
+  return `${BACKUP_DIR}/${slug}/${timestamp}.dump.gz`;
 }
 
 export async function createBackup(
   projectId: string,
-  backupType: "manual" | "automatic" = "automatic"
+  backupType: "manual" | "automatic" = "automatic",
 ): Promise<string> {
   const [project] = await db.select().from(baasProjects).where(eq(baasProjects.id, projectId));
-  if (!project?.nodeId) throw new Error("Project has no node assigned");
+  if (!project) throw new Error("Project not found");
 
-  const [node] = await db.select().from(baasNodes).where(eq(baasNodes.id, project.nodeId));
-  if (!node) throw new Error("Node not found");
-
-  const timestamp   = new Date().toISOString().replace(/[:.]/g, "-");
-  const filePath    = `/opt/baas/${project.slug}/backups/${timestamp}.sql.gz`;
+  const timestamp  = new Date().toISOString().replace(/[:.]/g, "-");
+  const filePath   = backupPath(project.slug, timestamp);
   const retentionMs = (project.backupRetentionDays ?? 7) * 24 * 60 * 60 * 1000;
-  const expiresAt   = new Date(Date.now() + retentionMs);
+  const expiresAt  = new Date(Date.now() + retentionMs);
 
   const [record] = await db.insert(baasBackups).values({
     projectId,
     backupType,
-    status: "in_progress",
+    status:   "in_progress",
     filePath,
     expiresAt,
   }).returning({ id: baasBackups.id });
 
-  const ssh = await sshConnect(node);
   try {
-    await ssh.execCommand(`mkdir -p /opt/baas/${project.slug}/backups`);
+    mkdirSync(`${BACKUP_DIR}/${project.slug}`, { recursive: true });
 
-    const result = await ssh.execCommand(
-      `docker exec baas-${project.slug}-db pg_dump -U ${project.dbUser} -d ${project.dbName} -F c | gzip > ${filePath}`
-    );
-    if (result.code !== 0) throw new Error(result.stderr);
+    // pg_dump → gzip → file (streaming, no temp file)
+    await new Promise<void>((resolve, reject) => {
+      const dump = spawn("pg_dump", [
+        "-h", PG_HOST,
+        "-p", PG_PORT,
+        "-U", project.dbUser,
+        "-d", project.dbName,
+        "-F", "c",  // custom format (already compressed)
+      ], {
+        env: { ...process.env, PGPASSWORD: project.dbPassword ?? PG_PASS },
+      });
 
-    const stat = await ssh.execCommand(`stat -c%s ${filePath}`);
-    const sizeBytes = parseInt(stat.stdout.trim(), 10) || 0;
+      const out = createWriteStream(filePath);
+      dump.stdout.pipe(out);
+
+      let stderr = "";
+      dump.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+      dump.on("close", (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`pg_dump exited ${code}: ${stderr}`));
+      });
+    });
+
+    const sizeBytes = statSync(filePath).size;
 
     await db.update(baasBackups)
       .set({ status: "completed", completedAt: new Date(), sizeBytes })
@@ -59,8 +76,6 @@ export async function createBackup(
       .set({ status: "failed", error: String(err) })
       .where(eq(baasBackups.id, record.id));
     throw err;
-  } finally {
-    ssh.dispose();
   }
 
   return record.id;
@@ -71,86 +86,47 @@ export async function restoreBackup(backupId: string): Promise<void> {
   if (!backup?.filePath) throw new Error("Backup not found or has no file");
 
   const [project] = await db.select().from(baasProjects).where(eq(baasProjects.id, backup.projectId));
-  if (!project?.nodeId) throw new Error("Project has no node");
+  if (!project) throw new Error("Project not found");
 
-  const [node] = await db.select().from(baasNodes).where(eq(baasNodes.id, project.nodeId));
-  if (!node) throw new Error("Node not found");
+  const admin = postgres({
+    host: PG_HOST, port: parseInt(PG_PORT),
+    username: PG_ADMIN, password: PG_PASS, database: "postgres", max: 2,
+  });
 
-  const ssh = await sshConnect(node);
   try {
-    // Stop app services but keep DB running
-    await ssh.execCommand(
-      `docker compose stop kong auth rest realtime storage imgproxy meta functions studio supavisor`,
-      { cwd: `/opt/baas/${project.slug}` }
+    // Terminate connections and drop/recreate the database
+    await admin.unsafe(
+      `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${project.dbName}' AND pid <> pg_backend_pid()`,
     );
-
-    // Drop & recreate DB
-    const dbContainer = `baas-${project.slug}-db`;
-    await ssh.execCommand(
-      `docker exec ${dbContainer} psql -U postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='${project.dbName}' AND pid <> pg_backend_pid()"`
-    );
-    await ssh.execCommand(`docker exec ${dbContainer} psql -U postgres -c "DROP DATABASE IF EXISTS \\"${project.dbName}\\""`);
-    await ssh.execCommand(`docker exec ${dbContainer} psql -U postgres -c "CREATE DATABASE \\"${project.dbName}\\" OWNER \\"${project.dbUser}\\""`);
-
-    // Restore
-    const restore = await ssh.execCommand(
-      `zcat ${backup.filePath} | docker exec -i ${dbContainer} pg_restore -U ${project.dbUser} -d ${project.dbName} --no-owner --no-privileges`
-    );
-    if (restore.code !== 0 && !restore.stderr.includes("already exists")) {
-      throw new Error(restore.stderr);
-    }
-
-    // Restart app services
-    await ssh.execCommand("docker compose up -d", { cwd: `/opt/baas/${project.slug}` });
+    await admin.unsafe(`DROP DATABASE IF EXISTS "${project.dbName}"`);
+    await admin.unsafe(`CREATE DATABASE "${project.dbName}" OWNER "${project.dbUser}"`);
   } finally {
-    ssh.dispose();
+    await admin.end();
   }
+
+  // pg_restore the backup
+  await execFileAsync("pg_restore", [
+    "-h", PG_HOST,
+    "-p", PG_PORT,
+    "-U", project.dbUser,
+    "-d", project.dbName,
+    "--no-owner",
+    "--no-privileges",
+    backup.filePath,
+  ], {
+    env: { ...process.env, PGPASSWORD: project.dbPassword ?? PG_PASS },
+  });
 }
 
-// PITR: restore DB to a specific point in time using WAL archives
-export async function restoreToPointInTime(projectId: string, targetTime: Date): Promise<void> {
-  const [project] = await db.select().from(baasProjects).where(eq(baasProjects.id, projectId));
-  if (!project?.nodeId) throw new Error("Project has no node");
-  if (!project.walArchiveEnabled || !project.walArchivePath) {
-    throw new Error("WAL archiving is not enabled for this project");
-  }
-
-  const [node] = await db.select().from(baasNodes).where(eq(baasNodes.id, project.nodeId));
-  if (!node) throw new Error("Node not found");
-
-  const targetStr = targetTime.toISOString().replace("T", " ").replace("Z", "+00");
-
-  const ssh = await sshConnect(node);
-  try {
-    const dir = `/opt/baas/${project.slug}`;
-
-    // Stop all services
-    await ssh.execCommand("docker compose down", { cwd: dir });
-
-    // Write recovery.conf for PITR
-    const recoveryConf = `restore_command = 'cp ${project.walArchivePath}/%f %p'\nrecovery_target_time = '${targetStr}'\nrecovery_target_action = 'promote'\n`;
-    await ssh.execCommand(`echo '${recoveryConf}' > ${dir}/volumes/db/recovery.conf`);
-
-    // Restart and let postgres replay WAL
-    await ssh.execCommand("docker compose up -d db", { cwd: dir });
-    // Wait for recovery to complete (poll pg_is_in_recovery())
-    for (let i = 0; i < 60; i++) {
-      await new Promise((r) => setTimeout(r, 5000));
-      const check = await ssh.execCommand(
-        `docker exec baas-${project.slug}-db psql -U postgres -tAc "SELECT pg_is_in_recovery()"`
-      );
-      if (check.stdout.trim() === "f") break;
-    }
-
-    // Bring everything back up
-    await ssh.execCommand("docker compose up -d", { cwd: dir });
-    await ssh.execCommand(`rm -f ${dir}/volumes/db/recovery.conf`);
-  } finally {
-    ssh.dispose();
-  }
+// PITR is not supported in the shared-postgres model (no per-tenant WAL).
+// Raise a clear error so callers know to use snapshot restore instead.
+export async function restoreToPointInTime(_projectId: string, _targetTime: Date): Promise<void> {
+  throw new Error(
+    "Point-in-time restore is not available in the shared-platform model. " +
+    "Use restoreBackup() with the nearest snapshot instead.",
+  );
 }
 
-// Nightly sweep — remove expired backup files and DB records
 export async function sweepExpiredBackups(): Promise<void> {
   const expired = await db
     .select()
@@ -158,15 +134,8 @@ export async function sweepExpiredBackups(): Promise<void> {
     .where(and(lt(baasBackups.expiresAt, new Date()), eq(baasBackups.status, "completed")));
 
   for (const backup of expired) {
-    if (!backup.filePath) continue;
-    const [project] = await db.select().from(baasProjects).where(eq(baasProjects.id, backup.projectId));
-    if (project?.nodeId) {
-      const [node] = await db.select().from(baasNodes).where(eq(baasNodes.id, project.nodeId));
-      if (node) {
-        const ssh = await sshConnect(node);
-        try { await ssh.execCommand(`rm -f ${backup.filePath}`); }
-        finally { ssh.dispose(); }
-      }
+    if (backup.filePath) {
+      try { unlinkSync(backup.filePath); } catch {}
     }
     await db.delete(baasBackups).where(eq(baasBackups.id, backup.id));
   }

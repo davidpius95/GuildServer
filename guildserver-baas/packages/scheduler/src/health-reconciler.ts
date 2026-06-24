@@ -1,88 +1,71 @@
-import { NodeSSH } from "node-ssh";
-import { db, baasNodes, baasProjects } from "@guildserver/baas-db";
+import Docker from "dockerode";
+import { db, baasProjects } from "@guildserver/baas-db";
 import { eq } from "drizzle-orm";
+import postgres from "postgres";
 
-async function tryConnect(node: typeof baasNodes.$inferSelect): Promise<NodeSSH | null> {
-  const ssh = new NodeSSH();
+const docker = new Docker({
+  socketPath: process.platform === "win32" ? "//./pipe/docker_engine" : "/var/run/docker.sock",
+});
+
+async function isContainerRunning(name: string): Promise<boolean> {
   try {
-    await ssh.connect({
-      host: node.internalIp as string,
-      port: node.sshPort ?? 22,
-      username: node.sshUser ?? "root",
-      ...(node.sshPrivateKey
-        ? { privateKey: node.sshPrivateKey }
-        : { agent: process.env.SSH_AUTH_SOCK }),
-      readyTimeout: 8000,
-    });
-    return ssh;
+    const info = await docker.getContainer(name).inspect();
+    return info.State.Running === true;
   } catch {
-    return null;
+    return false;
   }
 }
 
+// Check that the shared baas-postgres container is up and accepting connections.
 export async function reconcileNodes(): Promise<void> {
-  const nodes = await db.select().from(baasNodes);
+  const pgRunning = await isContainerRunning("baas-postgres");
+  if (!pgRunning) {
+    console.warn("[health-reconciler] baas-postgres container is not running");
+    // Mark all active projects as errored since shared Postgres is down
+    await db.update(baasProjects)
+      .set({ status: "error", statusMessage: "Shared Postgres unavailable", updatedAt: new Date() });
+    return;
+  }
 
-  for (const node of nodes) {
-    const ssh = await tryConnect(node);
-    if (!ssh) {
-      await db.update(baasNodes)
-        .set({ status: "offline", updatedAt: new Date() })
-        .where(eq(baasNodes.id, node.id));
-
-      // Mark all active projects on this node as errored
-      await db.update(baasProjects)
-        .set({ status: "error", statusMessage: "Compute node unreachable", updatedAt: new Date() })
-        .where(eq(baasProjects.nodeId, node.id));
-      continue;
-    }
-
-    try {
-      const [ramOut, cpuOut, storageOut] = await Promise.all([
-        ssh.execCommand("free -m | awk 'NR==2{print $3}'"),
-        ssh.execCommand("nproc"),
-        ssh.execCommand("df -BG /opt/baas 2>/dev/null | awk 'NR==2{print $3}' | tr -d G || echo 0"),
-      ]);
-
-      const ramMbUsed    = parseInt(ramOut.stdout.trim(),     10) || 0;
-      const vcpuUsed     = parseInt(cpuOut.stdout.trim(),     10) || 0;
-      const storageGbUsed = parseInt(storageOut.stdout.trim(), 10) || 0;
-
-      await db.update(baasNodes)
-        .set({ status: "online", ramMbUsed, vcpuUsed, storageGbUsed, lastHeartbeat: new Date(), updatedAt: new Date() })
-        .where(eq(baasNodes.id, node.id));
-    } finally {
-      ssh.dispose();
-    }
+  // Verify reachability with a lightweight ping query
+  const sql = postgres({
+    host:     process.env.BAAS_PG_HOST     ?? "baas-postgres",
+    port:     parseInt(process.env.BAAS_PG_PORT ?? "5432"),
+    username: process.env.BAAS_PG_ADMIN_USER     ?? "postgres",
+    password: process.env.BAAS_PG_ADMIN_PASSWORD ?? "",
+    database: "postgres",
+    max: 1,
+    connect_timeout: 5,
+  });
+  try {
+    await sql`SELECT 1`;
+  } catch (e) {
+    console.warn("[health-reconciler] baas-postgres unreachable:", e);
+  } finally {
+    await sql.end();
   }
 }
 
+// For each active project verify its two containers (rest + auth) are running.
 export async function reconcileProjects(): Promise<void> {
   const projects = await db
-    .select()
+    .select({ id: baasProjects.id, slug: baasProjects.slug })
     .from(baasProjects)
     .where(eq(baasProjects.status, "active"));
 
-  for (const project of projects) {
-    if (!project.nodeId) continue;
-    const [node] = await db.select().from(baasNodes).where(eq(baasNodes.id, project.nodeId));
-    if (!node) continue;
+  await Promise.allSettled(
+    projects.map(async (p) => {
+      const [restOk, authOk] = await Promise.all([
+        isContainerRunning(`baas-${p.slug}-rest`),
+        isContainerRunning(`baas-${p.slug}-auth`),
+      ]);
 
-    const ssh = await tryConnect(node);
-    if (!ssh) continue;
-
-    try {
-      const result = await ssh.execCommand(
-        `docker inspect --format='{{.State.Running}}' baas-${project.slug}-kong 2>/dev/null || echo false`
-      );
-      const running = result.stdout.trim() === "true";
-      if (!running) {
+      if (!restOk || !authOk) {
+        const missing = [!restOk && "rest", !authOk && "auth"].filter(Boolean).join(", ");
         await db.update(baasProjects)
-          .set({ status: "error", statusMessage: "Kong container not running", updatedAt: new Date() })
-          .where(eq(baasProjects.id, project.id));
+          .set({ status: "error", statusMessage: `Containers not running: ${missing}`, updatedAt: new Date() })
+          .where(eq(baasProjects.id, p.id));
       }
-    } finally {
-      ssh.dispose();
-    }
-  }
+    }),
+  );
 }

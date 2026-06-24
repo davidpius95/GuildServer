@@ -1,104 +1,93 @@
-import { NodeSSH } from "node-ssh";
-import { db, baasNodes, baasProjects, baasMetrics } from "@guildserver/baas-db";
-import { eq } from "drizzle-orm";
+import Docker from "dockerode";
+import postgres from "postgres";
+import { db, baasProjects, baasMetrics } from "@guildserver/baas-db";
+import { eq, lt } from "drizzle-orm";
 
-interface DockerStats {
-  CPUPerc: string;  // "2.34%"
-  MemUsage: string; // "256MiB / 2GiB"
+const docker = new Docker({
+  socketPath: process.platform === "win32" ? "//./pipe/docker_engine" : "/var/run/docker.sock",
+});
+
+async function getContainerCpuAndMemMb(name: string): Promise<{ cpuPercent: number; memMb: number }> {
+  try {
+    const container = docker.getContainer(name);
+    const stats = await container.stats({ stream: false }) as any;
+
+    const cpuDelta    = stats.cpu_stats.cpu_usage.total_usage - stats.precpu_stats.cpu_usage.total_usage;
+    const systemDelta = stats.cpu_stats.system_cpu_usage      - stats.precpu_stats.system_cpu_usage;
+    const numCpus     = stats.cpu_stats.online_cpus ?? stats.cpu_stats.cpu_usage.percpu_usage?.length ?? 1;
+    const cpuPercent  = systemDelta > 0 ? (cpuDelta / systemDelta) * numCpus * 100 : 0;
+
+    const memMb = (stats.memory_stats.usage ?? 0) / (1024 * 1024);
+
+    return { cpuPercent, memMb };
+  } catch {
+    return { cpuPercent: 0, memMb: 0 };
+  }
 }
 
-function parseCpu(perc: string): number {
-  return parseFloat(perc.replace("%", "")) || 0;
-}
-
-function parseMemMb(usage: string): number {
-  const match = usage.match(/^([\d.]+)([KMGT]i?B)/i);
-  if (!match) return 0;
-  const value = parseFloat(match[1]);
-  const unit  = match[2].toUpperCase();
-  if (unit.startsWith("G")) return Math.round(value * 1024);
-  if (unit.startsWith("M")) return Math.round(value);
-  if (unit.startsWith("K")) return Math.round(value / 1024);
-  return Math.round(value / (1024 * 1024));
+async function getTenantDbStats(
+  dbName: string,
+): Promise<{ activeConnections: number; dbSizeMb: number; txCommitted: number; txRolledBack: number }> {
+  const sql = postgres({
+    host:     process.env.BAAS_PG_HOST     ?? "baas-postgres",
+    port:     parseInt(process.env.BAAS_PG_PORT ?? "5432"),
+    username: process.env.BAAS_PG_ADMIN_USER     ?? "postgres",
+    password: process.env.BAAS_PG_ADMIN_PASSWORD ?? "",
+    database: "postgres",
+    max: 1,
+    connect_timeout: 5,
+  });
+  try {
+    const [row] = await sql<[{
+      active_connections: string;
+      db_size_mb: string;
+      tx_committed: string;
+      tx_rolled_back: string;
+    }]>`
+      SELECT
+        (SELECT count(*)::text FROM pg_stat_activity WHERE datname = ${dbName} AND state NOT IN ('idle')) AS active_connections,
+        (pg_database_size(${dbName}) / 1048576.0)::text                                                  AS db_size_mb,
+        COALESCE((SELECT xact_commit::text  FROM pg_stat_database WHERE datname = ${dbName}), '0')       AS tx_committed,
+        COALESCE((SELECT xact_rollback::text FROM pg_stat_database WHERE datname = ${dbName}), '0')      AS tx_rolled_back
+    `;
+    return {
+      activeConnections: parseInt(row?.active_connections ?? "0", 10),
+      dbSizeMb:          parseFloat(row?.db_size_mb       ?? "0"),
+      txCommitted:       parseInt(row?.tx_committed        ?? "0", 10),
+      txRolledBack:      parseInt(row?.tx_rolled_back      ?? "0", 10),
+    };
+  } finally {
+    await sql.end();
+  }
 }
 
 export async function collectProjectMetrics(projectId: string): Promise<void> {
   const [project] = await db.select().from(baasProjects).where(eq(baasProjects.id, projectId));
-  if (!project?.nodeId || project.status !== "active") return;
+  if (!project || project.status !== "active") return;
 
-  const [node] = await db.select().from(baasNodes).where(eq(baasNodes.id, project.nodeId));
-  if (!node) return;
-
-  const ssh = new NodeSSH();
   try {
-    await ssh.connect({
-      host: node.internalIp as string,
-      port: node.sshPort ?? 22,
-      username: node.sshUser ?? "root",
-      ...(node.sshPrivateKey
-        ? { privateKey: node.sshPrivateKey }
-        : { agent: process.env.SSH_AUTH_SOCK }),
-      readyTimeout: 6000,
-    });
+    const [restStats, authStats, dbStats] = await Promise.all([
+      getContainerCpuAndMemMb(`baas-${project.slug}-rest`),
+      getContainerCpuAndMemMb(`baas-${project.slug}-auth`),
+      getTenantDbStats(project.dbName),
+    ]);
 
-    // docker stats snapshot (no-stream)
-    const statsOut = await ssh.execCommand(
-      `docker stats --no-stream --format '{"CPUPerc":"{{.CPUPerc}}","MemUsage":"{{.MemUsage}}"}' baas-${project.slug}-kong baas-${project.slug}-db 2>/dev/null`
-    );
-
-    let cpuPercent = 0;
-    let ramMbUsed  = 0;
-    for (const line of statsOut.stdout.split("\n").filter(Boolean)) {
-      try {
-        const s = JSON.parse(line) as DockerStats;
-        cpuPercent += parseCpu(s.CPUPerc);
-        ramMbUsed  += parseMemMb(s.MemUsage);
-      } catch {}
-    }
-
-    // Postgres stats
-    const pgOut = await ssh.execCommand(
-      `docker exec baas-${project.slug}-db psql -U postgres -tAc ` +
-      `"SELECT count(*), pg_database_size('${project.dbName}') / 1048576, ` +
-      `(SELECT xact_commit FROM pg_stat_database WHERE datname='${project.dbName}'), ` +
-      `(SELECT xact_rollback FROM pg_stat_database WHERE datname='${project.dbName}') ` +
-      `FROM pg_stat_activity WHERE datname='${project.dbName}' AND state NOT IN ('idle')"`
-    );
-
-    let activeConnections = 0;
-    let dbSizeMb          = 0;
-    let txCommitted       = 0;
-    let txRolledBack      = 0;
-
-    const pgRow = pgOut.stdout.trim().split("|");
-    if (pgRow.length >= 4) {
-      activeConnections = parseInt(pgRow[0], 10)  || 0;
-      dbSizeMb          = parseFloat(pgRow[1])    || 0;
-      txCommitted       = parseInt(pgRow[2], 10)  || 0;
-      txRolledBack      = parseInt(pgRow[3], 10)  || 0;
-    }
-
-    // Storage usage
-    const storageOut = await ssh.execCommand(
-      `du -sg /opt/baas/${project.slug}/volumes/storage 2>/dev/null | awk '{print $1}' || echo 0`
-    );
-    const storageGbUsed = parseFloat(storageOut.stdout.trim()) || 0;
+    const cpuPercent = restStats.cpuPercent + authStats.cpuPercent;
+    const ramMbUsed  = restStats.memMb      + authStats.memMb;
 
     await db.insert(baasMetrics).values({
       projectId,
-      cpuPercent:   cpuPercent.toFixed(2),
-      ramMbUsed,
-      storageGbUsed: storageGbUsed.toFixed(3),
-      activeConnections,
-      dbSizeMb:     dbSizeMb.toFixed(2),
-      txCommitted,
-      txRolledBack,
-      metadata: { raw: statsOut.stdout },
+      cpuPercent:       cpuPercent.toFixed(2),
+      ramMbUsed:        Math.round(ramMbUsed),
+      storageGbUsed:    "0",           // disk usage tracked separately if needed
+      activeConnections: dbStats.activeConnections,
+      dbSizeMb:         dbStats.dbSizeMb.toFixed(2),
+      txCommitted:      dbStats.txCommitted,
+      txRolledBack:     dbStats.txRolledBack,
+      metadata:         {},
     });
   } catch (err) {
     console.error(`[metrics-collector] Failed for ${project.slug}:`, err);
-  } finally {
-    ssh.dispose();
   }
 }
 
@@ -111,10 +100,7 @@ export async function collectAllMetrics(): Promise<void> {
   await Promise.allSettled(projects.map((p) => collectProjectMetrics(p.id)));
 }
 
-// Prune metrics older than 30 days to keep the table lean
 export async function pruneOldMetrics(): Promise<void> {
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  await db.delete(baasMetrics).where(
-    eq(baasMetrics.collectedAt, cutoff) // drizzle: lt() is imported separately in real usage
-  );
+  await db.delete(baasMetrics).where(lt(baasMetrics.collectedAt, cutoff));
 }
