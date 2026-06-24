@@ -9,10 +9,13 @@ const docker = new Docker({
   socketPath: process.platform === "win32" ? "//./pipe/docker_engine" : "/var/run/docker.sock",
 });
 
-const BAAS_NETWORK   = process.env.BAAS_DOCKER_NETWORK  ?? "guildserver";
-const BAAS_PG_HOST   = process.env.BAAS_PG_HOST         ?? "baas-postgres";
-const BAAS_PG_PORT   = parseInt(process.env.BAAS_PG_PORT ?? "5432");
-const BASE_DOMAIN    = process.env.BAAS_FALLBACK_DOMAIN  ?? "baas.guildserver.com";
+const BAAS_NETWORK   = process.env.BAAS_DOCKER_NETWORK      ?? "guildserver";
+// Host/port that Docker containers use internally (e.g. baas-postgres:5432)
+const BAAS_PG_HOST   = process.env.BAAS_PG_CONTAINER_HOST  ?? process.env.BAAS_PG_HOST ?? "baas-postgres";
+const BAAS_PG_PORT   = parseInt(process.env.BAAS_PG_CONTAINER_PORT ?? process.env.BAAS_PG_PORT ?? "5432");
+const BAAS_PG_ADMIN_USER = process.env.BAAS_PG_ADMIN_USER     ?? "postgres";
+const BAAS_PG_ADMIN_PASS = process.env.BAAS_PG_ADMIN_PASSWORD ?? "";
+const BASE_DOMAIN    = process.env.BAAS_FALLBACK_DOMAIN      ?? "baas.guildserver.com";
 const USE_TLS        = process.env.BAAS_TLS              !== "false";
 const CERT_RESOLVER  = process.env.BAAS_CERT_RESOLVER    ?? "letsencrypt";
 
@@ -131,7 +134,6 @@ function restContainerConfig(
 function authContainerConfig(
   slug:           string,
   dbName:         string,
-  dbPassword:     string,
   jwtSecret:      string,
   apiUrl:         string,
   siteUrl:        string,
@@ -150,7 +152,8 @@ function authContainerConfig(
       `GOTRUE_API_PORT=9999`,
       `API_EXTERNAL_URL=${apiUrl}`,
       `GOTRUE_DB_DRIVER=postgres`,
-      `GOTRUE_DB_DATABASE_URL=postgres://supabase_auth_admin:${dbPassword}@${BAAS_PG_HOST}:${BAAS_PG_PORT}/${dbName}`,
+      `GOTRUE_DB_DATABASE_URL=postgres://${BAAS_PG_ADMIN_USER}:${BAAS_PG_ADMIN_PASS}@${BAAS_PG_HOST}:${BAAS_PG_PORT}/${dbName}`,
+      `GOTRUE_DB_AUTOMIGRATE=true`,
       `GOTRUE_SITE_URL=${siteUrl}`,
       `GOTRUE_JWT_ADMIN_ROLES=service_role`,
       `GOTRUE_JWT_AUD=authenticated`,
@@ -225,7 +228,7 @@ export async function provisionProject(input: ProvisionInput): Promise<void> {
   // 3. Start PostgREST and GoTrue in parallel (both connect to shared baas-postgres)
   const [restCfg, authCfg] = [
     restContainerConfig(slug, dbName, dbUser, secrets.dbPassword, secrets.jwtSecret, vcpuLimit, ramMbLimit),
-    authContainerConfig(slug, dbName, secrets.dbPassword, secrets.jwtSecret, apiUrl, siteUrl, vcpuLimit, ramMbLimit),
+    authContainerConfig(slug, dbName, secrets.jwtSecret, apiUrl, siteUrl, vcpuLimit, ramMbLimit),
   ];
 
   await Promise.all([

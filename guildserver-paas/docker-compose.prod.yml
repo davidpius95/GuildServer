@@ -337,6 +337,8 @@ services:
       context: ../guildserver-baas
       dockerfile: apps/api/Dockerfile
     container_name: guildserver-baas-api
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://guildserver:${POSTGRES_PASSWORD:-password123}@postgres:5432/guildserver
@@ -348,9 +350,15 @@ services:
       BAAS_WEB_URL: https://${BASE_DOMAIN:-guildserver.io}/baas
       BAAS_BASE_DOMAIN: ${BASE_DOMAIN:-guildserver.io}
       BAAS_FALLBACK_DOMAIN: ${BASE_DOMAIN:-guildserver.io}
+      BAAS_TLS: "true"
+      BAAS_CERT_RESOLVER: letsencrypt
+      BAAS_DOCKER_NETWORK: guildserver
+      BAAS_PG_HOST: baas-postgres
+      BAAS_PG_PORT: "5432"
+      BAAS_PG_ADMIN_USER: postgres
+      BAAS_PG_ADMIN_PASSWORD: ${BAAS_PG_ADMIN_PASSWORD:-baas-postgres-password}
       CF_ZONE_ID: ${CF_ZONE_ID:-}
       CF_API_TOKEN: ${CF_API_TOKEN:-}
-      SSH_AUTH_SOCK: /tmp/ssh-agent.sock
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}

@@ -11,7 +11,7 @@ services:
     restart: unless-stopped
     shm_size: 256mb
     ports:
-      - "${BAAS_PG_PORT:-5434}:5432"
+      - "5434:5432"
     environment:
       POSTGRES_PASSWORD: ${BAAS_PG_ADMIN_PASSWORD}
       PGDATA: /var/lib/postgresql/data
