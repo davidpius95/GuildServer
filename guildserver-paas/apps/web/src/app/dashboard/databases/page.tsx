@@ -22,152 +22,6 @@ import { Switch } from "@/components/ui/switch"
 import { EmptyState } from "@/components/empty-state"
 import { formatDateTime } from "@/lib/utils"
 
-// ── BaaS Projects inline component ────────────────────────────────────────────
-
-const BAAS_STATUS_COLORS: Record<string, string> = {
-  active:       "bg-green-50 text-green-700 border-green-200",
-  paused:       "bg-zinc-100 text-zinc-500 border-zinc-200",
-  provisioning: "bg-amber-50 text-amber-700 border-amber-200",
-  error:        "bg-red-50 text-red-700 border-red-200",
-}
-
-function BaasProjectsTab({ orgId }: { orgId: string }) {
-  const isValidUUID = (s: string) =>
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
-
-  const [projects, setProjects] = useState<any[]>([])
-  const [loading, setLoading]   = useState(false)
-
-  const fetchBaasProjects = async () => {
-    if (!isValidUUID(orgId)) return
-    const token = typeof window !== "undefined" ? localStorage.getItem("guildserver-token") : ""
-    if (!token) return
-    setLoading(true)
-    try {
-      const res = await fetch(
-        `/baas-api/trpc/baasProject.list?input=${encodeURIComponent(JSON.stringify({ json: { organizationId: orgId } }))}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
-      if (!res.ok) return
-      const json = await res.json()
-      setProjects(json?.result?.data?.json ?? [])
-    } catch { /* network error — silently ignore */ } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => { void fetchBaasProjects() }, [orgId]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (loading) return (
-    <div className="flex justify-center p-8">
-      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-    </div>
-  )
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="font-medium">BaaS Projects</h3>
-          <p className="text-sm text-muted-foreground">
-            Supabase-compatible databases managed by GuildServer BaaS
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={fetchBaasProjects} disabled={loading}>
-            <RefreshCw className="mr-2 h-3 w-3" /> Refresh
-          </Button>
-          <Button size="sm" onClick={() => {
-            localStorage.setItem("guildserver-preferred-product", "baas")
-            window.location.href = "/baas/dashboard"
-          }}>
-            <Plus className="mr-2 h-4 w-4" /> New BaaS Project
-          </Button>
-        </div>
-      </div>
-
-      {projects.length === 0 ? (
-        <Card className="text-center py-12">
-          <CardContent>
-            <Database className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No BaaS projects yet</h3>
-            <p className="text-muted-foreground mb-6 text-sm">
-              Create a BaaS project to get a full Supabase-compatible database with auth, storage, and edge functions.
-            </p>
-            <Button onClick={() => {
-              localStorage.setItem("guildserver-preferred-product", "baas")
-              window.location.href = "/baas/dashboard"
-            }}>
-              <Plus className="mr-2 h-4 w-4" /> Create BaaS Project
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {projects.map((p: any) => (
-            <Card key={p.id} className="hover:shadow-md transition-shadow">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Database className="h-5 w-5 text-muted-foreground" />
-                    <CardTitle className="text-base">{p.name}</CardTitle>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={BAAS_STATUS_COLORS[p.status] ?? BAAS_STATUS_COLORS.provisioning}
-                  >
-                    {p.status}
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground font-mono mt-1">{p.slug}</p>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-                  <div>
-                    <p className="font-medium text-foreground">{p.ramMbLimit ?? "—"} MB</p>
-                    <p>RAM</p>
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">{p.vcpuLimit ?? "—"}</p>
-                    <p>vCPU</p>
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">{p.storageGbLimit ?? "—"} GB</p>
-                    <p>Storage</p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => {
-                      localStorage.setItem("guildserver-preferred-product", "baas")
-                      window.location.href = `/baas/dashboard/${p.id}`
-                    }}
-                  >
-                    Manage
-                  </Button>
-                  {p.studioUrl && p.status === "active" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => window.open(p.studioUrl, "_blank")}
-                    >
-                      Studio ↗
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ──────────────────────────────────────────────────────────────────────────────
 
 const getStatusColor = (status: string) => {
@@ -536,7 +390,6 @@ export default function DatabasesPage() {
       <Tabs defaultValue="databases" className="space-y-4">
         <TabsList>
           <TabsTrigger value="databases">Databases</TabsTrigger>
-          <TabsTrigger value="baas">BaaS Projects</TabsTrigger>
           <TabsTrigger value="backups">Backups</TabsTrigger>
           <TabsTrigger value="monitoring">Monitoring</TabsTrigger>
         </TabsList>
@@ -617,11 +470,6 @@ export default function DatabasesPage() {
               ))}
             </div>
           )}
-        </TabsContent>
-
-        {/* ── BaaS Projects tab ── */}
-        <TabsContent value="baas" className="space-y-4">
-          <BaasProjectsTab orgId={orgId} />
         </TabsContent>
 
         <TabsContent value="backups" className="space-y-4">
