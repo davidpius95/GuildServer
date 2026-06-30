@@ -11,9 +11,6 @@ import { trpc } from "@/components/trpc-provider"
 import { toast } from "sonner"
 
 const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || ""
-const BAAS_WEB_URL = process.env.NEXT_PUBLIC_BAAS_WEB_URL || "http://localhost:3001"
-
-type Product = "paas" | "baas"
 
 function GitHubIcon({ className }: { className?: string }) {
   return (
@@ -34,61 +31,7 @@ function GoogleIcon({ className }: { className?: string }) {
   )
 }
 
-function ProductCard({
-  value,
-  selected,
-  onSelect,
-  title,
-  description,
-  badge,
-  features,
-}: {
-  value: Product
-  selected: boolean
-  onSelect: (v: Product) => void
-  title: string
-  description: string
-  badge: string
-  features: string[]
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(value)}
-      className={`w-full text-left rounded-xl border-2 p-4 transition-all ${
-        selected
-          ? "border-primary bg-accent/30 shadow-md"
-          : "border-border hover:border-primary/40 hover:bg-muted/40"
-      }`}
-    >
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span
-            className={`w-4 h-4 rounded-full border-2 flex-shrink-0 mt-0.5 ${
-              selected ? "border-primary bg-primary" : "border-muted-foreground"
-            }`}
-          />
-          <span className="font-semibold text-sm">{title}</span>
-        </div>
-        <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
-          {badge}
-        </span>
-      </div>
-      <p className="text-xs text-muted-foreground mb-3 pl-6">{description}</p>
-      <ul className="space-y-1 pl-6">
-        {features.map((f) => (
-          <li key={f} className="text-xs text-muted-foreground flex items-center gap-1.5">
-            <span className="text-success">✓</span> {f}
-          </li>
-        ))}
-      </ul>
-    </button>
-  )
-}
-
 export default function RegisterPage() {
-  const [step, setStep] = useState<"product" | "details">("product")
-  const [product, setProduct] = useState<Product>("paas")
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -99,12 +42,7 @@ export default function RegisterPage() {
     onSuccess: (data) => {
       localStorage.setItem("guildserver-token", data.token)
       toast.success("Account created successfully!")
-      if (product === "baas") {
-        // Hand off token to BaaS dashboard
-        window.location.href = `${BAAS_WEB_URL}/auth/callback?token=${data.token}`
-      } else {
-        router.push("/dashboard")
-      }
+      router.push("/dashboard")
     },
     onError: (error) => {
       toast.error(error.message)
@@ -117,83 +55,20 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    registerMutation.mutate({ name, email, password, product })
-  }
-
-  if (step === "product") {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Choose your product</CardTitle>
-          <CardDescription>Select what you want to build with GuildServer</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <ProductCard
-            value="paas"
-            selected={product === "paas"}
-            onSelect={setProduct}
-            title="GuildServer PaaS"
-            badge="Deploy apps"
-            description="Deploy and manage containerised apps, databases, and workflows on your infrastructure."
-            features={[
-              "Git-push deployments",
-              "Managed databases (Postgres, Redis, MySQL)",
-              "Custom domains & SSL",
-              "Preview deployments",
-            ]}
-          />
-          <ProductCard
-            value="baas"
-            selected={product === "baas"}
-            onSelect={setProduct}
-            title="GuildServer BaaS"
-            badge="Backend-as-a-Service"
-            description="Instantly provision a full Supabase-compatible backend — Postgres, Auth, REST, Realtime & Storage."
-            features={[
-              "Managed Postgres + PostgREST API",
-              "Auth (email, OAuth, magic link)",
-              "Realtime subscriptions",
-              "File storage with image transforms",
-            ]}
-          />
-          <Button className="w-full" onClick={() => setStep("details")}>
-            Continue with {product === "paas" ? "PaaS" : "BaaS"} →
-          </Button>
-          <p className="text-center text-sm text-muted-foreground">
-            Already have an account?{" "}
-            <Link href="/auth/login" className="text-primary hover:underline">
-              Sign in
-            </Link>
-          </p>
-        </CardContent>
-      </Card>
-    )
+    registerMutation.mutate({ name, email, password, product: "paas" })
   }
 
   return (
     <Card>
       <CardHeader>
-        <button
-          type="button"
-          onClick={() => setStep("product")}
-          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mb-1"
-        >
-          ← Back
-        </button>
         <CardTitle>Create Account</CardTitle>
-        <CardDescription>
-          Setting up{" "}
-          <span className="text-primary font-medium">
-            GuildServer {product === "paas" ? "PaaS" : "BaaS"}
-          </span>
-        </CardDescription>
+        <CardDescription>Get started with GuildServer PaaS</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* OAuth */}
         <div className="grid grid-cols-2 gap-3">
           <Button
             variant="outline"
-            onClick={() => { window.location.href = `${API_URL}/auth/github?product=${product}` }}
+            onClick={() => { window.location.href = `${API_URL}/auth/github?product=paas` }}
             disabled={isLoading}
             type="button"
           >
@@ -201,7 +76,7 @@ export default function RegisterPage() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => { window.location.href = `${API_URL}/auth/google?product=${product}` }}
+            onClick={() => { window.location.href = `${API_URL}/auth/google?product=paas` }}
             disabled={isLoading}
             type="button"
           >
