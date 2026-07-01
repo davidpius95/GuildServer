@@ -88,6 +88,23 @@ export const backupStatusEnum = pgEnum("backup_status", [
   "failed"
 ]);
 
+// BaaS enums
+export const productEnum = pgEnum("product", ["paas", "baas"]);
+export const baasProjectStatusEnum = pgEnum("baas_project_status", [
+  "provisioning",
+  "active",
+  "paused",
+  "error",
+  "deleting",
+]);
+export const baasNodeRoleEnum = pgEnum("baas_node_role", ["edge", "compute", "storage"]);
+export const baasNodeStatusEnum = pgEnum("baas_node_status", [
+  "online",
+  "offline",
+  "maintenance",
+  "error",
+]);
+
 // Infrastructure provider enums
 export const providerTypeEnum = pgEnum("provider_type", [
   "docker-local",
@@ -108,7 +125,16 @@ export const providerStatusEnum = pgEnum("provider_status", [
 ]);
 
 // Billing enums
-export const planSlugEnum = pgEnum("plan_slug", ["hobby", "pro", "enterprise"]);
+export const planSlugEnum = pgEnum("plan_slug", ["hobby", "starter", "pro", "enterprise"]);
+export const instanceFamilyEnum = pgEnum("instance_family", ["shared", "dedicated"]);
+export const instanceStatusEnum = pgEnum("instance_status", [
+  "pending",
+  "provisioning",
+  "active",
+  "stopped",
+  "error",
+  "terminated",
+]);
 export const subscriptionStatusEnum = pgEnum("subscription_status", [
   "active",
   "trialing",
@@ -139,6 +165,7 @@ export const organizations = pgTable("organizations", {
   metadata: jsonb("metadata").default({}),
   ownerId: uuid("owner_id").notNull(),
   stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+  product: productEnum("product").default("paas"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -245,7 +272,12 @@ export const applications = pgTable("applications", {
   dockerImage: text("docker_image"),
   dockerTag: varchar("docker_tag", { length: 255 }).default("latest"),
   containerPort: integer("container_port"),
-  
+
+  // Private registry credentials (used at pull time for non-public images)
+  registryUrl: text("registry_url"),
+  registryUsername: text("registry_username"),
+  registryPassword: text("registry_password"),
+
   // Resource limits
   memoryReservation: integer("memory_reservation"),
   memoryLimit: integer("memory_limit"),
@@ -299,7 +331,19 @@ export const databases = pgTable("databases", {
   
   // External access
   externalPort: integer("external_port"),
-  
+
+  // Persistence / runtime (populated by the provisioner)
+  volumeName: text("volume_name"),
+  containerId: text("container_id"),
+  hostPort: integer("host_port"),
+
+  // Automatic backup configuration
+  backupEnabled: boolean("backup_enabled").default(false),
+  backupFrequency: varchar("backup_frequency", { length: 20 }).default("daily"), // hourly | daily | weekly
+  backupHour: integer("backup_hour"), // preferred hour-of-day (0-23) for the backup window
+  backupRetentionDays: integer("backup_retention_days").default(7),
+  backupDir: text("backup_dir"), // host directory for dumps (null = derived default)
+
   // Status
   status: varchar("status", { length: 50 }).default("inactive"),
 
@@ -315,9 +359,14 @@ export const databaseBackups = pgTable("database_backups", {
   databaseId: uuid("database_id").references(() => databases.id, { onDelete: "cascade" }),
   sizeBytes: integer("size_bytes").default(0),
   status: backupStatusEnum("status").default("pending"),
+  backupType: varchar("backup_type", { length: 20 }).default("manual"), // manual | automatic
+  filePath: text("file_path"), // absolute path of the dump on the host
   fileUrl: text("file_url"),
+  error: text("error"),
   startedAt: timestamp("started_at").defaultNow(),
   completedAt: timestamp("completed_at"),
+  expiresAt: timestamp("expires_at"), // completedAt + retentionDays; used by the retention sweep
+  createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   databaseIdIdx: index("database_backups_database_id_idx").on(table.databaseId),
 }));
@@ -403,11 +452,17 @@ export const domains = pgTable("domains", {
 
   // DNS verification
   verificationToken: varchar("verification_token", { length: 255 }),
-  verificationMethod: varchar("verification_method", { length: 50 }).default("cname"), // cname, txt
+  verificationMethod: varchar("verification_method", { length: 50 }).default("cname"), // cname, txt, redirect
   verified: boolean("verified").default(false),
 
   // Status
   status: domainStatusEnum("status").default("pending"),
+
+  // Redirect alias specifics
+  redirectsTo: varchar("redirects_to", { length: 255 }),
+  lastCheckedAt: timestamp("last_checked_at"),
+  verificationError: text("verification_error"),
+  lastHttpStatus: integer("last_http_status"),
 
   // SSL/TLS
   certificateId: uuid("certificate_id"),
@@ -612,6 +667,82 @@ export const plans = pgTable("plans", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// VPS instance types (the IaaS catalog — sized compute, seeded not user-created)
+export const instanceTypes = pgTable("instance_types", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: varchar("slug", { length: 64 }).notNull().unique(), // e.g. "gs-s3"
+  name: varchar("name", { length: 255 }).notNull(),
+  family: instanceFamilyEnum("family").notNull(), // shared | dedicated
+  description: text("description"),
+
+  // Specs
+  vcpu: decimal("vcpu").notNull(),            // vCPU cores (supports fractional)
+  ramMb: integer("ram_mb").notNull(),         // RAM in MB
+  storageGb: integer("storage_gb").notNull(), // NVMe storage in GB
+  transferTb: integer("transfer_tb").notNull(), // included egress in TB
+
+  // Pricing (cents). priceHourly is stored as micro-cents (1e-6 USD) for sub-cent precision.
+  priceMonthly: integer("price_monthly").notNull(),     // cents
+  priceHourlyMicro: integer("price_hourly_micro").notNull(), // micro-cents per hour
+
+  stripePriceIdMonthly: varchar("stripe_price_id_monthly", { length: 255 }),
+  stripePriceIdHourly: varchar("stripe_price_id_hourly", { length: 255 }),
+
+  sortOrder: integer("sort_order").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Provisioned VPS instances (user-created compute)
+export const instances = pgTable("instances", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  instanceTypeId: uuid("instance_type_id").references(() => instanceTypes.id, { onDelete: "restrict" }),
+  providerId: uuid("provider_id").references(() => computeProviders.id, { onDelete: "set null" }),
+
+  region: varchar("region", { length: 64 }).default("default"),
+  billingPeriod: varchar("billing_period", { length: 16 }).default("monthly"), // monthly | hourly
+
+  // Optional add-ons captured at provision time
+  extraStorageGb: integer("extra_storage_gb").default(0),
+  backupsEnabled: boolean("backups_enabled").default(false),
+
+  status: instanceStatusEnum("status").default("pending"),
+  hostname: varchar("hostname", { length: 255 }),
+  ipv4: inet("ipv4"),
+  statusMessage: text("status_message"),
+
+  // Backing resource (Proxmox LXC) — used to manage/destroy the real instance
+  vmid: integer("vmid"),
+  node: varchar("node", { length: 128 }),
+
+  // Stripe billing
+  stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  organizationIdIdx: index("instances_organization_id_idx").on(table.organizationId),
+  statusIdx: index("instances_status_idx").on(table.status),
+}));
+
+export const instancesRelations = relations(instances, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [instances.organizationId],
+    references: [organizations.id],
+  }),
+  instanceType: one(instanceTypes, {
+    fields: [instances.instanceTypeId],
+    references: [instanceTypes.id],
+  }),
+  provider: one(computeProviders, {
+    fields: [instances.providerId],
+    references: [computeProviders.id],
+  }),
+}));
+
 // Subscriptions (links an organization to a plan)
 export const subscriptions = pgTable("subscriptions", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -793,6 +924,144 @@ export const auditLogs = pgTable("audit_logs", {
 }, (table) => ({
   organizationIdIdx: index("audit_logs_organization_id_idx").on(table.organizationId),
   timestampIdx: index("audit_logs_timestamp_idx").on(table.timestamp),
+}));
+
+// =====================
+// BAAS TABLES
+// =====================
+
+// Fleet nodes — each mini-PC (or pod of mini-PCs) registered as a BaaS compute node
+export const baasNodes = pgTable("baas_nodes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  hostname: varchar("hostname", { length: 255 }).notNull(),
+  internalIp: inet("internal_ip").notNull(), // WireGuard / mesh IP
+  externalIp: inet("external_ip"),
+  role: baasNodeRoleEnum("role").notNull().default("compute"),
+  status: baasNodeStatusEnum("status").notNull().default("offline"),
+
+  // Hardware capacity
+  vcpuTotal: integer("vcpu_total").notNull(),
+  ramMbTotal: integer("ram_mb_total").notNull(),
+  storageGbTotal: integer("storage_gb_total").notNull(),
+
+  // Live utilization (updated by health-reconciler)
+  vcpuUsed: integer("vcpu_used").default(0),
+  ramMbUsed: integer("ram_mb_used").default(0),
+  storageGbUsed: integer("storage_gb_used").default(0),
+
+  // SSH access for the scheduler to run docker compose on the node
+  sshUser: varchar("ssh_user", { length: 64 }).default("root"),
+  sshPort: integer("ssh_port").default(22),
+  // SSH private key stored encrypted; null means agent-based auth
+  sshPrivateKey: text("ssh_private_key"),
+
+  // Linked computeProvider (so IaaS layer can manage the VM if on Proxmox)
+  providerId: uuid("provider_id").references(() => computeProviders.id, { onDelete: "set null" }),
+
+  podName: varchar("pod_name", { length: 128 }),
+  location: varchar("location", { length: 255 }),
+
+  lastHeartbeat: timestamp("last_heartbeat"),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  statusIdx: index("baas_nodes_status_idx").on(table.status),
+  roleIdx: index("baas_nodes_role_idx").on(table.role),
+}));
+
+// One BaaS project = one complete Supabase stack on one compute node
+export const baasProjects = pgTable("baas_projects", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 255 }).notNull().unique(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+
+  // Placement
+  nodeId: uuid("node_id").references(() => baasNodes.id, { onDelete: "set null" }),
+
+  // Per-project secrets (encrypt at rest via ENCRYPTION_KEY env var in production)
+  dbPassword: text("db_password").notNull(),
+  jwtSecret: text("jwt_secret").notNull(),
+  anonKey: text("anon_key").notNull(),
+  serviceRoleKey: text("service_role_key").notNull(),
+
+  // Database connection
+  dbHost: varchar("db_host", { length: 255 }),
+  dbPort: integer("db_port").default(5432),
+  dbName: varchar("db_name", { length: 255 }).notNull(),
+  dbUser: varchar("db_user", { length: 255 }).notNull(),
+
+  // Public API endpoints (set after provisioning; routed through edge node)
+  apiUrl: text("api_url"),       // https://<slug>.baas.<domain>
+  realtimeUrl: text("realtime_url"),
+  storageUrl: text("storage_url"),
+  studioUrl: text("studio_url"),
+
+  // Host-port base on the compute node (each project gets a range, e.g. 9000-9010)
+  hostPortBase: integer("host_port_base"),
+
+  // Resource allocation per project
+  vcpuLimit: decimal("vcpu_limit").default("1"),
+  ramMbLimit: integer("ram_mb_limit").default(2048),
+  storageGbLimit: integer("storage_gb_limit").default(8),
+
+  status: baasProjectStatusEnum("status").default("provisioning"),
+  statusMessage: text("status_message"),
+
+  // Running container IDs on the node (keyed by service name)
+  containerIds: jsonb("container_ids").default({}),
+
+  // Backup config
+  backupEnabled: boolean("backup_enabled").default(true),
+  backupRetentionDays: integer("backup_retention_days").default(7),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("baas_projects_org_id_idx").on(table.organizationId),
+  nodeIdIdx: index("baas_projects_node_id_idx").on(table.nodeId),
+  statusIdx: index("baas_projects_status_idx").on(table.status),
+}));
+
+// BaaS project database backups (separate from PaaS databaseBackups)
+export const baasBackups = pgTable("baas_backups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").notNull().references(() => baasProjects.id, { onDelete: "cascade" }),
+  status: backupStatusEnum("status").default("pending"),
+  backupType: varchar("backup_type", { length: 20 }).default("automatic"), // manual | automatic
+  sizeBytes: integer("size_bytes").default(0),
+  filePath: text("file_path"),
+  error: text("error"),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  projectIdIdx: index("baas_backups_project_id_idx").on(table.projectId),
+  statusIdx: index("baas_backups_status_idx").on(table.status),
+}));
+
+// Cloudflare for SaaS custom hostname tracking (per BaaS project)
+export const baasCustomHostnames = pgTable("baas_custom_hostnames", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").notNull().references(() => baasProjects.id, { onDelete: "cascade" }),
+  hostname: varchar("hostname", { length: 255 }).notNull().unique(),
+
+  // Cloudflare for SaaS API response fields
+  cfCustomHostnameId: varchar("cf_custom_hostname_id", { length: 255 }),
+  cfOwnershipTxtName: text("cf_ownership_txt_name"),
+  cfOwnershipTxtValue: text("cf_ownership_txt_value"),
+  cfSslStatus: varchar("cf_ssl_status", { length: 64 }),
+
+  status: domainStatusEnum("status").default("pending"),
+  verified: boolean("verified").default(false),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  projectIdIdx: index("baas_custom_hostnames_project_id_idx").on(table.projectId),
 }));
 
 // =====================
@@ -1060,4 +1329,45 @@ export const paymentMethodsRelations = relations(paymentMethods, ({ one }) => ({
     fields: [paymentMethods.organizationId],
     references: [organizations.id],
   }),
+}));
+
+// BaaS relations
+export const baasNodesRelations = relations(baasNodes, ({ one, many }) => ({
+  provider: one(computeProviders, {
+    fields: [baasNodes.providerId],
+    references: [computeProviders.id],
+  }),
+  projects: many(baasProjects),
+}));
+
+export const baasProjectsRelations = relations(baasProjects, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [baasProjects.organizationId],
+    references: [organizations.id],
+  }),
+  node: one(baasNodes, {
+    fields: [baasProjects.nodeId],
+    references: [baasNodes.id],
+  }),
+  backups: many(baasBackups),
+  customHostnames: many(baasCustomHostnames),
+}));
+
+export const baasBackupsRelations = relations(baasBackups, ({ one }) => ({
+  project: one(baasProjects, {
+    fields: [baasBackups.projectId],
+    references: [baasProjects.id],
+  }),
+}));
+
+export const baasCustomHostnamesRelations = relations(baasCustomHostnames, ({ one }) => ({
+  project: one(baasProjects, {
+    fields: [baasCustomHostnames.projectId],
+    references: [baasProjects.id],
+  }),
+}));
+
+// Extend organizationsRelations to include BaaS
+export const organizationsBaasRelations = relations(organizations, ({ many }) => ({
+  baasProjects: many(baasProjects),
 }));

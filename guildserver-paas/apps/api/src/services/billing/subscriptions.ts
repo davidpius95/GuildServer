@@ -37,6 +37,37 @@ export async function createCheckoutSession(
   return session.url;
 }
 
+/**
+ * Create a Stripe Checkout session to subscribe to a single VPS instance.
+ * Returns the checkout URL. Throws if the instance type has no Stripe price.
+ */
+export async function createInstanceCheckoutSession(args: {
+  organizationId: string;
+  instanceId: string;
+  stripePriceId: string;
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<string> {
+  const s = requireStripe();
+  const customerId = await getOrCreateCustomerId(args.organizationId);
+
+  const session = await s.checkout.sessions.create({
+    customer: customerId,
+    mode: "subscription",
+    line_items: [{ price: args.stripePriceId, quantity: 1 }],
+    success_url: args.successUrl,
+    cancel_url: args.cancelUrl,
+    metadata: { organizationId: args.organizationId, instanceId: args.instanceId, kind: "instance" },
+    subscription_data: {
+      metadata: { organizationId: args.organizationId, instanceId: args.instanceId, kind: "instance" },
+    },
+  });
+
+  if (!session.url) throw new Error("Failed to create Stripe Checkout session");
+  logger.info(`Created instance Checkout session for org ${args.organizationId} → instance ${args.instanceId}`);
+  return session.url;
+}
+
 export async function createPortalSession(organizationId: string, returnUrl: string): Promise<string> {
   const s = requireStripe();
   const customerId = await getOrCreateCustomerId(organizationId);

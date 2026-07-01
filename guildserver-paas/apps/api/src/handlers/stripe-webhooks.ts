@@ -11,8 +11,9 @@ import {
 } from "../services/billing";
 import { notify } from "../services/notification";
 import { resetSpendNotifications } from "../services/spend-manager";
-import { db, subscriptions, members } from "@guildserver/database";
+import { db, subscriptions, members, instances } from "@guildserver/database";
 import { eq, and } from "drizzle-orm";
+import { addInstanceProvisionJob, addInstanceDestroyJob } from "../queues/instances";
 
 export const stripeWebhookRouter = Router();
 
@@ -66,7 +67,21 @@ stripeWebhookRouter.post("/", async (req: Request, res: Response) => {
           customer: session.customer,
           subscription: session.subscription,
         });
-        // Subscription will be synced via customer.subscription.created event
+        // VPS instance checkout → record subscription and start provisioning.
+        if (session.metadata?.kind === "instance" && session.metadata.instanceId) {
+          const instanceId = session.metadata.instanceId;
+          await db
+            .update(instances)
+            .set({
+              stripeSubscriptionId: (session.subscription as string) || null,
+              statusMessage: "Payment confirmed — queued for provisioning",
+              updatedAt: new Date(),
+            })
+            .where(eq(instances.id, instanceId));
+          await addInstanceProvisionJob(instanceId);
+          logger.info(`Queued provisioning for paid instance ${instanceId}`);
+        }
+        // Plan subscriptions are synced via customer.subscription.created event
         break;
       }
 
@@ -80,6 +95,16 @@ stripeWebhookRouter.post("/", async (req: Request, res: Response) => {
 
       case "customer.subscription.deleted": {
         const subscription = event.data.object as Stripe.Subscription;
+        // VPS instance subscription cancelled → tear down the instance.
+        if (subscription.metadata?.kind === "instance" && subscription.metadata.instanceId) {
+          const instanceId = subscription.metadata.instanceId;
+          const instance = await db.query.instances.findFirst({ where: eq(instances.id, instanceId) });
+          if (instance && instance.status !== "terminated") {
+            await addInstanceDestroyJob(instanceId);
+            logger.info(`Queued teardown for cancelled instance ${instanceId}`);
+          }
+          break;
+        }
         await handleSubscriptionDeleted(subscription);
         break;
       }

@@ -19,6 +19,7 @@ import { startMetricsCollection, stopMetricsCollection, collectAndStoreMetrics }
 import { notify } from "../services/notification";
 import { trackDeployment, trackBuildMinutes } from "../services/usage-meter";
 import { checkSpendLimit, checkSpendThresholds } from "../services/spend-manager";
+import { decryptSecret } from "../utils/crypto";
 import { deploymentsTotal, deploymentDuration, queueDepth } from "../services/prometheus-metrics";
 import crypto from "crypto";
 import path from "path";
@@ -507,10 +508,14 @@ const deploymentWorker = new Worker(
       //   "grafana/grafana:10.0" in image field → image=grafana/grafana, tag=10.0
       //   "nginx" with tag="alpine" → image=nginx, tag=alpine
       //   "grafana/grafana" with no tag → image=grafana/grafana, tag=latest
+      //   "registry.example.com:5000/org/app:1.2" → image=registry.example.com:5000/org/app, tag=1.2
+      // A ":" only denotes a tag when it appears after the last "/" (otherwise it's a registry port).
       const trimmedImage = dockerImage.trim();
-      const hasTagInImage = trimmedImage.includes(":");
-      const effectiveImage = hasTagInImage ? trimmedImage.split(":")[0] : trimmedImage;
-      const effectiveTag = (hasTagInImage ? trimmedImage.split(":")[1] : dockerTag || "latest").trim();
+      const lastColon = trimmedImage.lastIndexOf(":");
+      const lastSlash = trimmedImage.lastIndexOf("/");
+      const hasTagInImage = lastColon > lastSlash;
+      const effectiveImage = hasTagInImage ? trimmedImage.slice(0, lastColon) : trimmedImage;
+      const effectiveTag = (hasTagInImage ? trimmedImage.slice(lastColon + 1) : dockerTag || "latest").trim();
 
       // For previews: use branch-specific appName so production isn't replaced
       const containerAppName = isPreview && previewBranch
@@ -550,6 +555,13 @@ const deploymentWorker = new Worker(
         replicas: app.replicas || 1,
         sourceType: app.sourceType || "docker",
         domains: domainList.length > 0 ? domainList : undefined,
+        registryAuth: app.registryUsername
+          ? {
+              username: app.registryUsername,
+              password: decryptSecret(app.registryPassword) || "",
+              serveraddress: app.registryUrl || undefined,
+            }
+          : undefined,
       };
 
       const result = await computeProvider.deploy(deployConfig);

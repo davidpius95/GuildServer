@@ -28,6 +28,10 @@ services:
       - default
       - guildserver
     restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
 
   # PostgreSQL Database
   postgres:
@@ -270,21 +274,6 @@ services:
       - default
     restart: unless-stopped
 
-  # Cloudflare Metrics Exporter
-  cloudflare-exporter:
-    image: ghcr.io/lablabs/cloudflare-exporter:latest
-    container_name: guildserver-cloudflare-exporter
-    environment:
-      - CF_API_TOKEN=${CLOUDFLARE_API_TOKEN}
-      - CF_ZONES=${CF_ZONES:-}
-      - CF_ACCOUNTS=${CF_ACCOUNTS:-}
-      - FREE_TIER=${FREE_TIER:-true}
-    ports:
-      - "8080"
-    networks:
-      - default
-    restart: unless-stopped
-
   # Postgres Exporter
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
@@ -337,6 +326,92 @@ services:
     networks:
       - default
     restart: unless-stopped
+
+
+  # ── GuildServer BaaS ──────────────────────────────────────────────────────────
+  # Dashboard: https://baas.guildserver.io
+  # API:       internal only (baas-api:4001) — web talks to it inside Docker network
+
+  baas-api:
+    build:
+      context: ../guildserver-baas
+      dockerfile: apps/api/Dockerfile
+    container_name: guildserver-baas-api
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://guildserver:${POSTGRES_PASSWORD:-password123}@postgres:5432/guildserver
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_EXPIRES_IN: 7d
+      BAAS_API_PORT: 4001
+      BAAS_WEB_URL: https://${BASE_DOMAIN:-guildserver.io}/baas
+      BAAS_BASE_DOMAIN: ${BASE_DOMAIN:-guildserver.io}
+      BAAS_FALLBACK_DOMAIN: ${BASE_DOMAIN:-guildserver.io}
+      BAAS_TLS: "true"
+      BAAS_CERT_RESOLVER: letsencrypt
+      BAAS_DOCKER_NETWORK: guildserver
+      BAAS_PG_HOST: baas-postgres
+      BAAS_PG_PORT: "5432"
+      BAAS_PG_ADMIN_USER: postgres
+      BAAS_PG_ADMIN_PASSWORD: ${BAAS_PG_ADMIN_PASSWORD:-baas-postgres-password}
+      CF_ZONE_ID: ${CF_ZONE_ID:-}
+      CF_API_TOKEN: ${CF_API_TOKEN:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.baas-api-svc.loadbalancer.server.port=4001"
+      - "traefik.http.routers.baas-api.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && PathPrefix(`/baas-api`)"
+      - "traefik.http.routers.baas-api.entrypoints=web"
+      - "traefik.http.routers.baas-api.service=baas-api-svc"
+      - "traefik.http.routers.baas-api.priority=20"
+      - "traefik.http.middlewares.baas-strip.stripprefix.prefixes=/baas-api"
+      - "traefik.http.routers.baas-api.middlewares=baas-strip"
+    networks:
+      - default
+      - guildserver
+    restart: unless-stopped
+
+  baas-web:
+    build:
+      context: ../guildserver-baas
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Baked into the Next.js bundle at build time
+        NEXT_PUBLIC_BAAS_API_URL: https://${BASE_DOMAIN:-guildserver.io}/baas-api
+        NEXT_PUBLIC_PAAS_WEB_URL: https://${BASE_DOMAIN:-guildserver.io}
+    container_name: guildserver-baas-web
+    environment:
+      NODE_ENV: production
+      # Runtime env (server-side only, not exposed to browser)
+      NEXT_PUBLIC_BAAS_API_URL: https://${BASE_DOMAIN:-guildserver.io}/baas-api
+      NEXT_PUBLIC_PAAS_WEB_URL: https://${BASE_DOMAIN:-guildserver.io}
+    depends_on:
+      - baas-api
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.baas-web.loadbalancer.server.port=3001"
+      - "traefik.http.routers.baas-web.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && PathPrefix(`/baas`)"
+      - "traefik.http.routers.baas-web.entrypoints=web"
+      - "traefik.http.routers.baas-web.service=baas-web"
+      - "traefik.http.routers.baas-web.priority=10"
+    networks:
+      - default
+      - guildserver
+    restart: unless-stopped
+
+  # Shared HTTP→HTTPS redirect middleware (declared once, reused)
+  # (defined here via label on a dummy no-op; Traefik picks it up from any container)
 
 volumes:
   postgres_data:

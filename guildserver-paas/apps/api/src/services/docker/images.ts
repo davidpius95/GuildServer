@@ -64,18 +64,35 @@ export function detectDefaultPort(image: string): number {
   return 80;
 }
 
+export interface RegistryAuth {
+  username: string;
+  password: string;
+  /** Registry host, e.g. "ghcr.io" or "registry.example.com:5000". Defaults to Docker Hub. */
+  serveraddress?: string;
+}
+
 export async function pullImage(
   image: string,
   tag: string,
   userId?: string,
   deploymentId?: string,
   dockerClient?: Docker,
+  auth?: RegistryAuth,
 ): Promise<string[]> {
   const d = dockerClient || docker;
   const cleanImage = image.trim().replace(/:$/, "");
   const cleanTag = tag.trim() || "latest";
   const fullImage = `${cleanImage}:${cleanTag}`;
   const logs: string[] = [];
+
+  // Build authconfig for private registries (dockerode forwards this as X-Registry-Auth).
+  const authconfig = auth?.username
+    ? {
+        username: auth.username,
+        password: auth.password,
+        serveraddress: auth.serveraddress || "https://index.docker.io/v1/",
+      }
+    : undefined;
 
   const log = (msg: string) => {
     logs.push(msg);
@@ -93,7 +110,7 @@ export async function pullImage(
   log(`Pulling image ${fullImage}...`);
 
   try {
-    const stream = await d.pull(fullImage);
+    const stream = await d.pull(fullImage, authconfig ? { authconfig } : {});
 
     await new Promise<void>((resolve, reject) => {
       d.modem.followProgress(

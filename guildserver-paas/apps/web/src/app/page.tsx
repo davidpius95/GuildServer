@@ -771,6 +771,71 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Pricing Teaser */}
+      <section id="pricing" className="py-24 md:py-32 border-y border-border/50 relative overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] rounded-full bg-[var(--gradient-1)] opacity-[0.04] blur-[120px]" />
+        <div className="relative main-container">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">
+              Pricing that <span className="gradient-text">scales with you</span>
+            </h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              Pay only for what you need — a managed platform to ship in seconds, or raw VPS power you control.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+            {/* Managed Platform */}
+            <div className="relative rounded-2xl border bg-card p-8 flex flex-col">
+              <div className="flex items-center gap-2 mb-2">
+                <Rocket className="h-5 w-5 text-[var(--gradient-1)]" />
+                <h3 className="text-xl font-bold">Managed Platform</h3>
+              </div>
+              <p className="text-sm text-muted-foreground mb-6">
+                Deploy from Git or Docker with databases, domains, SSL, and monitoring handled for you.
+              </p>
+              <p className="text-4xl font-bold mb-1">
+                $0<span className="text-lg font-normal text-muted-foreground">/mo to start</span>
+              </p>
+              <p className="text-sm text-muted-foreground mb-6">Hobby free · Starter $12 · Pro $29 · Enterprise custom</p>
+              <ul className="space-y-2 text-sm mb-8 flex-1">
+                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-green-500" /> Git &amp; Docker deploys, previews</li>
+                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-green-500" /> Managed databases &amp; backups</li>
+                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-green-500" /> Custom domains with auto SSL</li>
+                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-green-500" /> Team collaboration &amp; monitoring</li>
+              </ul>
+              <Button asChild size="lg" className="w-full gradient-bg border-0 text-white hover:opacity-90">
+                <Link href="/pricing">View platform plans<ArrowRight className="ml-2 h-4 w-4" /></Link>
+              </Button>
+            </div>
+
+            {/* VPS Instances */}
+            <div className="relative rounded-2xl border bg-card p-8 flex flex-col">
+              <div className="flex items-center gap-2 mb-2">
+                <Server className="h-5 w-5 text-[var(--gradient-2)]" />
+                <h3 className="text-xl font-bold">VPS Instances</h3>
+              </div>
+              <p className="text-sm text-muted-foreground mb-6">
+                Raw, sized compute — dedicated vCPU, RAM, and NVMe storage you fully control.
+              </p>
+              <p className="text-4xl font-bold mb-1">
+                $5<span className="text-lg font-normal text-muted-foreground">/mo</span>
+              </p>
+              <p className="text-sm text-muted-foreground mb-6">Shared from $5 · Dedicated from $42 · hourly or monthly</p>
+              <ul className="space-y-2 text-sm mb-8 flex-1">
+                <li className="flex items-center gap-2"><Cpu className="h-4 w-4 text-green-500" /> Up to 16 vCPU / 32 GB RAM</li>
+                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-green-500" /> NVMe storage &amp; generous transfer</li>
+                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-green-500" /> Hourly billing capped at monthly</li>
+                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-green-500" /> Block storage, backups &amp; snapshots</li>
+              </ul>
+              <Button asChild size="lg" variant="outline" className="w-full">
+                <Link href="/pricing">View VPS pricing<ArrowRight className="ml-2 h-4 w-4" /></Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Security & Compliance Banner */}
       <section className="border-y border-border/50 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-[var(--gradient-1)]/[0.02] via-[var(--gradient-3)]/[0.02] to-[var(--gradient-5)]/[0.02]" />

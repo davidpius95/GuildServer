@@ -97,6 +97,7 @@ export interface DeployConfig {
   sourceType: string;
   domains?: string[];
   containerPort?: number;
+  registryAuth?: { username: string; password: string; serveraddress?: string };
 }
 
 // Result from a deployment

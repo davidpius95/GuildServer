@@ -40,58 +40,50 @@ export default function RegisterPage() {
 
   const registerMutation = trpc.auth.register.useMutation({
     onSuccess: (data) => {
-      localStorage.setItem('guildserver-token', data.token)
+      localStorage.setItem("guildserver-token", data.token)
       toast.success("Account created successfully!")
-      router.push('/dashboard')
+      router.push("/dashboard")
     },
     onError: (error) => {
       toast.error(error.message)
     },
     onSettled: () => {
       setIsLoading(false)
-    }
+    },
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    registerMutation.mutate({ name, email, password })
+    registerMutation.mutate({ name, email, password, product: "paas" })
   }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Create Account</CardTitle>
-        <CardDescription>
-          Get started with GuildServer in seconds
-        </CardDescription>
+        <CardDescription>Get started with GuildServer PaaS</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* OAuth Buttons */}
         <div className="grid grid-cols-2 gap-3">
           <Button
             variant="outline"
-            onClick={() => { window.location.href = `${API_URL}/auth/github` }}
+            onClick={() => { window.location.href = `${API_URL}/auth/github?product=paas` }}
             disabled={isLoading}
             type="button"
-            className="w-full"
           >
-            <GitHubIcon className="mr-2 h-4 w-4" />
-            GitHub
+            <GitHubIcon className="mr-2 h-4 w-4" /> GitHub
           </Button>
           <Button
             variant="outline"
-            onClick={() => { window.location.href = `${API_URL}/auth/google` }}
+            onClick={() => { window.location.href = `${API_URL}/auth/google?product=paas` }}
             disabled={isLoading}
             type="button"
-            className="w-full"
           >
-            <GoogleIcon className="mr-2 h-4 w-4" />
-            Google
+            <GoogleIcon className="mr-2 h-4 w-4" /> Google
           </Button>
         </div>
 
-        {/* Divider */}
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
             <span className="w-full border-t" />
@@ -101,7 +93,6 @@ export default function RegisterPage() {
           </div>
         </div>
 
-        {/* Email/Password Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Full Name</Label>
@@ -140,20 +131,16 @@ export default function RegisterPage() {
               minLength={8}
             />
           </div>
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={isLoading}
-          >
+          <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? "Creating account..." : "Create Account"}
           </Button>
         </form>
-        <div className="text-center text-sm">
+        <p className="text-center text-sm">
           Already have an account?{" "}
           <Link href="/auth/login" className="text-primary hover:underline">
             Sign in
           </Link>
-        </div>
+        </p>
       </CardContent>
     </Card>
   )
