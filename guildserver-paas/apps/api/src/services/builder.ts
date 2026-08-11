@@ -171,7 +171,7 @@ CMD ["sh", "-c", "${startCmd}"]
       if (hasRequirements) {
         installCmd = "COPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt";
       } else if (hasPyproject) {
-        installCmd = "COPY pyproject.toml .\nRUN pip install --no-cache-dir .";
+        installCmd = "COPY . .\nRUN pip install --no-cache-dir .";
       }
 
       // Detect common entry points
