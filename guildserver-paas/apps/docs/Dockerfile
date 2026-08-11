@@ -21,7 +21,7 @@ COPY apps/docs ./apps/docs
 
 # Materialize the docs package's own node_modules so Docusaurus can resolve
 # its binary and workspace-local package layout correctly in this image.
-RUN pnpm --dir apps/docs install --frozen-lockfile
+RUN pnpm --dir apps/docs install --frozen-lockfile --lockfile-dir /app
 
 RUN pnpm --dir apps/docs build
 
