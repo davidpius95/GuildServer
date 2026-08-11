@@ -158,6 +158,13 @@ CMD ["sh", "-c", "${startCmd}"]
     case "python": {
       const hasRequirements = fs.existsSync(path.join(projectDir, "requirements.txt"));
       const hasPyproject = fs.existsSync(path.join(projectDir, "pyproject.toml"));
+      const requirementsText = hasRequirements
+        ? fs.readFileSync(path.join(projectDir, "requirements.txt"), "utf8")
+        : "";
+      const pyprojectText = hasPyproject
+        ? fs.readFileSync(path.join(projectDir, "pyproject.toml"), "utf8")
+        : "";
+      const hasFastApi = /fastapi/i.test(`${requirementsText}\n${pyprojectText}`);
 
       let installCmd = "";
       if (hasRequirements) {
@@ -172,11 +179,13 @@ CMD ["sh", "-c", "${startCmd}"]
         entryPoint = "python manage.py runserver 0.0.0.0:8000";
       } else if (fs.existsSync(path.join(projectDir, "main.py"))) {
         entryPoint = "python main.py";
+      } else if (hasFastApi && fs.existsSync(path.join(projectDir, "app", "main.py"))) {
+        entryPoint = "fastapi run app/main.py --host 0.0.0.0 --port 8000";
       } else if (fs.existsSync(path.join(projectDir, "app.py"))) {
         entryPoint = "python app.py";
       }
 
-      return { dockerfile: `FROM python:3.12-slim
+      return { dockerfile: `FROM python:3.14-slim
 WORKDIR /app
 ${installCmd}
 COPY . .
