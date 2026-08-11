@@ -9,7 +9,14 @@ const docker = new Docker({
   socketPath: process.platform === "win32" ? "//./pipe/docker_engine" : "/var/run/docker.sock",
 });
 
-export type DetectedBuildType = "dockerfile" | "node" | "python" | "go" | "static" | "unknown";
+export type DetectedBuildType =
+  | "dockerfile"
+  | "fastapi-fullstack"
+  | "node"
+  | "python"
+  | "go"
+  | "static"
+  | "unknown";
 
 export interface BuildResult {
   imageTag: string;
@@ -29,6 +36,25 @@ export interface BuildOptions {
   environment?: Record<string, string>;
 }
 
+function isFastApiFullStackTemplate(projectDir: string): boolean {
+  const backendPyprojectPath = path.join(projectDir, "backend", "pyproject.toml");
+  const frontendPackagePath = path.join(projectDir, "frontend", "package.json");
+  const backendMainPath = path.join(projectDir, "backend", "app", "main.py");
+
+  if (
+    !fs.existsSync(backendPyprojectPath) ||
+    !fs.existsSync(frontendPackagePath) ||
+    !fs.existsSync(backendMainPath)
+  ) {
+    return false;
+  }
+
+  const backendPyproject = fs.readFileSync(backendPyprojectPath, "utf8");
+  const backendMain = fs.readFileSync(backendMainPath, "utf8");
+
+  return /fastapi/i.test(backendPyproject) && backendMain.includes("app.frontend(");
+}
+
 /**
  * Detect the build type by looking at files in the project directory
  */
@@ -40,6 +66,12 @@ export function detectBuildType(projectDir: string, opts: { ignoreDockerfile?: b
       fs.existsSync(path.join(projectDir, "dockerfile")))
   ) {
     return "dockerfile";
+  }
+
+  // FastAPI's full-stack template has both a frontend workspace and a backend app.
+  // Treat it specially before generic Node detection sees the root package.json.
+  if (isFastApiFullStackTemplate(projectDir)) {
+    return "fastapi-fullstack";
   }
 
   // Node.js
@@ -75,6 +107,30 @@ export function detectBuildType(projectDir: string, opts: { ignoreDockerfile?: b
  */
 function generateDockerfile(buildType: DetectedBuildType, projectDir: string): { dockerfile: string; port: number } {
   switch (buildType) {
+    case "fastapi-fullstack": {
+      return { dockerfile: `FROM oven/bun:1 AS frontend-build
+WORKDIR /app
+COPY package.json bun.lock* ./
+COPY frontend/package.json frontend/package.json
+WORKDIR /app/frontend
+RUN bun install
+COPY frontend/ /app/frontend/
+ARG VITE_API_URL=
+RUN bun run build
+
+FROM python:3.14-slim
+ENV PYTHONUNBUFFERED=1
+WORKDIR /app/backend
+COPY backend/pyproject.toml ./
+COPY backend/alembic.ini ./
+COPY backend/app ./app
+COPY --from=frontend-build /app/backend/app/frontend ./app/frontend
+RUN pip install --no-cache-dir .
+EXPOSE 8000
+CMD ["fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]
+`, port: 8000 };
+    }
+
     case "node": {
       // Check if it's a Next.js, Vite/SPA, or plain Node app
       const pkgJsonPath = path.join(projectDir, "package.json");
@@ -395,6 +451,8 @@ export function getPortForBuildType(buildType: DetectedBuildType): number {
   switch (buildType) {
     case "node":
       return 3000;
+    case "fastapi-fullstack":
+      return 8000;
     case "python":
       return 8000;
     case "go":
