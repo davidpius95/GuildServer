@@ -270,6 +270,12 @@ services:
       - /dev/disk:/dev/disk:ro
     command:
       - '-port=8081'
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8081/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - default
     restart: unless-stopped
