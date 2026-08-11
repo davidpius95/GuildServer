@@ -15,13 +15,15 @@ FROM base AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/docs/node_modules ./apps/docs/node_modules
 
 COPY package.json pnpm-workspace.yaml ./
 COPY apps/docs ./apps/docs
 
-# Use the workspace root binary resolution in this container layout.
-RUN pnpm --dir apps/docs exec docusaurus build
+# Materialize the docs package's own node_modules so Docusaurus can resolve
+# its binary and workspace-local package layout correctly in this image.
+RUN pnpm --dir apps/docs install --frozen-lockfile
+
+RUN pnpm --dir apps/docs build
 
 # --- Runner stage ---
 FROM nginx:alpine AS runner
