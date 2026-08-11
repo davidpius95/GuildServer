@@ -20,6 +20,8 @@ COPY --from=deps /app/apps/docs/node_modules ./apps/docs/node_modules
 COPY package.json pnpm-workspace.yaml ./
 COPY apps/docs ./apps/docs
 
+RUN cp pnpm-lock.yaml apps/docs/pnpm-lock.yaml && pnpm --dir apps/docs install --frozen-lockfile && rm apps/docs/pnpm-lock.yaml
+
 RUN pnpm --dir apps/docs build
 
 # --- Runner stage ---
