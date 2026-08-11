@@ -40,7 +40,7 @@ COPY apps/web ./apps/web
 # API source is copied for type imports (import type { AppRouter })
 # but not built — Next.js resolves types from source with ignoreBuildErrors
 RUN mkdir -p /app/apps/web/public && \
-    pnpm --filter @guildserver/database build && \
+    pnpm exec tsc -p packages/database/tsconfig.json && \
     pnpm --filter @guildserver/web build
 
 # --- Runner stage ---
