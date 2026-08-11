@@ -20,7 +20,8 @@ COPY --from=deps /app/apps/docs/node_modules ./apps/docs/node_modules
 COPY package.json pnpm-workspace.yaml ./
 COPY apps/docs ./apps/docs
 
-RUN pnpm --filter @guildserver/docs build
+# Use the workspace root binary resolution in this container layout.
+RUN pnpm --dir apps/docs exec docusaurus build
 
 # --- Runner stage ---
 FROM nginx:alpine AS runner
