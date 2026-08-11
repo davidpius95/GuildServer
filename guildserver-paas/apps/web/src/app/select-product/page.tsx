@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Rocket, Database, Layers, ArrowRight } from "lucide-react"
+import { Rocket, ArrowRight } from "lucide-react"
 import { motion } from "framer-motion"
 
 export default function SelectProductPage() {
@@ -16,19 +16,8 @@ export default function SelectProductPage() {
     const savedProduct = localStorage.getItem("guildserver-preferred-product")
     if (savedProduct === "paas") {
       router.replace("/dashboard")
-    } else if (savedProduct === "baas") {
-      router.replace("/baas/dashboard")
     }
   }, [router])
-
-  const selectProduct = (product: "paas" | "baas") => {
-    localStorage.setItem("guildserver-preferred-product", product)
-    if (product === "paas") {
-      router.push("/dashboard")
-    } else {
-      window.location.href = "/baas/dashboard"
-    }
-  }
 
   if (!mounted) return null
 
@@ -40,7 +29,7 @@ export default function SelectProductPage() {
           <p className="text-xl text-muted-foreground">Select a product to continue</p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6 pt-8">
+        <div className="grid md:grid-cols-1 gap-6 pt-8 max-w-xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -48,7 +37,10 @@ export default function SelectProductPage() {
           >
             <Card 
               className="relative overflow-hidden cursor-pointer hover:border-primary/50 transition-colors group h-full flex flex-col"
-              onClick={() => selectProduct("paas")}
+              onClick={() => {
+                localStorage.setItem("guildserver-preferred-product", "paas")
+                router.push("/dashboard")
+              }}
             >
               <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               <CardHeader>
@@ -77,47 +69,6 @@ export default function SelectProductPage() {
                 </ul>
                 <Button className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors" variant="outline">
                   Open PaaS <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <Card 
-              className="relative overflow-hidden cursor-pointer hover:border-primary/50 transition-colors group h-full flex flex-col"
-              onClick={() => selectProduct("baas")}
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <CardHeader>
-                <div className="h-12 w-12 rounded-lg bg-indigo-500/10 flex items-center justify-center mb-4">
-                  <Database className="h-6 w-6 text-indigo-500" />
-                </div>
-                <CardTitle className="text-2xl">BaaS (Supabase Alt)</CardTitle>
-                <CardDescription className="text-base">
-                  Instant backend with Postgres, Auth, and Storage.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex-1 flex flex-col justify-end">
-                <ul className="space-y-2 mb-6 text-sm text-muted-foreground">
-                  <li className="flex items-center gap-2">
-                    <div className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
-                    Auto-scaling PostgreSQL
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <div className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
-                    Built-in Authentication
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <div className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
-                    S3-compatible Storage
-                  </li>
-                </ul>
-                <Button className="w-full hover:bg-indigo-500 hover:text-white transition-colors" variant="outline">
-                  Open BaaS <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </CardContent>
             </Card>

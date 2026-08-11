@@ -11,7 +11,6 @@ const registerSchema = z.object({
   email: z.string().email(),
   name: z.string().min(1),
   password: z.string().min(8),
-  product: z.enum(["paas", "baas"]).default("paas"),
 });
 
 const loginSchema = z.object({
@@ -28,7 +27,7 @@ export const authRouter = createTRPCRouter({
   register: publicProcedure
     .input(registerSchema)
     .mutation(async ({ ctx, input }) => {
-      const { email, name, password, product } = input;
+      const { email, name, password } = input;
 
       // Check if user already exists
       const existingUser = await ctx.db.query.users.findFirst({
@@ -77,7 +76,6 @@ export const authRouter = createTRPCRouter({
           name: orgName,
           slug: orgSlug,
           ownerId: newUser.id,
-          product,
         })
         .returning();
 
@@ -180,12 +178,6 @@ export const authRouter = createTRPCRouter({
         { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
       );
 
-      // Fetch org product so the frontend can route to the right dashboard
-      const membership = await ctx.db.query.members.findFirst({
-        where: eq(members.userId, user.id),
-        with: { organization: { columns: { id: true, product: true } } },
-      });
-
       return {
         user: {
           id: user.id,
@@ -196,8 +188,10 @@ export const authRouter = createTRPCRouter({
           lastLogin: user.lastLogin,
         },
         token,
-        product: membership?.organization?.product ?? "paas",
-        organizationId: membership?.organizationId ?? null,
+        organizationId: (await ctx.db.query.members.findFirst({
+          where: eq(members.userId, user.id),
+          columns: { organizationId: true },
+        }))?.organizationId ?? null,
       };
     }),
 

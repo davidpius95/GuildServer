@@ -55,7 +55,7 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    registerMutation.mutate({ name, email, password, product: "paas" })
+    registerMutation.mutate({ name, email, password })
   }
 
   return (
@@ -68,7 +68,7 @@ export default function RegisterPage() {
         <div className="grid grid-cols-2 gap-3">
           <Button
             variant="outline"
-            onClick={() => { window.location.href = `${API_URL}/auth/github?product=paas` }}
+            onClick={() => { window.location.href = `${API_URL}/auth/github` }}
             disabled={isLoading}
             type="button"
           >
@@ -76,7 +76,7 @@ export default function RegisterPage() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => { window.location.href = `${API_URL}/auth/google?product=paas` }}
+            onClick={() => { window.location.href = `${API_URL}/auth/google` }}
             disabled={isLoading}
             type="button"
           >
