@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Docker Compose Deployment
 
-GuildServer ships with a `docker-compose.yml` that orchestrates all required services: Traefik (reverse proxy), PostgreSQL (database), Redis (cache and queues), the API server, and the web frontend.
+GuildServer ships with a development `docker-compose.yml` and a production `docker-compose.prod.yml`. The production file runs Traefik, PostgreSQL, Redis, the API, the web frontend, the documentation site, Prometheus, Grafana, cAdvisor, node-exporter, postgres-exporter, redis-exporter, Loki, and Promtail.
 
 ## Services Overview
 
@@ -15,26 +15,48 @@ GuildServer ships with a `docker-compose.yml` that orchestrates all required ser
 │                                                       │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
 │  │  Traefik  │  │ Postgres │  │  Redis   │           │
-│  │  :80/443  │  │  :5433   │  │  :6380   │           │
+│  │  :80/443  │  │  :5432   │  │ internal │           │
 │  └──────────┘  └──────────┘  └──────────┘           │
-│  ┌──────────┐  ┌──────────┐                          │
-│  │   API    │  │   Web    │                          │
-│  │  :4000   │  │  :3000   │                          │
-│  └──────────┘  └──────────┘                          │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
+│  │   API    │  │   Web    │  │   Docs   │           │
+│  │  :4000   │  │  :3000   │  │   :80    │           │
+│  └──────────┘  └──────────┘  └──────────┘           │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
+│  │Prometheus│  │ Grafana  │  │ cAdvisor │           │
+│  │ internal │  │  :3000   │  │  :8081   │           │
+│  └──────────┘  └──────────┘  └──────────┘           │
 └─────────────────────────────────────────────────────┘
 ```
 
 | Service | Image | Ports | Purpose |
 |---|---|---|---|
 | `traefik` | `traefik:v3.6` | 80, 443, 8080 | Reverse proxy, SSL termination, container routing |
-| `postgres` | `postgres:15-alpine` | 5433 (host) -> 5432 | Primary database |
-| `redis` | `redis:7-alpine` | 6380 (host) -> 6379 | Cache, BullMQ job queues |
+| `postgres` | `postgres:15-alpine` | dev: 5433 host; prod: 127.0.0.1:5432 host | Primary database |
+| `redis` | `redis:7-alpine` | dev: 6380 host; prod: internal | Cache, BullMQ job queues |
 | `api` | Custom build | 4000 | Backend API (Express + tRPC) |
 | `web` | Custom build | 3000 | Frontend (Next.js 15) |
+| `docs` | Custom build | 80 | Docusaurus documentation served at `/docs` |
+| `prometheus` | `prom/prometheus` | internal | Metrics storage and alert rules |
+| `grafana` | `grafana/grafana` | 3000 internal | Dashboards at `grafana.<BASE_DOMAIN>` |
+| `cadvisor` | `gcr.io/cadvisor/cadvisor` | 8081 internal | Container metrics and `/healthz` health endpoint |
+| `node-exporter` | `prom/node-exporter` | internal | Host metrics |
+| `postgres-exporter` | `prometheuscommunity/postgres-exporter` | internal | PostgreSQL metrics |
+| `redis-exporter` | `oliver006/redis_exporter` | internal | Redis metrics |
+| `loki` | `grafana/loki` | internal | Log storage |
+| `promtail` | `grafana/promtail` | internal | Docker log collection |
 
 ## Production Configuration
 
-The default `docker-compose.yml` is configured for development. For production, you need to make several changes.
+The default `docker-compose.yml` is configured for development. Use `docker-compose.prod.yml` for production.
+
+```bash
+cp .env.example .env.production
+# edit .env.production with real secrets and BASE_DOMAIN
+docker network create guildserver
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
+
+Keep `.env.production` outside Git. The compose file supports safe defaults for local testing, but production must provide strong secrets.
 
 ### 1. Set Real Secrets
 
@@ -53,20 +75,17 @@ environment:
   DATABASE_URL: postgresql://guildserver:<your-pg-password>@postgres:5432/guildserver
 ```
 
-### 2. Remove External Port Exposure
+### 2. Limit External Port Exposure
 
-In production, only Traefik needs external ports. Remove the `ports` mapping from PostgreSQL and Redis:
+In production, only Traefik needs public ports. PostgreSQL may be bound to loopback for SSH-tunneled desktop access, but it must not listen publicly. Redis should remain internal:
 
 ```yaml
 postgres:
-  # Remove this:
-  # ports:
-  #   - "5433:5432"
+  ports:
+    - "127.0.0.1:5432:5432"
 
 redis:
-  # Remove this:
-  # ports:
-  #   - "6380:6379"
+  # no public ports
 ```
 
 ### 3. Configure SSL
@@ -101,6 +120,13 @@ web:
     NODE_ENV: production
     NEXT_PUBLIC_API_URL: https://api.yourdomain.com/trpc
 ```
+
+### 6. Monitoring Services
+
+The production compose includes the monitoring stack. Two details matter operationally:
+
+- cAdvisor runs with `-port=8081`, so its Docker health check must probe `http://127.0.0.1:8081/healthz`.
+- Prometheus should scrape cAdvisor on `cadvisor:8081`, not `cadvisor:8080`.
 
 ## Volume Persistence
 
@@ -160,26 +186,49 @@ api:
       condition: service_healthy
 ```
 
+cAdvisor also has an explicit health check because the upstream image defaults can assume port `8080`, while this deployment serves cAdvisor on `8081`:
+
+```yaml
+cadvisor:
+  command:
+    - "-port=8081"
+  healthcheck:
+    test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8081/healthz"]
+```
+
 ## Starting Services
 
 ```bash
-# Start all services in the background
+# Development
 docker compose up -d
 
-# Watch logs
-docker compose logs -f
+# Production
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 
-# Watch a specific service
+# Watch production logs
+docker compose --env-file .env.production -f docker-compose.prod.yml logs -f
+
+# Watch a specific production service
+docker compose --env-file .env.production -f docker-compose.prod.yml logs -f api
+```
+
+For local development only:
+
+```bash
+docker compose logs -f
 docker compose logs -f api
 ```
 
 ## Stopping Services
 
 ```bash
-# Stop all services (preserves volumes)
+# Stop development services (preserves volumes)
 docker compose down
 
-# Stop and remove volumes (DESTROYS DATA)
+# Stop production services (preserves volumes)
+docker compose --env-file .env.production -f docker-compose.prod.yml down
+
+# Stop and remove development volumes (DESTROYS DATA)
 docker compose down -v
 ```
 
@@ -190,7 +239,7 @@ docker compose down -v
 git pull origin main
 
 # Rebuild and restart
-docker compose up -d --build
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
 :::tip
@@ -200,14 +249,17 @@ For zero-downtime updates, deploy a new version alongside the old one and switch
 ## Checking Status
 
 ```bash
-# View running containers
-docker compose ps
+# View production containers
+docker compose --env-file .env.production -f docker-compose.prod.yml ps
 
 # Check resource usage
 docker stats
 
 # View API health
 curl http://localhost:4000/health
+
+# View cAdvisor health from inside its container
+docker exec guildserver-cadvisor wget -q -O - http://127.0.0.1:8081/healthz
 ```
 
 ## Full Production docker-compose.yml Example

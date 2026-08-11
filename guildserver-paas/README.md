@@ -75,7 +75,7 @@ The web UI will be at **http://localhost:3000** and the API at **http://localhos
                            │                    │                    │
                 ┌──────────▼──────┐  ┌──────────▼──────┐  ┌─────────▼───────┐
                 │  PostgreSQL 15  │  │    Redis 7       │  │  Docker Engine  │
-                │  28 tables      │  │  BullMQ + cache  │  │  App containers │
+                │  PaaS schema    │  │  BullMQ + cache  │  │  App containers │
                 │  Drizzle ORM    │  │                  │  │  gs-{appId}     │
                 └─────────────────┘  └─────────────────┘  └─────────────────┘
 ```
@@ -331,7 +331,7 @@ curl http://localhost:4000/health
 
 ### Docker Compose (Simplest)
 
-The project includes a production-ready `docker-compose.prod.yml` with Traefik routing, health checks, and service dependencies.
+The project includes a production-ready `docker-compose.prod.yml` with Traefik routing, health checks, service dependencies, documentation hosting, and monitoring.
 
 ```bash
 # Clone on your server
@@ -341,14 +341,12 @@ cd GuildServer/guildserver-paas
 # Create external network for Traefik
 docker network create guildserver
 
-# Set production environment variables
-export JWT_SECRET="your-production-secret"
-export NEXTAUTH_SECRET="your-nextauth-secret"
-export POSTGRES_PASSWORD="strong-password"
-export ACME_EMAIL="admin@yourdomain.com"
+# Set production environment variables outside Git
+cp .env.example .env.production
+# Edit .env.production with strong secrets and your real domain
 
 # Build and start all services
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
 **Production services:**
@@ -356,10 +354,18 @@ docker compose -f docker-compose.prod.yml up -d --build
 | Service | Container | Port | Routing |
 |---------|-----------|------|---------|
 | Traefik | guildserver-traefik | 80, 443, 8080 | Reverse proxy + SSL |
-| PostgreSQL | guildserver-postgres | internal only | Health checked |
+| PostgreSQL | guildserver-postgres | 127.0.0.1:5432 on host, 5432 in compose | Health checked |
 | Redis | guildserver-redis | internal only | Health checked |
 | API | guildserver-api | 4000 (internal) | `/trpc`, `/health`, `/api` via Traefik |
 | Web | guildserver-web | 3000 (internal) | `/*` via Traefik (priority=1) |
+| Docs | guildserver-docs | 80 (internal) | `/docs` via Traefik |
+| Prometheus | guildserver-prometheus | internal only | Scrapes Traefik, cAdvisor, node, Postgres, Redis |
+| Grafana | guildserver-grafana | 3000 (internal) | `grafana.<BASE_DOMAIN>` via Traefik |
+| cAdvisor | guildserver-cadvisor | 8081 (internal) | Container metrics; health checked at `/healthz` |
+
+Production PostgreSQL is intentionally bound to `127.0.0.1:5432` on the host so desktop tools can connect through SSH tunneling without exposing the database publicly. Redis remains compose-internal. Keep `.env.production`, database dumps, and any server-only backup files out of Git.
+
+The production database is PaaS-only. It should not contain legacy `baas_*` tables, `baas_*` enum types, the `product` enum type, or an `organizations.product` column.
 
 ### Multi-Stage Docker Builds
 
@@ -428,7 +434,7 @@ Point your domain's DNS to either:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://guildserver:pass@localhost:5433/guildserver` |
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://guildserver:pass@localhost:5433/guildserver` for local dev; `postgresql://guildserver:pass@postgres:5432/guildserver` inside production compose |
 | `REDIS_URL` | Redis connection string | `redis://localhost:6380` |
 | `JWT_SECRET` | JWT signing secret | (random string) |
 | `NEXTAUTH_SECRET` | NextAuth session encryption | (random string) |
@@ -591,9 +597,11 @@ Powered by BullMQ with Redis:
 ## Database Schema
 
 <details>
-<summary><strong>28 tables managed by Drizzle ORM</strong></summary>
+<summary><strong>PaaS schema managed by Drizzle ORM</strong></summary>
 
 All schema definitions are in `packages/database/src/schema/index.ts`.
+
+This checkout is the PaaS product. Do not add or document legacy `baas_*` tables, `baas_*` enum types, the `product` enum type, or `organizations.product`. If a production database still contains those objects, back it up first, then remove them as a legacy cleanup task outside normal migrations.
 
 ### Core
 

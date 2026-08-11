@@ -17,7 +17,7 @@ Before exposing GuildServer to real traffic, work through this checklist to ensu
 - [ ] **Set `ACME_EMAIL`** for Let's Encrypt certificate expiry notifications
 - [ ] **Configure firewall** -- allow only ports 80 (HTTP), 443 (HTTPS), and 22 (SSH)
 - [ ] **Remove Traefik dashboard** in production by removing `--api.insecure=true` and port 8080
-- [ ] **Remove external database ports** -- PostgreSQL (5433) and Redis (6380) should not be publicly accessible
+- [ ] **Remove public database/cache ports** -- PostgreSQL may bind to `127.0.0.1:5432` for SSH-tunneled admin access, but it must not bind publicly; Redis should remain internal
 - [ ] **Review CORS settings** to restrict allowed origins to your domain
 - [ ] **Enable rate limiting** on the API to prevent abuse
 
@@ -44,6 +44,7 @@ Before exposing GuildServer to real traffic, work through this checklist to ensu
 - [ ] **Configure email notifications** via SMTP for deployment alerts -- see [Alerts & Notifications](../monitoring/alerts.md)
 - [ ] **Set up Slack integration** if your team uses Slack
 - [ ] **Review metrics collection** is running (check API logs for "Metrics collection started")
+- [ ] **Verify cAdvisor health** if using the production monitoring stack: `docker exec guildserver-cadvisor wget -q -O - http://127.0.0.1:8081/healthz`
 
 ## Infrastructure
 
@@ -104,11 +105,14 @@ docker compose exec postgres pg_isready -U guildserver
 # Redis is responsive
 docker compose exec redis redis-cli ping
 
+# cAdvisor is healthy on the configured production port
+docker exec guildserver-cadvisor wget -q -O - http://127.0.0.1:8081/healthz
+
 # SSL certificate is valid
 curl -vI https://yourdomain.com 2>&1 | grep "SSL certificate"
 
-# Check for default passwords
-grep -r "password123" docker-compose.yml .env
+# Check for default passwords in active env files
+grep -r "password123" docker-compose.yml docker-compose.prod.yml .env .env.production
 # Should return no results
 ```
 
