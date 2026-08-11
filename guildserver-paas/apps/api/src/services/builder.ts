@@ -32,11 +32,12 @@ export interface BuildOptions {
 /**
  * Detect the build type by looking at files in the project directory
  */
-export function detectBuildType(projectDir: string): DetectedBuildType {
+export function detectBuildType(projectDir: string, opts: { ignoreDockerfile?: boolean } = {}): DetectedBuildType {
   // Check for Dockerfile first
   if (
-    fs.existsSync(path.join(projectDir, "Dockerfile")) ||
-    fs.existsSync(path.join(projectDir, "dockerfile"))
+    !opts.ignoreDockerfile &&
+    (fs.existsSync(path.join(projectDir, "Dockerfile")) ||
+      fs.existsSync(path.join(projectDir, "dockerfile")))
   ) {
     return "dockerfile";
   }
@@ -263,7 +264,18 @@ export async function buildImage(
   };
 
   // 1. Detect or use specified build type
-  const detectedType = detectBuildType(opts.localPath);
+  let detectedType = detectBuildType(opts.localPath);
+  const defaultDockerfilePath = path.join(opts.localPath, "Dockerfile");
+  const hasContextSensitiveDockerfile =
+    detectedType === "dockerfile" &&
+    fs.existsSync(defaultDockerfilePath) &&
+    fs.readFileSync(defaultDockerfilePath, "utf8").includes("--mount=type=") &&
+    (fs.existsSync(path.join(opts.localPath, "pyproject.toml")) ||
+      fs.existsSync(path.join(opts.localPath, "requirements.txt")));
+  if (!opts.dockerfile && hasContextSensitiveDockerfile) {
+    detectedType = detectBuildType(opts.localPath, { ignoreDockerfile: true });
+    log("Ignoring BuildKit-only Python Dockerfile and generating a portable Dockerfile...");
+  }
   const effectiveType = opts.buildType === "dockerfile" && detectedType === "dockerfile"
     ? "dockerfile"
     : opts.buildType && opts.buildType !== "nixpacks"
@@ -278,9 +290,9 @@ export async function buildImage(
     : path.join(opts.localPath, "Dockerfile");
 
   let generatedPort: number | undefined;
-  if (!fs.existsSync(dockerfilePath) && detectedType !== "dockerfile") {
+  if ((hasContextSensitiveDockerfile || !fs.existsSync(dockerfilePath)) && detectedType !== "dockerfile") {
     // Generate a Dockerfile based on detected type
-    log(`No Dockerfile found. Generating one for ${detectedType} project...`);
+    log(`${hasContextSensitiveDockerfile ? "Replacing context-sensitive Dockerfile" : "No Dockerfile found"}. Generating one for ${detectedType} project...`);
     const generated = generateDockerfile(detectedType, opts.localPath);
     fs.writeFileSync(path.join(opts.localPath, "Dockerfile"), generated.dockerfile);
     generatedPort = generated.port;
