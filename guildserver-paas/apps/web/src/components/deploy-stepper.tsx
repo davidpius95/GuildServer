@@ -31,6 +31,11 @@ function formatDuration(start?: string, end?: string): string | null {
   return `${Math.floor(diff / 60)}m ${diff % 60}s`
 }
 
+function formatClock(value?: string): string | null {
+  if (!value) return null
+  return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+}
+
 function StepIcon({ status }: { status: DeploymentPhase["status"] }) {
   switch (status) {
     case "completed":
@@ -98,6 +103,15 @@ export function DeployStepper({ phases, className }: DeployStepperProps) {
                 {duration && (
                   <span className="text-[10px] text-muted-foreground">{duration}</span>
                 )}
+                <span className="text-[10px] text-muted-foreground">
+                  {phase.status === "running" && phase.startedAt
+                    ? `Started ${formatClock(phase.startedAt)}`
+                    : phase.status === "completed" && phase.completedAt
+                      ? `Completed ${formatClock(phase.completedAt)}`
+                      : phase.startedAt
+                        ? `Started ${formatClock(phase.startedAt)}`
+                        : "Waiting"}
+                </span>
               </div>
 
               {/* Connector line */}
@@ -181,6 +195,15 @@ export function DeployStepper({ phases, className }: DeployStepperProps) {
                 {duration && (
                   <p className="text-xs text-muted-foreground mt-0.5">{duration}</p>
                 )}
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {phase.status === "running" && phase.startedAt
+                    ? `Started ${formatClock(phase.startedAt)}`
+                    : phase.status === "completed" && phase.completedAt
+                      ? `Completed ${formatClock(phase.completedAt)}`
+                      : phase.startedAt
+                        ? `Started ${formatClock(phase.startedAt)}`
+                        : "Waiting"}
+                </p>
               </div>
             </div>
           )

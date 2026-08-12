@@ -48,7 +48,7 @@ function processMessage(
     setLogs((prev) => [
       ...prev,
       {
-        timestamp: new Date().toISOString(),
+        timestamp: message.timestamp || new Date().toISOString(),
         message: message.log || message.message || "",
         phase: message.phase,
       },
@@ -114,7 +114,7 @@ function processMessage(
       setLogs((prev) => [
         ...prev,
         {
-          timestamp: new Date().toISOString(),
+          timestamp: message.timestamp || new Date().toISOString(),
           message: statusMessages[message.status],
           phase: "status",
         },
