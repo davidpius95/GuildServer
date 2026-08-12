@@ -114,6 +114,35 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
+function resolveBuildContext(projectDir: string): string {
+  const hasRootNodeManifest = fs.existsSync(path.join(projectDir, "package.json"))
+  const hasRootPythonManifest =
+    fs.existsSync(path.join(projectDir, "requirements.txt")) ||
+    fs.existsSync(path.join(projectDir, "pyproject.toml")) ||
+    fs.existsSync(path.join(projectDir, "Pipfile"))
+
+  if (hasRootNodeManifest || hasRootPythonManifest) {
+    return projectDir
+  }
+
+  const frontendDir = path.join(projectDir, "frontend")
+  if (fs.existsSync(path.join(frontendDir, "package.json"))) {
+    return frontendDir
+  }
+
+  const backendDir = path.join(projectDir, "backend")
+  if (
+    fs.existsSync(path.join(backendDir, "package.json")) ||
+    fs.existsSync(path.join(backendDir, "requirements.txt")) ||
+    fs.existsSync(path.join(backendDir, "pyproject.toml")) ||
+    fs.existsSync(path.join(backendDir, "server.py"))
+  ) {
+    return backendDir
+  }
+
+  return projectDir
+}
+
 export function resolveNodeStartCommand(projectDir: string, packageManager: "npm" | "yarn" | "pnpm"): string {
   const pkgJsonPath = path.join(projectDir, "package.json");
   const pkg = fs.existsSync(pkgJsonPath) ? JSON.parse(fs.readFileSync(pkgJsonPath, "utf8")) : {};
@@ -395,6 +424,10 @@ export async function buildImage(
 ): Promise<BuildResult> {
   const d = dockerClient || docker;
   const logs: string[] = [];
+  const buildContextDir = resolveBuildContext(opts.localPath);
+  if (buildContextDir !== opts.localPath) {
+    logger.info(`[build:${opts.appName}] Using nested build context: ${path.relative(opts.localPath, buildContextDir)}`);
+  }
   // Sanitize app name for Docker image reference format:
   // must be lowercase, only [a-z0-9._-], can't start/end with separator
   const sanitizedName = opts.appName
@@ -416,16 +449,16 @@ export async function buildImage(
   };
 
   // 1. Detect or use specified build type
-  let detectedType = detectBuildType(opts.localPath);
-  const defaultDockerfilePath = path.join(opts.localPath, "Dockerfile");
+  let detectedType = detectBuildType(buildContextDir);
+  const defaultDockerfilePath = path.join(buildContextDir, "Dockerfile");
   const hasContextSensitiveDockerfile =
     detectedType === "dockerfile" &&
     fs.existsSync(defaultDockerfilePath) &&
     fs.readFileSync(defaultDockerfilePath, "utf8").includes("--mount=type=") &&
-    (fs.existsSync(path.join(opts.localPath, "pyproject.toml")) ||
-      fs.existsSync(path.join(opts.localPath, "requirements.txt")));
+    (fs.existsSync(path.join(buildContextDir, "pyproject.toml")) ||
+      fs.existsSync(path.join(buildContextDir, "requirements.txt")));
   if (!opts.dockerfile && hasContextSensitiveDockerfile) {
-    detectedType = detectBuildType(opts.localPath, { ignoreDockerfile: true });
+    detectedType = detectBuildType(buildContextDir, { ignoreDockerfile: true });
     log("Ignoring BuildKit-only Python Dockerfile and generating a portable Dockerfile...");
   }
   const effectiveType = opts.buildType === "dockerfile" && detectedType === "dockerfile"
@@ -445,8 +478,8 @@ export async function buildImage(
   if ((hasContextSensitiveDockerfile || !fs.existsSync(dockerfilePath)) && detectedType !== "dockerfile") {
     // Generate a Dockerfile based on detected type
     log(`${hasContextSensitiveDockerfile ? "Replacing context-sensitive Dockerfile" : "No Dockerfile found"}. Generating one for ${detectedType} project...`);
-    const generated = generateDockerfile(detectedType, opts.localPath);
-    fs.writeFileSync(path.join(opts.localPath, "Dockerfile"), generated.dockerfile);
+    const generated = generateDockerfile(detectedType, buildContextDir);
+    fs.writeFileSync(path.join(buildContextDir, "Dockerfile"), generated.dockerfile);
     generatedPort = generated.port;
     log(`Generated Dockerfile written (container port: ${generatedPort})`);
   }
@@ -483,7 +516,7 @@ __pycache__
 
     const stream = await d.buildImage(
       {
-        context: opts.localPath,
+        context: buildContextDir,
         src: ["."],
       },
       {
