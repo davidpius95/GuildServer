@@ -47,7 +47,7 @@ export async function postDeployHealthCheck(opts: {
   maxWaitMs?: number;
   dockerClient?: Docker;
 }): Promise<HealthCheckResult> {
-  const { containerId, hostPort, expectedContainerPort, userId, deploymentId, maxWaitMs = 30000, dockerClient } = opts;
+  const { containerId, hostPort, expectedContainerPort, userId, deploymentId, maxWaitMs = 120000, dockerClient } = opts;
 
   const log = (msg: string) => {
     logger.info(`[healthcheck] ${msg}`);

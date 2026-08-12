@@ -592,7 +592,7 @@ const deploymentWorker = new Worker(
         expectedContainerPort: expectedPort,
         userId,
         deploymentId,
-        maxWaitMs: 30000,
+        maxWaitMs: 120000,
       });
 
       // If port mismatch detected, auto-correct the Traefik labels
