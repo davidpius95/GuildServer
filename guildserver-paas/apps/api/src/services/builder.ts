@@ -114,12 +114,55 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
+function hasWorkspaceIndicators(projectDir: string): boolean {
+  const pkg = readPackageJson(projectDir)
+  const scripts = pkg.scripts || {}
+
+  if (Array.isArray(pkg.workspaces) && pkg.workspaces.length > 0) return true
+  if (pkg.workspaces && typeof pkg.workspaces === "object") return true
+  if (fs.existsSync(path.join(projectDir, "turbo.json"))) return true
+  if (fs.existsSync(path.join(projectDir, "nx.json"))) return true
+  if (fs.existsSync(path.join(projectDir, "pnpm-workspace.yaml"))) return true
+
+  return Object.values(scripts).some(
+    (value) => typeof value === "string" && /\b(turbo|nx)\b/.test(value)
+  )
+}
+
+function findNestedAppContext(projectDir: string): string | undefined {
+  const candidates = [
+    "frontend",
+    "apps/main",
+    "apps/dashboard",
+    "apps/web",
+    "app",
+  ]
+
+  for (const candidate of candidates) {
+    const candidateDir = path.join(projectDir, candidate)
+    if (fs.existsSync(path.join(candidateDir, "package.json"))) return candidateDir
+    if (
+      fs.existsSync(path.join(candidateDir, "pyproject.toml")) ||
+      fs.existsSync(path.join(candidateDir, "requirements.txt"))
+    ) {
+      return candidateDir
+    }
+  }
+
+  return undefined
+}
+
 function resolveBuildContext(projectDir: string): string {
   const hasRootNodeManifest = fs.existsSync(path.join(projectDir, "package.json"))
   const hasRootPythonManifest =
     fs.existsSync(path.join(projectDir, "requirements.txt")) ||
     fs.existsSync(path.join(projectDir, "pyproject.toml")) ||
     fs.existsSync(path.join(projectDir, "Pipfile"))
+
+  if (hasWorkspaceIndicators(projectDir)) {
+    const nestedContext = findNestedAppContext(projectDir)
+    if (nestedContext) return nestedContext
+  }
 
   if (hasRootNodeManifest || hasRootPythonManifest) {
     return projectDir
