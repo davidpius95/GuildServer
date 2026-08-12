@@ -20,12 +20,20 @@ describe("DeployStepper", () => {
             message: "Building image",
             startedAt: "2026-08-12T07:00:05.000Z",
           },
+          {
+            name: "health_check",
+            status: "running",
+            message: "Verifying container health and URL reachability",
+            startedAt: "2026-08-12T07:00:12.000Z",
+          },
         ]}
       />
     )
 
     expect(screen.getByText("Validate")).toBeInTheDocument()
     expect(screen.getByText("Build")).toBeInTheDocument()
+    expect(screen.getByText("Verifying")).toBeInTheDocument()
+    expect(screen.getByText(/Verifying container health/i)).toBeInTheDocument()
     expect(screen.getByText("5s")).toBeInTheDocument()
     expect(screen.getByText(/Started/i)).toBeInTheDocument()
   })

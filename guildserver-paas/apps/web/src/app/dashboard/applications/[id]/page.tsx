@@ -58,9 +58,11 @@ const getStatusColor = (status: string) => {
     completed: "bg-green-50 text-green-700",
     deploying: "bg-blue-50 text-blue-700",
     building: "bg-blue-50 text-blue-700",
+    verifying: "bg-cyan-50 text-cyan-700",
     failed: "bg-red-50 text-red-700",
     stopped: "bg-yellow-50 text-yellow-700",
     pending: "bg-gray-50 text-gray-700",
+    validating: "bg-cyan-50 text-cyan-700",
   }
   return colors[status] || "bg-gray-50 text-gray-700"
 }
@@ -72,6 +74,8 @@ const getStatusIcon = (status: string) => {
       return <CheckCircle className="h-4 w-4 text-green-500" />
     case "deploying":
     case "building":
+    case "verifying":
+    case "validating":
     case "pending":
       return <Clock className="h-4 w-4 text-blue-500 animate-pulse" />
     case "failed":
@@ -90,6 +94,48 @@ const formatDuration = (start?: string | Date | null, end?: string | Date | null
   if (diff < 1) return "<1s"
   if (diff < 60) return `${diff}s`
   return `${Math.floor(diff / 60)}m ${diff % 60}s`
+}
+
+const getDeploymentStateLabel = (status?: string | null) => {
+  switch (status) {
+    case "building":
+      return "Building"
+    case "deploying":
+      return "Deploying"
+    case "verifying":
+      return "Verifying"
+    case "validating":
+      return "Validating"
+    case "completed":
+      return "Completed"
+    case "failed":
+      return "Failed"
+    case "pending":
+      return "Queued"
+    default:
+      return status ? status.replace(/_/g, " ") : "Unknown"
+  }
+}
+
+const getDeploymentStateCopy = (status?: string | null) => {
+  switch (status) {
+    case "building":
+      return "Building the image and preparing the runtime."
+    case "deploying":
+      return "Deploying the container and wiring traffic."
+    case "verifying":
+      return "Verifying the container health and reachable URL."
+    case "validating":
+      return "Checking the template configuration before deployment."
+    case "completed":
+      return "Deployment completed successfully and is ready to open."
+    case "failed":
+      return "The deployment failed during build, deploy, or verification."
+    case "pending":
+      return "Deployment is queued and waiting for a worker."
+    default:
+      return "Waiting for deployment progress."
+  }
 }
 
 const extractUrl = (text?: string | null) => {
@@ -625,6 +671,17 @@ export default function ApplicationDetailPage() {
   const currentPhaseDuration = currentPhase
     ? formatDuration(currentPhase.startedAt, currentPhase.status === "completed" ? currentPhase.completedAt : undefined)
     : null
+  const liveDeploymentStatus = deploymentStream.status || selectedDeploy?.status || null
+  const inferredDeploymentStatus =
+    currentPhase?.status === "running" && currentPhase.name === "health_check"
+      ? "verifying"
+      : currentPhase?.status === "running" && currentPhase.name === "build"
+        ? "building"
+        : currentPhase?.status === "running" && currentPhase.name === "deploy"
+          ? "deploying"
+          : liveDeploymentStatus
+  const deploymentStateLabel = getDeploymentStateLabel(inferredDeploymentStatus)
+  const deploymentStateCopy = getDeploymentStateCopy(inferredDeploymentStatus)
 
   return (
     <div className="space-y-6">
@@ -1315,20 +1372,22 @@ export default function ApplicationDetailPage() {
                       </span>
                     )}
                     {(deploymentStream.status || selectedDeploy) && (
-                      <Badge variant="outline" className={getStatusColor(
-                        deploymentStream.status || selectedDeploy?.status || ""
-                      )}>
-                        {deploymentStream.status || selectedDeploy?.status}
+                      <Badge variant="outline" className={getStatusColor(inferredDeploymentStatus || "")}>
+                        {deploymentStateLabel}
                       </Badge>
                     )}
                   </CardTitle>
                   <CardDescription>
-                    {streamingDeploymentId && deploymentStream.status
-                      ? deploymentStream.status === "completed"
+                    {streamingDeploymentId && inferredDeploymentStatus
+                      ? inferredDeploymentStatus === "completed"
                         ? "Deployment completed successfully"
-                        : deploymentStream.status === "failed"
-                          ? "Deployment failed"
-                          : "Streaming build output in real-time..."
+                        : inferredDeploymentStatus === "failed"
+                          ? "Deployment failed during build or verification"
+                          : inferredDeploymentStatus === "verifying"
+                            ? "Verifying the container health and reachable URL..."
+                            : inferredDeploymentStatus === "building"
+                              ? "Building the image and streaming live output..."
+                              : "Streaming build output in real-time..."
                       : selectedDeploy
                         ? `Deployment from ${formatDateTime(selectedDeploy.createdAt)}`
                         : "Select a deployment to view build logs"
@@ -1352,24 +1411,24 @@ export default function ApplicationDetailPage() {
                   <div className="rounded-xl border bg-muted/30 p-3">
                     <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Status</p>
                     <p className="mt-1 text-sm font-semibold capitalize">
-                      {deploymentStream.status || selectedDeploy?.status || "unknown"}
+                      {deploymentStateLabel}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {selectedDeploy
-                        ? `Started ${formatDateTime(selectedDeploy.createdAt)}`
-                        : deploymentStream.status
-                          ? "Live deployment stream"
-                          : "Waiting for deployment"}
+                      {deploymentStateCopy}
                     </p>
                   </div>
                   <div className="rounded-xl border bg-muted/30 p-3">
                     <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Time</p>
                     <p className="mt-1 text-sm font-semibold">
-                      {deploymentStream.status && currentPhase?.status === "running" && currentPhaseDuration
-                        ? `Running ${currentPhase.name.replace(/_/g, " ")} for ${currentPhaseDuration}`
-                        : selectedDeploymentDuration
-                          ? `Duration ${selectedDeploymentDuration}`
-                          : "Duration pending"}
+                      {inferredDeploymentStatus === "verifying" && currentPhaseDuration
+                      ? `Verifying for ${currentPhaseDuration}`
+                      : inferredDeploymentStatus === "building" && currentPhaseDuration
+                        ? `Building for ${currentPhaseDuration}`
+                        : inferredDeploymentStatus && currentPhase?.status === "running" && currentPhaseDuration
+                          ? `Running ${currentPhase.name.replace(/_/g, " ")} for ${currentPhaseDuration}`
+                          : selectedDeploymentDuration
+                            ? `Duration ${selectedDeploymentDuration}`
+                            : "Duration pending"}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {deploymentStream.phases.length > 0
@@ -1402,12 +1461,26 @@ export default function ApplicationDetailPage() {
                         </Button>
                       </div>
                     ) : (
-                      <p className="mt-1 text-sm font-semibold">Not available yet</p>
+                      <p className="mt-1 text-sm font-semibold">
+                        {inferredDeploymentStatus === "failed" ? "Unavailable" : "Not available yet"}
+                      </p>
                     )}
                     <p className="mt-1 text-xs text-muted-foreground">
                       Production and preview URLs appear here when the deployment becomes reachable.
                     </p>
                   </div>
+                </div>
+              )}
+
+              {inferredDeploymentStatus === "failed" && (
+                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <XCircle className="h-4 w-4" />
+                    Deployment failed
+                  </div>
+                  <p className="mt-1 text-sm">
+                    The service did not pass the build, deploy, or verification stages. Check the logs below for the exact failure.
+                  </p>
                 </div>
               )}
 
@@ -1440,7 +1513,7 @@ export default function ApplicationDetailPage() {
                       {log.message}
                     </div>
                   ))}
-                  {deploymentStream.status && ["building", "deploying", "pending"].includes(deploymentStream.status) && (
+                  {inferredDeploymentStatus && ["building", "deploying", "pending", "verifying", "validating"].includes(inferredDeploymentStatus) && (
                     <div className="py-0.5 text-gray-500 animate-pulse">
                       <span className="inline-block w-2 h-4 bg-green-500 animate-[blink_1s_infinite] mr-1">▊</span>
                     </div>

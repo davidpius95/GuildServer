@@ -15,7 +15,7 @@ const phaseLabels: Record<string, string> = {
   clone: "Clone",
   build: "Build",
   deploy: "Deploy",
-  health_check: "Health Check",
+  health_check: "Verifying",
   rollback: "Rollback",
   pull: "Pull Image",
   preview: "Preview",
@@ -99,6 +99,9 @@ export function DeployStepper({ phases, className }: DeployStepperProps) {
                   )}
                 >
                   {phaseLabels[phase.name] || phase.name}
+                </span>
+                <span className="mt-1 text-[11px] leading-tight text-muted-foreground line-clamp-2">
+                  {phase.message}
                 </span>
                 {duration && (
                   <span className="text-[10px] text-muted-foreground">{duration}</span>
