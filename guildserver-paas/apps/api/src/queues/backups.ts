@@ -58,6 +58,36 @@ function scheduleJobId(databaseId: string): string {
   return `auto-backup-${databaseId}`;
 }
 
+async function removeSchedulesForDatabase(databaseId: string): Promise<void> {
+  const jobId = scheduleJobId(databaseId);
+  const keys = new Set<string>();
+
+  const repeatables = await backupQueue.getRepeatableJobs();
+  for (const r of repeatables) {
+    if (r.id === jobId || r.key.includes(jobId)) {
+      keys.add(r.key);
+    }
+  }
+
+  const delayedJobs = await backupQueue.getDelayed(0, -1);
+  for (const job of delayedJobs) {
+    if (job.name !== "scheduled-backup") continue;
+    if ((job.data as BackupJob | undefined)?.type !== "backup") continue;
+    if ((job.data as Extract<BackupJob, { type: "backup" }>).databaseId !== databaseId) continue;
+
+    const repeatJobKey =
+      (job.opts as { repeatJobKey?: string }).repeatJobKey ||
+      (typeof job.id === "string" && job.id.startsWith("repeat:")
+        ? job.id.split(":")[1]
+        : undefined);
+    if (repeatJobKey) keys.add(repeatJobKey);
+  }
+
+  for (const key of keys) {
+    await backupQueue.removeRepeatableByKey(key);
+  }
+}
+
 /**
  * Register or remove a database's automatic-backup repeatable job to match its
  * current settings. Call after create / settings changes / delete.
@@ -69,14 +99,7 @@ export async function syncBackupSchedule(database: {
   backupHour?: number | null;
 }): Promise<void> {
   const jobId = scheduleJobId(database.id);
-
-  // Remove any existing schedule for this database first (idempotent).
-  const repeatables = await backupQueue.getRepeatableJobs();
-  for (const r of repeatables) {
-    if (r.id === jobId) {
-      await backupQueue.removeRepeatableByKey(r.key);
-    }
-  }
+  await removeSchedulesForDatabase(database.id);
 
   if (!database.backupEnabled) return;
 

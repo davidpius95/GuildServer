@@ -77,6 +77,7 @@ services:
     container_name: guildserver-api
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - database_backups:/var/lib/guildserver/backups
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://guildserver:${POSTGRES_PASSWORD:-password123}@postgres:5432/guildserver
@@ -95,6 +96,8 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       BASE_DOMAIN: ${BASE_DOMAIN:-guildserver.io}
+      DATABASE_PUBLIC_HOST: ${DATABASE_PUBLIC_HOST:-${BASE_DOMAIN:-guildserver.io}}
+      BACKUP_DIR: /var/lib/guildserver/backups
       APP_URL: https://${BASE_DOMAIN:-guildserver.io}
       API_PUBLIC_URL: https://${BASE_DOMAIN:-guildserver.io}
       ENV_ENCRYPTION_KEY: ${ENV_ENCRYPTION_KEY:-}
@@ -342,6 +345,7 @@ volumes:
   prometheus_data:
   grafana_data:
   loki_data:
+  database_backups:
 
 networks:
   default:

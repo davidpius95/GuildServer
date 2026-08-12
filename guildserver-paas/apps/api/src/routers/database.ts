@@ -9,6 +9,18 @@ import { restartContainer, removeExistingContainers } from "../services/docker/c
 import { addBackupJob, addRestoreJob, syncBackupSchedule } from "../queues/backups";
 import { logger } from "../utils/logger";
 
+const databasePublicHost =
+  process.env.DATABASE_PUBLIC_HOST ||
+  process.env.BASE_DOMAIN ||
+  (() => {
+    try {
+      return process.env.APP_URL ? new URL(process.env.APP_URL).hostname : undefined;
+    } catch {
+      return undefined;
+    }
+  })() ||
+  "localhost";
+
 const backupSettingsSchema = z.object({
   backupEnabled: z.boolean().optional(),
   backupFrequency: z.enum(["hourly", "daily", "weekly"]).optional(),
@@ -426,8 +438,9 @@ export const databaseRouter = createTRPCRouter({
         });
       }
 
-      // Generate connection strings based on database type
-      const host = "localhost"; // In production, this would be the actual host
+      // Generate connection strings based on database type.
+      // In production this must be the reachable host, not the API container.
+      const host = databasePublicHost;
       const port = database.externalPort || getDefaultPort(database.type);
       
       const connectionInfo = {

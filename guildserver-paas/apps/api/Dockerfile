@@ -44,6 +44,7 @@ COPY --from=deps /app/packages/database/node_modules ./packages/database/node_mo
 
 # Copy source and built database
 COPY --from=builder /app/apps/api/src ./apps/api/src
+COPY --from=builder /app/apps/api/scripts ./apps/api/scripts
 COPY --from=builder /app/apps/api/package.json ./apps/api/
 COPY --from=builder /app/apps/api/tsconfig.json ./apps/api/
 COPY --from=builder /app/packages/database ./packages/database
