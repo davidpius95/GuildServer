@@ -55,6 +55,60 @@ function isFastApiFullStackTemplate(projectDir: string): boolean {
   return /fastapi/i.test(backendPyproject) && backendMain.includes("app.frontend(");
 }
 
+function commandUsesDevServer(command: string): boolean {
+  return /\b(vite|next\s+dev|nuxt\s+dev|remix\s+dev|astro\s+dev)\b/.test(command);
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+export function resolveNodeStartCommand(projectDir: string, packageManager: "npm" | "yarn" | "pnpm"): string {
+  const pkgJsonPath = path.join(projectDir, "package.json");
+  const pkg = fs.existsSync(pkgJsonPath) ? JSON.parse(fs.readFileSync(pkgJsonPath, "utf8")) : {};
+  const scripts = pkg.scripts || {};
+  const runScript = packageManager === "yarn" ? "yarn" : `${packageManager} run`;
+
+  if (scripts.start) {
+    return packageManager === "yarn" ? "yarn start" : `${packageManager} start`;
+  }
+
+  if (scripts.dev && !commandUsesDevServer(scripts.dev)) {
+    return `${runScript} dev`;
+  }
+
+  if (typeof pkg.main === "string" && fs.existsSync(path.join(projectDir, pkg.main))) {
+    return `node ${shellQuote(pkg.main)}`;
+  }
+
+  const commonEntries = [
+    "dist/server.js",
+    "dist/index.js",
+    "server.js",
+    "index.js",
+    "src/server.js",
+    "src/index.js",
+    "src/server.ts",
+    "src/index.ts",
+    "src/app.ts",
+    "server.ts",
+    "index.ts",
+    "app.ts",
+  ];
+
+  for (const entry of commonEntries) {
+    if (!fs.existsSync(path.join(projectDir, entry))) continue;
+    if (entry.endsWith(".ts")) return `npx tsx ${shellQuote(entry)}`;
+    return `node ${shellQuote(entry)}`;
+  }
+
+  return [
+    "echo 'No Node.js start command found.'",
+    "echo 'Add a package.json start script, set a main file, or include a common entry such as src/server.ts.'",
+    "exit 1",
+  ].join(" && ");
+}
+
 /**
  * Detect the build type by looking at files in the project directory
  */
@@ -163,11 +217,13 @@ CMD ["fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]
         }
 
         if (!isStaticSPA) {
-          if (pkg.scripts?.start) {
-            startCmd = "npm start";
-          }
+          startCmd = resolveNodeStartCommand(projectDir, hasLockfile as "npm" | "yarn" | "pnpm");
           if (pkg.scripts?.build) {
-            buildCmd = "RUN npm run build";
+            buildCmd = hasLockfile === "yarn"
+              ? "RUN yarn build"
+              : hasLockfile === "pnpm"
+              ? "RUN pnpm run build"
+              : "RUN npm run build";
           }
         }
       }

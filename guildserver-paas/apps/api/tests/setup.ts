@@ -26,6 +26,7 @@ const testDbUrl = process.env.TEST_DATABASE_URL
 const testDb = postgres(testDbUrl, {
   max: 1,
 });
+const skipTestDbCleanup = process.env.GUILDSERVER_SKIP_TEST_DB === '1';
 
 export const db = drizzle(testDb, { schema });
 
@@ -42,6 +43,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  if (skipTestDbCleanup) return;
   // Clear test data before each test
   await clearTestData();
 });
