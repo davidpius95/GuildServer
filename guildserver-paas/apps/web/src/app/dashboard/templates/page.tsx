@@ -417,6 +417,34 @@ export default function TemplatesPage() {
     })
   }, [searchQuery, selectedFilters])
 
+  const recommendedTemplates = useMemo(() => {
+    const trackWeight: Record<string, number> = {
+      ai: 40,
+      "open-source": 30,
+      ops: 24,
+      production: 18,
+      starter: 12,
+    }
+
+    return [...filteredTemplates]
+      .sort((a, b) => {
+        const score = (template: Template) => {
+          let total = 0
+          if (template.popular) total += 18
+          if (template.track) total += trackWeight[template.track] || 0
+          if (template.useCase.includes("AI")) total += 10
+          if (template.useCase.includes("Starter")) total += 6
+          if (template.useCase.includes("SaaS")) total += 5
+          if (template.useCase.includes("Backend")) total += 4
+          if (template.sourceKind === "git") total += 2
+          return total
+        }
+
+        return score(b) - score(a) || a.name.localeCompare(b.name)
+      })
+      .slice(0, 6)
+  }, [filteredTemplates])
+
   const openPreDeployDialog = (template: Template) => {
     const entries: EnvVarEntry[] = template.envVars
       ? Object.entries(template.envVars).map(([key, value]) => ({ key, value }))
@@ -637,6 +665,35 @@ export default function TemplatesPage() {
 
         {/* ── Template grid ───────────────────────── */}
         <div className="flex-1 min-w-0">
+          {recommendedTemplates.length > 0 && (
+            <div className="mb-8 rounded-3xl border border-border/60 bg-gradient-to-br from-slate-50 via-background to-muted/20 p-4 sm:p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Recommended
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Best AI, open-source, and ops picks for the current view.
+                  </p>
+                </div>
+                <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
+                  Auto-ranked
+                </Badge>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+                {recommendedTemplates.map((template) => (
+                  <TemplateCard
+                    key={`recommended-${template.id}`}
+                    template={template}
+                    isDeploying={deployingTemplate === template.id}
+                    projectId={projectId}
+                    onDeploy={openPreDeployDialog}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="mb-4 flex items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">
               Showing {filteredTemplates.length} template{filteredTemplates.length !== 1 ? "s" : ""}{searchQuery ? ` for "${searchQuery}"` : ""}
