@@ -7,8 +7,8 @@ import { Toaster } from '@/components/ui/toaster'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'GuildServer - Ship like Vercel on your own cloud',
-  description: 'Deploy GitHub repositories, Docker images, databases, and VPS-backed workloads from a private-cloud PaaS control plane.',
+  title: 'GuildServer - Deploy apps without the infrastructure drag',
+  description: 'Deploy GitHub repositories, Docker images, databases, domains, and VPS-backed workloads from one clean workspace.',
   keywords: 'PaaS, GitHub deployments, Docker deployments, private cloud, VPS hosting, self-hosted platform',
   icons: {
     icon: '/logo.png',
