@@ -8,23 +8,79 @@ import { Badge } from "@/components/ui/badge"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { cn } from "@/lib/utils"
 import {
-  Check,
-  X,
-  Loader2,
   ArrowRight,
-  Sparkles,
-  Crown,
-  Zap,
-  HelpCircle,
+  Boxes,
+  Check,
   ChevronDown,
   ChevronUp,
-  Rocket,
-  Server,
+  Cloud,
   Cpu,
-  MemoryStick,
+  Database,
+  GitBranch,
+  Globe2,
   HardDrive,
+  Loader2,
+  MemoryStick,
   Network,
+  Server,
+  Sparkles,
+  X,
+  Zap,
 } from "lucide-react"
+
+const productChoices = [
+  {
+    value: "paas",
+    label: "Managed Platform",
+    description: "Best when you want Git and Docker deploys handled for you.",
+  },
+  {
+    value: "vps",
+    label: "VPS Instances",
+    description: "Best when you want raw compute with predictable resource pricing.",
+  },
+] as const
+
+const includedItems = [
+  { icon: GitBranch, label: "GitHub and Docker deployments" },
+  { icon: Globe2, label: "Generated URLs and custom domain flow" },
+  { icon: Database, label: "Database and backup workspace" },
+  { icon: Boxes, label: "Container logs, health checks, and status" },
+]
+
+const faqItems = [
+  {
+    q: "Can I start without a credit card?",
+    a: "Yes. Start on the free platform plan and deploy your first apps before choosing a paid plan.",
+  },
+  {
+    q: "When should I choose the Managed Platform?",
+    a: "Choose the Managed Platform when you want GuildServer to build, deploy, route, and monitor your apps from Git or Docker.",
+  },
+  {
+    q: "When should I choose VPS Instances?",
+    a: "Choose VPS Instances when you want raw vCPU, RAM, storage, and transfer that you manage directly or attach as compute capacity.",
+  },
+  {
+    q: "Can I use both products together?",
+    a: "Yes. The platform is designed so apps, databases, domains, and infrastructure can live in the same workspace.",
+  },
+  {
+    q: "How is hourly VPS billing calculated?",
+    a: "The hourly rate is based on the monthly price divided by 730 hours. Long-running instances are capped at the listed monthly price.",
+  },
+  {
+    q: "Can I cancel or downgrade?",
+    a: "Yes. You can change plans as your needs change. Downgrades take effect at the end of the current billing period.",
+  },
+]
+
+const VPS_ADDONS = [
+  { icon: HardDrive, label: "Block storage", price: "$0.10 / GB / mo" },
+  { icon: Server, label: "Automated backups", price: "+20% of instance price" },
+  { icon: Network, label: "Bandwidth overage", price: "$0.01 / GB" },
+  { icon: Cpu, label: "Snapshots", price: "$0.05 / GB / mo" },
+]
 
 export default function PricingPage() {
   const [billingInterval, setBillingInterval] = useState<"monthly" | "yearly">("monthly")
@@ -33,202 +89,136 @@ export default function PricingPage() {
   const instanceTypesQuery = trpc.billing.getInstanceTypes.useQuery()
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      {/* Navigation */}
-      <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
+    <div className="min-h-screen overflow-hidden bg-[#fbfaf6] text-[#171713] dark:bg-[#080c0a] dark:text-[#f8f6ee]">
+      <header className="sticky top-0 z-50 border-b border-[#171713]/10 bg-[#fbfaf6]/86 backdrop-blur-xl dark:border-white/10 dark:bg-[#080c0a]/86">
         <div className="main-container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-8">
-            <Link href="/" className="flex items-center gap-2.5">
-              <img src="/logo.png" alt="GuildServer Logo" className="h-8 w-8 object-contain dark:invert" />
-              <span className="text-xl font-bold tracking-tight">GuildServer</span>
-            </Link>
-            <nav className="hidden md:flex items-center gap-6 text-sm">
-              <Link href="/#features" className="text-muted-foreground hover:text-foreground transition-colors">
-                Features
-              </Link>
-              <Link href="/pricing" className="text-foreground font-medium transition-colors">
-                Pricing
-              </Link>
-            </nav>
-          </div>
+          <Link href="/" className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#171713] text-white shadow-sm dark:bg-[#f8f6ee] dark:text-[#080c0a]">
+              <Cloud className="h-4 w-4" />
+            </span>
+            <span className="text-lg font-black tracking-[-0.03em]">GuildServer</span>
+          </Link>
+
+          <nav className="hidden items-center gap-6 text-sm text-[#171713]/62 dark:text-white/62 md:flex">
+            <Link href="/#platform" className="transition-colors hover:text-[#171713] dark:hover:text-white">Platform</Link>
+            <Link href="/#workflow" className="transition-colors hover:text-[#171713] dark:hover:text-white">Workflow</Link>
+            <Link href="/pricing" className="font-semibold text-[#171713] dark:text-white">Pricing</Link>
+          </nav>
+
           <div className="flex items-center gap-3">
             <ThemeToggle />
-            <Link href="/auth/login" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
-              Log In
+            <Link href="/auth/login" className="hidden text-sm text-[#171713]/62 transition-colors hover:text-[#171713] dark:text-white/62 dark:hover:text-white sm:block">
+              Log in
             </Link>
-            <Button asChild size="sm" className="gradient-bg border-0 text-white hover:opacity-90 transition-opacity">
-              <Link href="/auth/register">
-                Sign Up Free
-              </Link>
+            <Button asChild size="sm" className="rounded-full bg-[#171713] text-white hover:bg-[#171713]/90 dark:bg-[#f8f6ee] dark:text-[#080c0a] dark:hover:bg-white/90">
+              <Link href="/auth/register">Start free</Link>
             </Button>
           </div>
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="py-16 md:py-24 text-center">
-        <div className="main-container">
-          <Badge variant="secondary" className="mb-4">
-            <Sparkles className="h-3 w-3 mr-1" />
-            Simple, transparent pricing
-          </Badge>
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-4">
-            Start free, scale as you grow
-          </h1>
-          <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
-            {product === "paas"
-              ? "Deploy personal projects for free, then upgrade as you need more power, more apps, and team collaboration."
-              : "Spin up raw compute in seconds — predictable monthly or hourly pricing for vCPU, RAM, and NVMe storage."}
-          </p>
+      <main>
+        <section className="relative">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(39,95,74,0.16),transparent_28%),radial-gradient(circle_at_80%_0%,rgba(238,164,83,0.18),transparent_32%),linear-gradient(90deg,rgba(23,23,19,0.052)_1px,transparent_1px),linear-gradient(rgba(23,23,19,0.052)_1px,transparent_1px)] bg-[size:auto,auto,52px_52px,52px_52px] dark:bg-[radial-gradient(circle_at_18%_18%,rgba(66,185,127,0.13),transparent_28%),radial-gradient(circle_at_80%_0%,rgba(238,164,83,0.11),transparent_32%),linear-gradient(90deg,rgba(255,255,255,0.055)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.055)_1px,transparent_1px)]" />
+          <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#fbfaf6] to-transparent dark:from-[#080c0a]" />
 
-          {/* Product Toggle: Managed Platform vs VPS */}
-          <div className="inline-flex items-center rounded-xl border bg-card p-1 mb-8">
-            <button
-              onClick={() => setProduct("paas")}
-              className={cn(
-                "text-sm font-medium px-5 py-2 rounded-lg transition-colors",
-                product === "paas" ? "gradient-bg text-white" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Managed Platform
-            </button>
-            <button
-              onClick={() => setProduct("vps")}
-              className={cn(
-                "text-sm font-medium px-5 py-2 rounded-lg transition-colors",
-                product === "vps" ? "gradient-bg text-white" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              VPS Instances
-            </button>
-          </div>
-
-          {/* Billing Toggle (PaaS only) */}
-          {product === "paas" && (
-            <div className="flex items-center justify-center gap-4 mb-4">
-              <button
-                onClick={() => setBillingInterval("monthly")}
-                className={cn(
-                  "text-sm font-medium px-4 py-2 rounded-lg transition-colors",
-                  billingInterval === "monthly"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Monthly
-              </button>
-              <button
-                onClick={() => setBillingInterval("yearly")}
-                className={cn(
-                  "text-sm font-medium px-4 py-2 rounded-lg transition-colors relative",
-                  billingInterval === "yearly"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Yearly
-                <span className="absolute -top-2 -right-12 text-[10px] font-bold text-green-600 bg-green-100 dark:bg-green-900 dark:text-green-400 px-1.5 py-0.5 rounded-full">
-                  -17%
-                </span>
-              </button>
+          <div className="main-container relative py-16 md:py-24">
+            <div className="mx-auto max-w-4xl text-center">
+              <Badge className="mb-6 rounded-full border-[#171713]/10 bg-white/75 px-3 py-1 text-[#171713]/70 shadow-sm dark:border-white/10 dark:bg-white/10 dark:text-white/75">
+                Simple pricing for apps and infrastructure
+              </Badge>
+              <h1 className="text-5xl font-black leading-[0.95] tracking-[-0.06em] md:text-7xl">
+                Start small. Keep the path to production clear.
+              </h1>
+              <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-[#171713]/64 dark:text-white/64">
+                Choose the managed platform when you want deployment handled. Choose VPS instances when you want direct compute. Use both as your stack grows.
+              </p>
             </div>
-          )}
-        </div>
-      </section>
 
-      {/* ===== Managed Platform (PaaS) ===== */}
-      {product === "paas" && (
-        <>
-          {/* Pricing Cards */}
-          <section className="pb-20">
-            <div className="main-container">
-              {plansQuery.isLoading ? (
-                <div className="flex items-center justify-center py-20">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 max-w-7xl mx-auto">
-                  {(plansQuery.data || []).map((plan: any) => (
-                    <PricingCard
-                      key={plan.id}
-                      plan={plan}
-                      billingInterval={billingInterval}
-                      featured={plan.slug === "pro"}
-                    />
-                  ))}
-                </div>
-              )}
+            <div className="mx-auto mt-10 grid max-w-4xl gap-3 md:grid-cols-2">
+              {productChoices.map((choice) => (
+                <button
+                  key={choice.value}
+                  onClick={() => setProduct(choice.value)}
+                  className={cn(
+                    "rounded-[1.4rem] border p-5 text-left transition-all",
+                    product === choice.value
+                      ? "border-[#171713] bg-[#171713] text-white shadow-xl shadow-black/15 dark:border-white dark:bg-white dark:text-[#080c0a]"
+                      : "border-[#171713]/10 bg-white/65 text-[#171713] hover:bg-white dark:border-white/10 dark:bg-white/[0.06] dark:text-white dark:hover:bg-white/[0.09]"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-black tracking-tight">{choice.label}</p>
+                    <ArrowRight className={cn("h-4 w-4", product === choice.value ? "opacity-100" : "opacity-30")} />
+                  </div>
+                  <p className={cn("mt-2 text-sm leading-6", product === choice.value ? "text-white/66 dark:text-black/66" : "text-[#171713]/58 dark:text-white/58")}>
+                    {choice.description}
+                  </p>
+                </button>
+              ))}
             </div>
-          </section>
-
-          {/* Feature Comparison Table */}
-          <section className="py-20 border-t">
-            <div className="main-container max-w-7xl mx-auto">
-              <h2 className="text-3xl font-bold text-center mb-12">Compare Plans</h2>
-              <ComparisonTable plans={plansQuery.data || []} />
-            </div>
-          </section>
-        </>
-      )}
-
-      {/* ===== VPS Instances (IaaS) ===== */}
-      {product === "vps" && (
-        <section className="pb-20">
-          <div className="main-container max-w-6xl mx-auto">
-            {instanceTypesQuery.isLoading ? (
-              <div className="flex items-center justify-center py-20">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <VPSSection instanceTypes={instanceTypesQuery.data || []} />
-            )}
           </div>
         </section>
-      )}
 
-      {/* FAQ */}
-      <section className="py-20 border-t">
-        <div className="main-container max-w-3xl mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-12">Frequently Asked Questions</h2>
-          <FAQSection />
-        </div>
-      </section>
+        {product === "paas" ? (
+          <PlatformPricing
+            plans={plansQuery.data || []}
+            isLoading={plansQuery.isLoading}
+            billingInterval={billingInterval}
+            setBillingInterval={setBillingInterval}
+          />
+        ) : (
+          <VPSPricing
+            instanceTypes={instanceTypesQuery.data || []}
+            isLoading={instanceTypesQuery.isLoading}
+          />
+        )}
 
-      {/* CTA */}
-      <section className="py-20 border-t">
-        <div className="main-container text-center">
-          <h2 className="text-3xl font-bold mb-4">Ready to get started?</h2>
-          <p className="text-lg text-muted-foreground mb-8 max-w-xl mx-auto">
-            Start deploying for free in minutes. No credit card required.
-          </p>
-          <div className="flex items-center justify-center gap-4">
-            <Button asChild size="lg" className="gradient-bg border-0 text-white hover:opacity-90">
-              <Link href="/auth/register">
-                Get Started Free
-                <ArrowRight className="h-4 w-4 ml-2" />
-              </Link>
-            </Button>
-            <Button asChild size="lg" variant="outline">
-              <Link href="/auth/register">
-                Start Pro Trial
-                <Sparkles className="h-4 w-4 ml-2" />
-              </Link>
-            </Button>
+        <IncludedSection />
+        <FAQSection />
+
+        <section className="py-20 md:py-24">
+          <div className="main-container">
+            <div className="rounded-[2rem] border border-[#171713]/10 bg-[#171713] p-8 text-white shadow-2xl shadow-black/15 dark:border-white/10 md:p-12">
+              <div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-end">
+                <div>
+                  <p className="text-sm font-bold uppercase tracking-[0.2em] text-[#85d9a8]">Ready when you are</p>
+                  <h2 className="mt-4 max-w-2xl text-4xl font-black tracking-[-0.045em] md:text-6xl">
+                    Deploy the first app, then choose the plan that fits.
+                  </h2>
+                  <p className="mt-5 max-w-2xl text-lg leading-8 text-white/62">
+                    Start with the platform flow, add resources when they are needed, and keep cost visible as your services grow.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row md:flex-col">
+                  <Button asChild size="lg" className="h-12 rounded-full bg-white px-7 text-black hover:bg-white/90">
+                    <Link href="/auth/register">
+                      Start free
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                  <Button asChild size="lg" variant="outline" className="h-12 rounded-full border-white/15 bg-transparent px-7 text-white hover:bg-white/10 hover:text-white">
+                    <Link href="/#workflow">See workflow</Link>
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
 
-      {/* Footer */}
-      <footer className="border-t py-8">
-        <div className="main-container flex items-center justify-between text-sm text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="GuildServer Logo" className="h-6 w-6 object-contain" />
-            <span>GuildServer</span>
+      <footer className="border-t border-[#171713]/10 bg-[#fbfaf6] py-10 dark:border-white/10 dark:bg-[#080c0a]">
+        <div className="main-container flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#171713] text-white dark:bg-white dark:text-[#080c0a]">
+              <Cloud className="h-4 w-4" />
+            </span>
+            <span className="font-black tracking-tight">GuildServer</span>
           </div>
-          <div className="flex items-center gap-6">
-            <Link href="/" className="hover:text-foreground transition-colors">Home</Link>
-            <Link href="/pricing" className="hover:text-foreground transition-colors">Pricing</Link>
-            <Link href="/auth/login" className="hover:text-foreground transition-colors">Log In</Link>
+          <div className="flex flex-wrap gap-4 text-sm text-[#171713]/55 dark:text-white/55">
+            <Link href="/" className="hover:text-[#171713] dark:hover:text-white">Home</Link>
+            <Link href="/pricing" className="hover:text-[#171713] dark:hover:text-white">Pricing</Link>
+            <Link href="/auth/login" className="hover:text-[#171713] dark:hover:text-white">Log in</Link>
           </div>
         </div>
       </footer>
@@ -236,9 +226,72 @@ export default function PricingPage() {
   )
 }
 
-// =====================
-// PRICING CARD
-// =====================
+function PlatformPricing({
+  plans,
+  isLoading,
+  billingInterval,
+  setBillingInterval,
+}: {
+  plans: any[]
+  isLoading: boolean
+  billingInterval: "monthly" | "yearly"
+  setBillingInterval: (interval: "monthly" | "yearly") => void
+}) {
+  return (
+    <section className="pb-16 md:pb-24">
+      <div className="main-container">
+        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-sm font-bold uppercase tracking-[0.22em] text-[#276f54] dark:text-[#85d9a8]">Managed Platform</p>
+            <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] md:text-5xl">Plans for shipping apps.</h2>
+            <p className="mt-3 max-w-2xl leading-7 text-[#171713]/62 dark:text-white/62">
+              Pay for the deployment workspace: apps, build minutes, domains, team controls, and operational visibility.
+            </p>
+          </div>
+
+          <div className="inline-flex w-fit rounded-full border border-[#171713]/10 bg-white/70 p-1 dark:border-white/10 dark:bg-white/[0.06]">
+            {(["monthly", "yearly"] as const).map((interval) => (
+              <button
+                key={interval}
+                onClick={() => setBillingInterval(interval)}
+                className={cn(
+                  "rounded-full px-4 py-2 text-sm font-semibold transition-colors",
+                  billingInterval === interval
+                    ? "bg-[#171713] text-white dark:bg-white dark:text-[#080c0a]"
+                    : "text-[#171713]/62 hover:text-[#171713] dark:text-white/62 dark:hover:text-white"
+                )}
+              >
+                {interval === "monthly" ? "Monthly" : "Yearly"}
+                {interval === "yearly" && <span className="ml-2 text-[#276f54] dark:text-[#85d9a8]">save 17%</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {isLoading ? (
+          <LoadingBlock />
+        ) : (
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+            {plans.map((plan) => (
+              <PricingCard
+                key={plan.id}
+                plan={plan}
+                billingInterval={billingInterval}
+                featured={plan.slug === "pro"}
+              />
+            ))}
+          </div>
+        )}
+
+        {!isLoading && plans.length > 0 && (
+          <div className="mt-10 overflow-hidden rounded-[1.75rem] border border-[#171713]/10 bg-white/70 dark:border-white/10 dark:bg-white/[0.055]">
+            <ComparisonTable plans={plans} />
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
 
 function PricingCard({
   plan,
@@ -249,246 +302,156 @@ function PricingCard({
   billingInterval: "monthly" | "yearly"
   featured: boolean
 }) {
-  const price = billingInterval === "yearly" && plan.priceYearly
-    ? plan.priceYearly
-    : plan.priceMonthly
-
-  const monthlyEquivalent = billingInterval === "yearly" && plan.priceYearly
-    ? Math.round(plan.priceYearly / 12)
-    : plan.priceMonthly
-
+  const price = billingInterval === "yearly" && plan.priceYearly ? plan.priceYearly : plan.priceMonthly
+  const monthlyEquivalent = billingInterval === "yearly" && plan.priceYearly ? Math.round(plan.priceYearly / 12) : plan.priceMonthly
   const isEnterprise = plan.slug === "enterprise"
   const isHobby = plan.slug === "hobby"
-
-  const icons: Record<string, any> = {
-    hobby: Zap,
-    starter: Rocket,
-    pro: Sparkles,
-    enterprise: Crown,
-  }
-  const Icon = icons[plan.slug] || Zap
 
   return (
     <div
       className={cn(
-        "relative rounded-2xl border bg-card p-8 flex flex-col",
-        featured && "ring-2 ring-primary shadow-lg scale-[1.02]"
+        "relative flex flex-col rounded-[1.75rem] border p-6 shadow-sm",
+        featured
+          ? "border-[#171713] bg-[#171713] text-white shadow-2xl shadow-black/15 dark:border-white dark:bg-white dark:text-[#080c0a]"
+          : "border-[#171713]/10 bg-white/72 dark:border-white/10 dark:bg-white/[0.055]"
       )}
     >
       {featured && (
-        <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-          <Badge className="gradient-bg border-0 text-white px-4 py-1 text-sm">
-            Most Popular
-          </Badge>
-        </div>
+        <Badge className="absolute -top-3 left-6 rounded-full border-0 bg-[#eba453] px-3 py-1 text-[#171713]">
+          Best for teams
+        </Badge>
       )}
 
-      <div className="mb-6">
-        <div className="flex items-center gap-2 mb-2">
-          <Icon className="h-5 w-5 text-primary" />
-          <h3 className="text-xl font-bold">{plan.name}</h3>
-        </div>
-        <p className="text-sm text-muted-foreground">{plan.description}</p>
+      <div className="mb-6 pt-2">
+        <h3 className="text-2xl font-black tracking-[-0.035em]">{plan.name}</h3>
+        <p className={cn("mt-2 min-h-[48px] text-sm leading-6", featured ? "text-white/64 dark:text-black/64" : "text-[#171713]/58 dark:text-white/58")}>
+          {plan.description}
+        </p>
       </div>
 
-      <div className="mb-8">
+      <div className="mb-7">
         {isEnterprise ? (
-          <div>
-            <p className="text-4xl font-bold">Custom</p>
-            <p className="text-sm text-muted-foreground mt-1">Contact us for pricing</p>
-          </div>
+          <>
+            <p className="text-4xl font-black tracking-tight">Custom</p>
+            <p className={cn("mt-1 text-sm", featured ? "text-white/60 dark:text-black/60" : "text-[#171713]/55 dark:text-white/55")}>For larger teams and custom requirements</p>
+          </>
         ) : (
-          <div>
-            <p className="text-4xl font-bold">
-              ${((monthlyEquivalent || 0) / 100).toFixed(0)}
-              <span className="text-lg font-normal text-muted-foreground">/mo</span>
+          <>
+            <p className="text-5xl font-black tracking-[-0.04em]">
+              ${((monthlyEquivalent || price || 0) / 100).toFixed(0)}
+              <span className={cn("text-base font-medium", featured ? "text-white/58 dark:text-black/58" : "text-[#171713]/52 dark:text-white/52")}>/mo</span>
             </p>
-            {!isHobby && (
-              <p className="text-sm text-muted-foreground mt-1">
-                per seat{billingInterval === "yearly" ? ", billed annually" : ""}
-                {billingInterval === "yearly" && plan.priceYearly && (
-                  <span className="text-green-600 dark:text-green-400 ml-1">
-                    (save ${((plan.priceMonthly * 12 - plan.priceYearly) / 100).toFixed(0)}/yr)
-                  </span>
-                )}
-              </p>
-            )}
-            {isHobby && (
-              <p className="text-sm text-muted-foreground mt-1">Free forever</p>
-            )}
-          </div>
+            <p className={cn("mt-1 text-sm", featured ? "text-white/58 dark:text-black/58" : "text-[#171713]/55 dark:text-white/55")}>
+              {isHobby ? "Free to start" : billingInterval === "yearly" ? "Billed yearly" : "Billed monthly"}
+            </p>
+          </>
         )}
       </div>
 
-      {/* Key Limits */}
-      <div className="space-y-3 mb-8 flex-1">
-        <LimitRow label="Applications" value={plan.limits?.maxApps} />
-        <LimitRow label="Databases" value={plan.limits?.maxDatabases} />
-        <LimitRow label="Deployments/mo" value={plan.limits?.maxDeployments} />
-        <LimitRow label="Bandwidth" value={plan.limits?.maxBandwidthGb} suffix="GB/mo" />
-        <LimitRow label="Build Minutes" value={plan.limits?.maxBuildMinutes} suffix="min/mo" />
-        <LimitRow label="Memory/App" value={plan.limits?.maxMemoryMb} suffix="MB" />
-        <LimitRow label="CPU/App" value={plan.limits?.maxCpuCores} suffix="cores" />
+      <div className="mb-7 grid gap-2 text-sm">
+        <LimitPill featured={featured} label="Apps" value={formatLimit(plan.limits?.maxApps)} />
+        <LimitPill featured={featured} label="Databases" value={formatLimit(plan.limits?.maxDatabases)} />
+        <LimitPill featured={featured} label="Build" value={formatLimit(plan.limits?.maxBuildMinutes, "min/mo")} />
+        <LimitPill featured={featured} label="Memory" value={formatLimit(plan.limits?.maxMemoryMb, "MB/app")} />
       </div>
 
-      {/* Features */}
-      <div className="space-y-2 mb-8 border-t pt-6">
-        <FeatureRow label="Preview Deployments" enabled={plan.features?.previewDeployments} />
-        <FeatureRow label="Team Collaboration" enabled={plan.features?.teamCollaboration} />
-        <FeatureRow label="Custom Domains" enabled={plan.features?.customDomains} />
-        <FeatureRow label="Priority Support" enabled={plan.features?.prioritySupport} />
-        <FeatureRow label="SSO / SAML" enabled={plan.features?.sso} />
-        <FeatureRow label="Webhooks" enabled={plan.features?.webhooks} />
-        <FeatureRow label="API Access" enabled={plan.features?.apiAccess} />
-        <FeatureRow label="Spend Management" enabled={plan.features?.spendManagement} />
+      <div className={cn("mb-7 space-y-2 border-t pt-5", featured ? "border-white/12 dark:border-black/12" : "border-[#171713]/10 dark:border-white/10")}>
+        <FeatureRow label="Custom domains" enabled={plan.features?.customDomains} featured={featured} />
+        <FeatureRow label="Preview deployments" enabled={plan.features?.previewDeployments} featured={featured} />
+        <FeatureRow label="Team collaboration" enabled={plan.features?.teamCollaboration} featured={featured} />
+        <FeatureRow label="Spend management" enabled={plan.features?.spendManagement} featured={featured} />
       </div>
 
-      {/* CTA */}
-      {isHobby ? (
-        <Button asChild size="lg" variant="outline" className="w-full">
-          <Link href="/auth/register">
-            Get Started Free
-            <ArrowRight className="h-4 w-4 ml-2" />
-          </Link>
-        </Button>
-      ) : isEnterprise ? (
-        <Button size="lg" variant="outline" className="w-full">
-          Contact Sales
-          <ArrowRight className="h-4 w-4 ml-2" />
-        </Button>
-      ) : (
-        <div className="space-y-2">
-          <Button asChild size="lg" className="w-full gradient-bg border-0 text-white hover:opacity-90">
+      <div className="mt-auto">
+        {isEnterprise ? (
+          <Button size="lg" variant="outline" className={cn("w-full rounded-full", featured && "border-black/15 bg-transparent text-black hover:bg-black/5")}>
+            Contact sales
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        ) : (
+          <Button
+            asChild
+            size="lg"
+            className={cn(
+              "w-full rounded-full",
+              featured
+                ? "bg-white text-black hover:bg-white/90 dark:bg-[#171713] dark:text-white dark:hover:bg-[#171713]/90"
+                : "bg-[#171713] text-white hover:bg-[#171713]/90 dark:bg-white dark:text-[#080c0a] dark:hover:bg-white/90"
+            )}
+          >
             <Link href="/auth/register">
-              Start Pro Trial
-              <Sparkles className="h-4 w-4 ml-2" />
+              {isHobby ? "Start free" : "Start trial"}
+              <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
-          <p className="text-center text-xs text-muted-foreground">
-            14-day free trial, no credit card required
-          </p>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
 
-function LimitRow({ label, value, suffix }: { label: string; value: number | undefined; suffix?: string }) {
-  const display = value === undefined || value === null
-    ? "—"
-    : value === -1
-    ? "Unlimited"
-    : `${value}${suffix ? ` ${suffix}` : ""}`
-
+function LimitPill({ label, value, featured }: { label: string; value: string; featured: boolean }) {
   return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{display}</span>
+    <div className={cn("flex items-center justify-between rounded-xl px-3 py-2", featured ? "bg-white/8 dark:bg-black/6" : "bg-[#171713]/5 dark:bg-white/[0.055]")}>
+      <span className={cn(featured ? "text-white/58 dark:text-black/58" : "text-[#171713]/56 dark:text-white/56")}>{label}</span>
+      <span className="font-semibold">{value}</span>
     </div>
   )
 }
 
-function FeatureRow({ label, enabled }: { label: string; enabled: boolean }) {
+function FeatureRow({ label, enabled, featured = false }: { label: string; enabled: boolean; featured?: boolean }) {
   return (
     <div className="flex items-center gap-2 text-sm">
       {enabled ? (
-        <Check className="h-4 w-4 text-green-500 shrink-0" />
+        <Check className={cn("h-4 w-4 shrink-0", featured ? "text-[#85d9a8] dark:text-[#276f54]" : "text-[#276f54] dark:text-[#85d9a8]")} />
       ) : (
-        <X className="h-4 w-4 text-muted-foreground/30 shrink-0" />
+        <X className={cn("h-4 w-4 shrink-0", featured ? "text-white/24 dark:text-black/24" : "text-[#171713]/24 dark:text-white/24")} />
       )}
-      <span className={cn(!enabled && "text-muted-foreground")}>{label}</span>
+      <span className={cn(!enabled && (featured ? "text-white/42 dark:text-black/42" : "text-[#171713]/42 dark:text-white/42"))}>{label}</span>
     </div>
   )
 }
 
-// =====================
-// COMPARISON TABLE
-// =====================
-
 function ComparisonTable({ plans }: { plans: any[] }) {
-  if (plans.length === 0) return null
-
   const rows = [
-    { category: "Resources", items: [
-      { label: "Applications", key: "limits.maxApps" },
-      { label: "Databases", key: "limits.maxDatabases" },
-      { label: "Deployments/month", key: "limits.maxDeployments" },
-      { label: "Bandwidth", key: "limits.maxBandwidthGb", suffix: "GB" },
-      { label: "Build Minutes", key: "limits.maxBuildMinutes", suffix: "min" },
-      { label: "Memory per App", key: "limits.maxMemoryMb", suffix: "MB" },
-      { label: "CPU per App", key: "limits.maxCpuCores", suffix: "cores" },
-      { label: "Audit Log Retention", key: "limits.auditRetentionDays", suffix: "days" },
-    ]},
-    { category: "Features", items: [
-      { label: "Custom Domains", key: "features.customDomains", boolean: true },
-      { label: "Preview Deployments", key: "features.previewDeployments", boolean: true },
-      { label: "Team Collaboration", key: "features.teamCollaboration", boolean: true },
-      { label: "Priority Support", key: "features.prioritySupport", boolean: true },
-      { label: "SSO / SAML", key: "features.sso", boolean: true },
-      { label: "Webhooks", key: "features.webhooks", boolean: true },
-      { label: "API Access", key: "features.apiAccess", boolean: true },
-      { label: "Spend Management", key: "features.spendManagement", boolean: true },
-    ]},
+    { label: "Applications", key: "limits.maxApps" },
+    { label: "Databases", key: "limits.maxDatabases" },
+    { label: "Deployments/month", key: "limits.maxDeployments" },
+    { label: "Bandwidth", key: "limits.maxBandwidthGb", suffix: "GB" },
+    { label: "Build minutes", key: "limits.maxBuildMinutes", suffix: "min" },
+    { label: "Audit retention", key: "limits.auditRetentionDays", suffix: "days" },
+    { label: "API access", key: "features.apiAccess", boolean: true },
+    { label: "SSO", key: "features.sso", boolean: true },
   ]
-
-  const getValue = (plan: any, key: string) => {
-    const parts = key.split(".")
-    let val = plan
-    for (const p of parts) {
-      val = val?.[p]
-    }
-    return val
-  }
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full">
+      <table className="w-full min-w-[760px] text-sm">
         <thead>
-          <tr className="border-b">
-            <th className="text-left text-sm font-medium py-4 pr-4 w-1/4"></th>
-            {plans.map((plan: any) => (
-              <th key={plan.id} className="text-center text-sm font-semibold py-4 px-4">
-                {plan.name}
-              </th>
+          <tr className="border-b border-[#171713]/10 bg-[#171713]/[0.035] dark:border-white/10 dark:bg-white/[0.045]">
+            <th className="px-5 py-4 text-left font-bold text-[#171713]/58 dark:text-white/58">Included</th>
+            {plans.map((plan) => (
+              <th key={plan.id} className="px-4 py-4 text-center font-black">{plan.name}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((section) => (
-            <>
-              <tr key={section.category}>
-                <td colSpan={plans.length + 1} className="pt-6 pb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  {section.category}
-                </td>
-              </tr>
-              {section.items.map((item) => (
-                <tr key={item.label} className="border-b border-border/50">
-                  <td className="py-3 pr-4 text-sm text-muted-foreground">{item.label}</td>
-                  {plans.map((plan: any) => {
-                    const val = getValue(plan, item.key)
-                    return (
-                      <td key={plan.id} className="py-3 px-4 text-center text-sm">
-                        {(item as any).boolean ? (
-                          val ? (
-                            <Check className="h-4 w-4 text-green-500 mx-auto" />
-                          ) : (
-                            <X className="h-4 w-4 text-muted-foreground/30 mx-auto" />
-                          )
-                        ) : (
-                          <span className="font-medium">
-                            {val === -1
-                              ? "Unlimited"
-                              : val !== undefined && val !== null
-                              ? `${val}${(item as any).suffix ? ` ${(item as any).suffix}` : ""}`
-                              : "—"}
-                          </span>
-                        )}
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-            </>
+          {rows.map((row) => (
+            <tr key={row.label} className="border-b border-[#171713]/10 last:border-0 dark:border-white/10">
+              <td className="px-5 py-4 text-[#171713]/62 dark:text-white/62">{row.label}</td>
+              {plans.map((plan) => {
+                const val = getNestedValue(plan, row.key)
+                return (
+                  <td key={plan.id} className="px-4 py-4 text-center font-semibold">
+                    {(row as any).boolean ? (
+                      val ? <Check className="mx-auto h-4 w-4 text-[#276f54] dark:text-[#85d9a8]" /> : <X className="mx-auto h-4 w-4 text-[#171713]/25 dark:text-white/25" />
+                    ) : (
+                      formatLimit(val, (row as any).suffix)
+                    )}
+                  </td>
+                )
+              })}
+            </tr>
           ))}
         </tbody>
       </table>
@@ -496,59 +459,279 @@ function ComparisonTable({ plans }: { plans: any[] }) {
   )
 }
 
-// =====================
-// FAQ
-// =====================
+function VPSPricing({ instanceTypes, isLoading }: { instanceTypes: any[]; isLoading: boolean }) {
+  return (
+    <section className="pb-16 md:pb-24">
+      <div className="main-container">
+        <div className="mb-8">
+          <p className="text-sm font-bold uppercase tracking-[0.22em] text-[#276f54] dark:text-[#85d9a8]">VPS Instances</p>
+          <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] md:text-5xl">Raw compute with clear sizing.</h2>
+          <p className="mt-3 max-w-2xl leading-7 text-[#171713]/62 dark:text-white/62">
+            Choose the machine profile, add storage or backups, and keep the monthly estimate visible before you launch.
+          </p>
+        </div>
 
-const faqItems = [
-  {
-    q: "Can I try Pro features before committing?",
-    a: "Yes! Every organization gets a free 14-day Pro trial. No credit card required. When the trial ends, your plan automatically reverts to Hobby if you haven't added a payment method.",
-  },
-  {
-    q: "How does per-seat pricing work?",
-    a: "The Pro plan charges $20/month per team member with an active seat. You only pay for members who can deploy and manage apps — read-only viewers are free.",
-  },
-  {
-    q: "What happens if I exceed my plan limits?",
-    a: "On the Hobby plan, you'll hit a hard cap and see an upgrade prompt. On the Pro plan, you can set a monthly spend limit to control overage costs, or allow overages with usage-based billing.",
-  },
-  {
-    q: "Can I downgrade or cancel at any time?",
-    a: "Absolutely. You can downgrade to Hobby or cancel your Pro subscription at any time. Changes take effect at the end of your current billing period — no prorated charges.",
-  },
-  {
-    q: "What payment methods do you accept?",
-    a: "We accept all major credit cards through Stripe. Enterprise customers can also pay via invoice with net-30 terms.",
-  },
-  {
-    q: "Do you offer annual billing?",
-    a: "Yes! Annual billing on the Managed Platform gives you 2 months free. The savings are applied automatically when you switch to yearly billing.",
-  },
-  {
-    q: "VPS Instances vs the Managed Platform — which do I need?",
-    a: "VPS Instances give you raw, sized compute (vCPU, RAM, NVMe storage) that you manage yourself — like a DigitalOcean Droplet or AWS EC2 instance. The Managed Platform sits on top: it builds, deploys, and runs your apps for you (Git/Docker deploys, managed databases, domains + SSL, monitoring). Use VPS if you want full control of the box; use the platform if you just want to ship. You can also run the platform on your own VPS instances and pay only the platform fee.",
-  },
-  {
-    q: "How is hourly VPS billing calculated?",
-    a: "Each instance has an hourly rate equal to its monthly price divided by 730 hours. You're billed per hour for the time an instance exists, and the total is capped at the monthly price — so a machine left running all month never costs more than the listed monthly rate.",
-  },
-  {
-    q: "Can I bring my own server?",
-    a: "Yes. Connect your own VPS or a provider like Proxmox/Hetzner/DigitalOcean as a compute provider, and GuildServer deploys to it. In that case you pay your provider for the hardware and only the Managed Platform fee to us.",
-  },
-]
+        {isLoading ? <LoadingBlock /> : <VPSSection instanceTypes={instanceTypes} />}
+      </div>
+    </section>
+  )
+}
 
-// =====================
-// VPS / INSTANCES
-// =====================
+function VPSSection({ instanceTypes }: { instanceTypes: any[] }) {
+  const [family, setFamily] = useState<"shared" | "dedicated">("shared")
+  const [interval, setIntervalMode] = useState<"monthly" | "hourly">("monthly")
+  const [calcSlug, setCalcSlug] = useState<string>("")
+  const [extraStorage, setExtraStorage] = useState<number>(0)
+  const [backups, setBackups] = useState(false)
 
-const VPS_ADDONS = [
-  { icon: HardDrive, label: "Block storage", price: "$0.10 / GB / mo" },
-  { icon: Server, label: "Automated backups", price: "+20% of instance price" },
-  { icon: Network, label: "Bandwidth overage", price: "$0.01 / GB" },
-  { icon: Cpu, label: "Snapshots", price: "$0.05 / GB / mo" },
-]
+  const types = instanceTypes.filter((t) => t.family === family)
+  const selected = instanceTypes.find((t) => t.slug === calcSlug) || types[0] || instanceTypes[0]
+  const estMonthlyCents = selected
+    ? selected.priceMonthly + Math.max(0, extraStorage) * 10 + (backups ? Math.round(selected.priceMonthly * 0.2) : 0)
+    : 0
+
+  if (instanceTypes.length === 0) {
+    return (
+      <div className="rounded-[1.75rem] border border-[#171713]/10 bg-white/70 p-8 text-center dark:border-white/10 dark:bg-white/[0.055]">
+        <Server className="mx-auto h-8 w-8 text-[#171713]/45 dark:text-white/45" />
+        <h3 className="mt-4 text-xl font-black">Instance pricing is being prepared</h3>
+        <p className="mt-2 text-[#171713]/58 dark:text-white/58">Check back shortly or continue with managed app deployments.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <ToggleGroup
+          value={family}
+          options={[
+            { value: "shared", label: "Shared CPU" },
+            { value: "dedicated", label: "Dedicated CPU" },
+          ]}
+          onChange={(value) => setFamily(value as "shared" | "dedicated")}
+        />
+        <ToggleGroup
+          value={interval}
+          options={[
+            { value: "monthly", label: "Monthly" },
+            { value: "hourly", label: "Hourly" },
+          ]}
+          onChange={(value) => setIntervalMode(value as "monthly" | "hourly")}
+        />
+      </div>
+
+      <div className="overflow-hidden rounded-[1.75rem] border border-[#171713]/10 bg-white/72 dark:border-white/10 dark:bg-white/[0.055]">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[820px] text-sm">
+            <thead>
+              <tr className="border-b border-[#171713]/10 bg-[#171713]/[0.035] text-[#171713]/58 dark:border-white/10 dark:bg-white/[0.045] dark:text-white/58">
+                <th className="px-5 py-4 text-left font-bold">Plan</th>
+                <th className="px-3 py-4 text-left font-bold">vCPU</th>
+                <th className="px-3 py-4 text-left font-bold">RAM</th>
+                <th className="px-3 py-4 text-left font-bold">NVMe</th>
+                <th className="px-3 py-4 text-left font-bold">Transfer</th>
+                <th className="px-5 py-4 text-right font-bold">Price</th>
+                <th className="px-5 py-4" />
+              </tr>
+            </thead>
+            <tbody>
+              {types.map((type) => (
+                <tr key={type.slug} className="border-b border-[#171713]/10 last:border-0 hover:bg-[#171713]/[0.025] dark:border-white/10 dark:hover:bg-white/[0.035]">
+                  <td className="px-5 py-4">
+                    <div className="font-black">{type.name}</div>
+                    <div className="mt-1 text-xs text-[#171713]/52 dark:text-white/52">{type.description}</div>
+                  </td>
+                  <td className="px-3 py-4">{type.vcpu}</td>
+                  <td className="px-3 py-4">{fmtRam(type.ramMb)}</td>
+                  <td className="px-3 py-4">{type.storageGb} GB</td>
+                  <td className="px-3 py-4">{type.transferTb} TB</td>
+                  <td className="whitespace-nowrap px-5 py-4 text-right">
+                    {interval === "monthly" ? (
+                      <><span className="font-black">{fmtUSD(type.priceMonthly)}</span><span className="text-xs text-[#171713]/52 dark:text-white/52">/mo</span></>
+                    ) : (
+                      <><span className="font-black">${(type.priceHourlyCents / 100).toFixed(4)}</span><span className="text-xs text-[#171713]/52 dark:text-white/52">/hr</span></>
+                    )}
+                  </td>
+                  <td className="px-5 py-4 text-right">
+                    <Button asChild size="sm" variant="outline" className="rounded-full">
+                      <Link href="/auth/register">Create</Link>
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="rounded-[1.75rem] border border-[#171713]/10 bg-white/72 p-6 dark:border-white/10 dark:bg-white/[0.055]">
+          <h3 className="text-xl font-black tracking-tight">Add-ons</h3>
+          <div className="mt-5 space-y-3">
+            {VPS_ADDONS.map((addon) => {
+              const Icon = addon.icon
+              return (
+                <div key={addon.label} className="flex items-center justify-between gap-4 rounded-2xl bg-[#171713]/5 px-4 py-3 text-sm dark:bg-white/[0.055]">
+                  <span className="inline-flex items-center gap-2 text-[#171713]/62 dark:text-white/62"><Icon className="h-4 w-4" />{addon.label}</span>
+                  <span className="font-semibold">{addon.price}</span>
+                </div>
+              )
+            })}
+          </div>
+          <p className="mt-4 text-xs leading-5 text-[#171713]/52 dark:text-white/52">Hourly billing is capped at the monthly rate. You only pay for instances while they exist.</p>
+        </div>
+
+        <div className="rounded-[1.75rem] border border-[#171713]/10 bg-[#171713] p-6 text-white dark:border-white/10">
+          <h3 className="text-xl font-black tracking-tight">Estimate your cost</h3>
+          <div className="mt-5 space-y-4">
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-white/48">Instance</label>
+              <select
+                value={selected?.slug || ""}
+                onChange={(e) => setCalcSlug(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white"
+              >
+                {instanceTypes.map((type) => (
+                  <option key={type.slug} value={type.slug}>
+                    {type.name} ({type.vcpu} vCPU / {fmtRam(type.ramMb)}) - {fmtUSD(type.priceMonthly)}/mo
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-white/48">Extra block storage (GB)</label>
+              <input
+                type="number"
+                min={0}
+                value={extraStorage}
+                onChange={(e) => setExtraStorage(Math.max(0, Number(e.target.value) || 0))}
+                className="w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-white/72">
+              <input type="checkbox" checked={backups} onChange={(e) => setBackups(e.target.checked)} />
+              Automated backups (+20%)
+            </label>
+            <div className="border-t border-white/10 pt-5">
+              <div className="flex items-end justify-between gap-4">
+                <span className="text-sm text-white/52">Estimated total</span>
+                <div className="text-right">
+                  <div className="text-3xl font-black">{fmtUSD(estMonthlyCents, 2)}<span className="text-sm font-normal text-white/52">/mo</span></div>
+                  <div className="text-xs text-white/45">about ${(estMonthlyCents / 100 / 730).toFixed(4)}/hr</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function IncludedSection() {
+  return (
+    <section className="border-y border-[#171713]/10 bg-[#efe8da] py-16 dark:border-white/10 dark:bg-[#10140f] md:py-20">
+      <div className="main-container">
+        <div className="mb-8 max-w-2xl">
+          <p className="text-sm font-bold uppercase tracking-[0.22em] text-[#276f54] dark:text-[#85d9a8]">Across plans</p>
+          <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] md:text-5xl">The workspace stays connected.</h2>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {includedItems.map((item) => {
+            const Icon = item.icon
+            return (
+              <div key={item.label} className="rounded-[1.5rem] border border-[#171713]/10 bg-white/66 p-5 dark:border-white/10 dark:bg-white/[0.06]">
+                <Icon className="h-5 w-5 text-[#276f54] dark:text-[#85d9a8]" />
+                <p className="mt-4 font-semibold leading-6">{item.label}</p>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function FAQSection() {
+  const [openIndex, setOpenIndex] = useState<number | null>(0)
+
+  return (
+    <section className="py-16 md:py-20">
+      <div className="main-container max-w-3xl">
+        <div className="mb-8 text-center">
+          <p className="text-sm font-bold uppercase tracking-[0.22em] text-[#276f54] dark:text-[#85d9a8]">Questions</p>
+          <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] md:text-5xl">Pricing, without surprises.</h2>
+        </div>
+        <div className="space-y-3">
+          {faqItems.map((item, index) => (
+            <div key={item.q} className="overflow-hidden rounded-2xl border border-[#171713]/10 bg-white/70 dark:border-white/10 dark:bg-white/[0.055]">
+              <button
+                onClick={() => setOpenIndex(openIndex === index ? null : index)}
+                className="flex w-full items-center justify-between gap-4 p-5 text-left"
+              >
+                <span className="font-semibold">{item.q}</span>
+                {openIndex === index ? <ChevronUp className="h-4 w-4 shrink-0 text-[#171713]/48 dark:text-white/48" /> : <ChevronDown className="h-4 w-4 shrink-0 text-[#171713]/48 dark:text-white/48" />}
+              </button>
+              {openIndex === index && (
+                <div className="px-5 pb-5">
+                  <p className="text-sm leading-6 text-[#171713]/62 dark:text-white/62">{item.a}</p>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ToggleGroup({
+  value,
+  options,
+  onChange,
+}: {
+  value: string
+  options: { value: string; label: string }[]
+  onChange: (value: string) => void
+}) {
+  return (
+    <div className="inline-flex w-fit rounded-full border border-[#171713]/10 bg-white/70 p-1 dark:border-white/10 dark:bg-white/[0.06]">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          onClick={() => onChange(option.value)}
+          className={cn(
+            "rounded-full px-4 py-2 text-sm font-semibold transition-colors",
+            value === option.value
+              ? "bg-[#171713] text-white dark:bg-white dark:text-[#080c0a]"
+              : "text-[#171713]/62 hover:text-[#171713] dark:text-white/62 dark:hover:text-white"
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function LoadingBlock() {
+  return (
+    <div className="flex items-center justify-center rounded-[1.75rem] border border-[#171713]/10 bg-white/70 py-20 dark:border-white/10 dark:bg-white/[0.055]">
+      <Loader2 className="h-8 w-8 animate-spin text-[#171713]/45 dark:text-white/45" />
+    </div>
+  )
+}
+
+function getNestedValue(obj: any, key: string) {
+  return key.split(".").reduce((value, part) => value?.[part], obj)
+}
+
+function formatLimit(value: number | undefined | null, suffix?: string) {
+  if (value === undefined || value === null) return "-"
+  if (value === -1) return "Unlimited"
+  return `${value}${suffix ? ` ${suffix}` : ""}`
+}
 
 function fmtUSD(cents: number, digits = 0) {
   return `$${(cents / 100).toFixed(digits)}`
@@ -556,198 +739,4 @@ function fmtUSD(cents: number, digits = 0) {
 
 function fmtRam(ramMb: number) {
   return ramMb >= 1024 ? `${ramMb / 1024} GB` : `${ramMb} MB`
-}
-
-function VPSSection({ instanceTypes }: { instanceTypes: any[] }) {
-  const [family, setFamily] = useState<"shared" | "dedicated">("shared")
-  const [interval, setIntervalMode] = useState<"monthly" | "hourly">("monthly")
-
-  const types = instanceTypes.filter((t) => t.family === family)
-
-  // Calculator state
-  const [calcSlug, setCalcSlug] = useState<string>("")
-  const [extraStorage, setExtraStorage] = useState<number>(0)
-  const [backups, setBackups] = useState(false)
-
-  const selected = instanceTypes.find((t) => t.slug === calcSlug) || types[0]
-  const estMonthlyCents = selected
-    ? selected.priceMonthly + Math.max(0, extraStorage) * 10 + (backups ? Math.round(selected.priceMonthly * 0.2) : 0)
-    : 0
-
-  return (
-    <div className="space-y-10">
-      {/* Family + interval toggles */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="inline-flex items-center rounded-xl border bg-card p-1">
-          <button
-            onClick={() => setFamily("shared")}
-            className={cn("text-sm font-medium px-5 py-2 rounded-lg transition-colors", family === "shared" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
-          >
-            Shared CPU
-          </button>
-          <button
-            onClick={() => setFamily("dedicated")}
-            className={cn("text-sm font-medium px-5 py-2 rounded-lg transition-colors", family === "dedicated" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
-          >
-            Dedicated CPU
-          </button>
-        </div>
-        <div className="inline-flex items-center rounded-xl border bg-card p-1">
-          <button
-            onClick={() => setIntervalMode("monthly")}
-            className={cn("text-sm font-medium px-4 py-2 rounded-lg transition-colors", interval === "monthly" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
-          >
-            Monthly
-          </button>
-          <button
-            onClick={() => setIntervalMode("hourly")}
-            className={cn("text-sm font-medium px-4 py-2 rounded-lg transition-colors", interval === "hourly" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
-          >
-            Hourly
-          </button>
-        </div>
-      </div>
-
-      <p className="text-sm text-muted-foreground text-center -mt-4">
-        {family === "shared"
-          ? "Burstable vCPU shared with other tenants — the best value for most workloads."
-          : "Dedicated vCPU cores with no noisy neighbours — consistent performance for production."}
-      </p>
-
-      {/* Instance table */}
-      <div className="overflow-x-auto rounded-2xl border bg-card">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b text-muted-foreground">
-              <th className="text-left font-medium py-4 px-5">Plan</th>
-              <th className="text-left font-medium py-4 px-3"><span className="inline-flex items-center gap-1"><Cpu className="h-3.5 w-3.5" />vCPU</span></th>
-              <th className="text-left font-medium py-4 px-3"><span className="inline-flex items-center gap-1"><MemoryStick className="h-3.5 w-3.5" />RAM</span></th>
-              <th className="text-left font-medium py-4 px-3"><span className="inline-flex items-center gap-1"><HardDrive className="h-3.5 w-3.5" />NVMe</span></th>
-              <th className="text-left font-medium py-4 px-3"><span className="inline-flex items-center gap-1"><Network className="h-3.5 w-3.5" />Transfer</span></th>
-              <th className="text-right font-medium py-4 px-5">Price</th>
-              <th className="py-4 px-5"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {types.map((t) => (
-              <tr key={t.slug} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
-                <td className="py-4 px-5">
-                  <div className="font-semibold">{t.name}</div>
-                  <div className="text-xs text-muted-foreground">{t.description}</div>
-                </td>
-                <td className="py-4 px-3">{t.vcpu}</td>
-                <td className="py-4 px-3">{fmtRam(t.ramMb)}</td>
-                <td className="py-4 px-3">{t.storageGb} GB</td>
-                <td className="py-4 px-3">{t.transferTb} TB</td>
-                <td className="py-4 px-5 text-right whitespace-nowrap">
-                  {interval === "monthly" ? (
-                    <><span className="font-bold">{fmtUSD(t.priceMonthly)}</span><span className="text-muted-foreground text-xs">/mo</span></>
-                  ) : (
-                    <><span className="font-bold">${(t.priceHourlyCents / 100).toFixed(4)}</span><span className="text-muted-foreground text-xs">/hr</span></>
-                  )}
-                </td>
-                <td className="py-4 px-5 text-right">
-                  <Button asChild size="sm" variant="outline">
-                    <Link href="/auth/register">Deploy</Link>
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Add-ons + Calculator */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Add-ons */}
-        <div className="rounded-2xl border bg-card p-6">
-          <h3 className="font-semibold mb-4">Add-ons</h3>
-          <div className="space-y-3">
-            {VPS_ADDONS.map((a) => (
-              <div key={a.label} className="flex items-center justify-between text-sm">
-                <span className="inline-flex items-center gap-2 text-muted-foreground"><a.icon className="h-4 w-4" />{a.label}</span>
-                <span className="font-medium">{a.price}</span>
-              </div>
-            ))}
-            <div className="flex items-center justify-between text-sm">
-              <span className="inline-flex items-center gap-2 text-muted-foreground"><Network className="h-4 w-4" />Extra IPv4</span>
-              <span className="font-medium">$4 / mo</span>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground mt-4">Hourly billing caps at the monthly rate (730 hrs). You only pay for what you run.</p>
-        </div>
-
-        {/* Calculator */}
-        <div className="rounded-2xl border bg-card p-6">
-          <h3 className="font-semibold mb-4">Estimate your cost</h3>
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Instance</label>
-              <select
-                value={selected?.slug || ""}
-                onChange={(e) => setCalcSlug(e.target.value)}
-                className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
-              >
-                {instanceTypes.map((t) => (
-                  <option key={t.slug} value={t.slug}>
-                    {t.name} ({t.vcpu} vCPU / {fmtRam(t.ramMb)}) — {fmtUSD(t.priceMonthly)}/mo
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Extra block storage (GB)</label>
-              <input
-                type="number"
-                min={0}
-                value={extraStorage}
-                onChange={(e) => setExtraStorage(Math.max(0, Number(e.target.value) || 0))}
-                className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
-              />
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={backups} onChange={(e) => setBackups(e.target.checked)} />
-              Automated backups (+20%)
-            </label>
-            <div className="border-t pt-4 flex items-end justify-between">
-              <span className="text-sm text-muted-foreground">Estimated total</span>
-              <div className="text-right">
-                <div className="text-2xl font-bold">{fmtUSD(estMonthlyCents, 2)}<span className="text-sm font-normal text-muted-foreground">/mo</span></div>
-                <div className="text-xs text-muted-foreground">≈ ${(estMonthlyCents / 100 / 730).toFixed(4)}/hr</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function FAQSection() {
-  const [openIndex, setOpenIndex] = useState<number | null>(null)
-
-  return (
-    <div className="space-y-2">
-      {faqItems.map((item, i) => (
-        <div key={i} className="rounded-xl border bg-card overflow-hidden">
-          <button
-            onClick={() => setOpenIndex(openIndex === i ? null : i)}
-            className="w-full flex items-center justify-between p-5 text-left"
-          >
-            <span className="text-sm font-medium pr-4">{item.q}</span>
-            {openIndex === i ? (
-              <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
-            ) : (
-              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-            )}
-          </button>
-          {openIndex === i && (
-            <div className="px-5 pb-5">
-              <p className="text-sm text-muted-foreground">{item.a}</p>
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  )
 }
