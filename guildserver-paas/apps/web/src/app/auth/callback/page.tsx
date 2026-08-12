@@ -47,11 +47,12 @@ function OAuthCallbackContent() {
 
     if (token) {
       localStorage.setItem("guildserver-token", token)
+      localStorage.setItem("guildserver-preferred-product", "paas")
       const returnTo = searchParams.get("returnTo")
       if (returnTo && returnTo.startsWith("/")) {
         router.replace(returnTo)
       } else {
-        router.replace("/select-product")
+        router.replace("/dashboard")
       }
     } else {
       setError("No authentication token received.")

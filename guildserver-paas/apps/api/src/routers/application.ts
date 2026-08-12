@@ -28,7 +28,7 @@ const createApplicationSchema = z.object({
   repository: z.string().optional(),
   branch: z.string().default("main"),
   buildPath: z.string().optional(), // Subdirectory for monorepo builds
-  buildType: z.enum(["dockerfile", "nixpacks", "heroku", "paketo", "static", "railpack"]),
+  buildType: z.enum(["dockerfile", "nixpacks", "heroku", "paketo", "static", "railpack"]).optional(),
   dockerImage: z.string().optional(),
   dockerTag: z.string().default("latest"),
   registryUrl: z.string().optional().nullable(),

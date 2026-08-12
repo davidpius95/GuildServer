@@ -104,9 +104,11 @@ app.get("/metrics", async (req, res) => {
 
 // Webhook routes (before tRPC, these are plain Express routes)
 app.use("/webhooks", webhookRouter);
+app.use("/api/webhooks", webhookRouter);
 
 // OAuth routes (GitHub + Google login)
 app.use("/auth", oauthRouter);
+app.use("/api/auth", oauthRouter);
 
 // Authenticated file downloads (e.g. database backups)
 app.use("/downloads", downloadRouter);

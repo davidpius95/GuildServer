@@ -52,6 +52,14 @@ import { CardLinkOverlay } from "@/components/ui/card-link-overlay"
 
 const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || ""
 
+function buildOAuthUrl(provider: "github" | "gitlab" | "bitbucket" | "google", opts: { scope?: string; returnTo?: string } = {}) {
+  const params = new URLSearchParams()
+  if (opts.scope) params.set("scope", opts.scope)
+  if (opts.returnTo) params.set("returnTo", opts.returnTo)
+  const query = params.toString()
+  return `${API_URL}/auth/${provider}${query ? `?${query}` : ""}`
+}
+
 function GitHubIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -164,8 +172,12 @@ export default function ApplicationsPage() {
 
   // Mutations
   const createApp = trpc.application.create.useMutation({
-    onSuccess: () => {
-      toast.success("Application created!")
+    onSuccess: (createdApp: any) => {
+      const shouldDeployImmediately = createMode === "git" && createdApp?.id
+      toast.success(shouldDeployImmediately ? "Application created. Starting deployment..." : "Application created!")
+      if (shouldDeployImmediately) {
+        deployApp.mutate({ id: createdApp.id })
+      }
       utils.application.listByOrg.invalidate({ organizationId: orgId })
       setShowCreateModal(false)
       resetForm()
@@ -223,14 +235,17 @@ export default function ApplicationsPage() {
 
   // Git Provider integration queries
   const connectedAccountsQuery = trpc.github.getConnectedAccounts.useQuery(undefined, { retry: false })
-  const connectedProviders = useMemo(() => {
-    return (connectedAccountsQuery.data ?? []).map((a: any) => a.provider)
-  }, [connectedAccountsQuery.data])
-  
-  const gitProviderConnected = connectedProviders.includes(selectedGitProvider)
+  const connectedProvider = useMemo(() => {
+    return (connectedAccountsQuery.data ?? []).find((a: any) => a.provider === selectedGitProvider)
+  }, [connectedAccountsQuery.data, selectedGitProvider])
+
+  const gitProviderConnected = !!connectedProvider
+  const gitProviderHasRepoAccess = selectedGitProvider === "github"
+    ? !!connectedProvider?.scope?.split(/[,\s]+/).includes("repo")
+    : gitProviderConnected
 
   const reposQuery = trpc.github.listRepos.useQuery({ provider: selectedGitProvider }, {
-    enabled: gitProviderConnected && createMode === "git" && showCreateModal,
+    enabled: gitProviderHasRepoAccess && createMode === "git" && showCreateModal,
     retry: false,
   })
 
@@ -296,7 +311,6 @@ export default function ApplicationsPage() {
     setCreateEnvVars([{ key: "", value: "" }])
     setSelectedRepo(null)
     setRepoSearch("")
-    setShowBranchDropdown(false)
     setDeployTarget("docker-local")
     setSelectedProviderId(null)
   }
@@ -323,7 +337,6 @@ export default function ApplicationsPage() {
     const data: any = {
       name: appName.trim(),
       projectId,
-      buildType: "dockerfile",
       environment: envRecord,
       deploymentTarget: deployTarget,
     }
@@ -337,6 +350,7 @@ export default function ApplicationsPage() {
         toast.error("Please select or enter a Docker image")
         return
       }
+      data.buildType = "dockerfile"
       data.sourceType = "docker"
       data.dockerTag = (dockerTag || "latest").trim()
       if (dockerMode === "registry") {
@@ -628,7 +642,7 @@ export default function ApplicationsPage() {
               ) : (
                 <Plus className="mr-2 h-4 w-4" />
               )}
-              Create Application
+              {createMode === "git" ? "Create and Deploy" : "Create Application"}
             </Button>
           </div>
         }
@@ -941,7 +955,7 @@ export default function ApplicationsPage() {
                         </Button>
                       </div>
 
-                  {gitProviderConnected ? (
+                  {gitProviderHasRepoAccess ? (
                     <>
                       {/* Git Repo Browser */}
                       {!selectedRepo ? (
@@ -972,8 +986,10 @@ export default function ApplicationsPage() {
                                   size="sm"
                                   variant="outline"
                                   onClick={() => {
-                                    const returnUrl = encodeURIComponent("/dashboard/applications?action=create&mode=git")
-                                    window.location.href = `${API_URL}/auth/${selectedGitProvider}?scope=repo&returnTo=${returnUrl}`
+                                    window.location.href = buildOAuthUrl(selectedGitProvider, {
+                                      scope: "repo",
+                                      returnTo: "/dashboard/applications?action=create&mode=git",
+                                    })
                                   }}
                                 >
                                   <Link2 className="mr-1.5 h-3.5 w-3.5" />
@@ -1102,8 +1118,10 @@ export default function ApplicationsPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              const returnUrl = encodeURIComponent("/dashboard/applications?action=create&mode=git")
-                              window.location.href = `${API_URL}/auth/${selectedGitProvider}?scope=repo&returnTo=${returnUrl}`
+                              window.location.href = buildOAuthUrl(selectedGitProvider, {
+                                scope: "repo",
+                                returnTo: "/dashboard/applications?action=create&mode=git",
+                              })
                             }}
                           >
                             <Link2 className="mr-1.5 h-3.5 w-3.5" />
