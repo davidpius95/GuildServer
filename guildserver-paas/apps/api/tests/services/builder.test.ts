@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { resolveNodeStartCommand } from "../../src/services/builder";
+import { detectPackageManager, resolveNodeStartCommand } from "../../src/services/builder";
 
 jest.mock("dockerode", () => {
   return jest.fn().mockImplementation(() => ({}));
@@ -65,6 +65,42 @@ describe("resolveNodeStartCommand", () => {
       },
       (dir) => {
         expect(resolveNodeStartCommand(dir, "yarn")).toBe("node 'src/api.js'");
+      },
+    );
+  });
+});
+
+describe("detectPackageManager", () => {
+  it("prefers the packageManager field when present", () => {
+    withTempProject(
+      {
+        "package.json": JSON.stringify({ packageManager: "pnpm@9.13.0" }),
+      },
+      (dir) => {
+        expect(detectPackageManager(dir)).toBe("pnpm");
+      },
+    );
+  });
+
+  it("falls back to lockfiles when the packageManager field is missing", () => {
+    withTempProject(
+      {
+        "package.json": JSON.stringify({ name: "example" }),
+        "pnpm-lock.yaml": "",
+      },
+      (dir) => {
+        expect(detectPackageManager(dir)).toBe("pnpm");
+      },
+    );
+  });
+
+  it("defaults to npm when no package metadata is available", () => {
+    withTempProject(
+      {
+        "package.json": JSON.stringify({ name: "example" }),
+      },
+      (dir) => {
+        expect(detectPackageManager(dir)).toBe("npm");
       },
     );
   });

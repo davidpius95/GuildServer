@@ -36,6 +36,57 @@ export interface BuildOptions {
   environment?: Record<string, string>;
 }
 
+type PackageManager = "npm" | "yarn" | "pnpm";
+
+function readPackageJson(projectDir: string): any {
+  const pkgJsonPath = path.join(projectDir, "package.json");
+  return fs.existsSync(pkgJsonPath) ? JSON.parse(fs.readFileSync(pkgJsonPath, "utf8")) : {};
+}
+
+export function detectPackageManager(projectDir: string): PackageManager {
+  const pkg = readPackageJson(projectDir);
+  const declared = typeof pkg.packageManager === "string" ? pkg.packageManager.toLowerCase() : "";
+
+  if (declared.startsWith("pnpm")) return "pnpm";
+  if (declared.startsWith("yarn")) return "yarn";
+  if (declared.startsWith("npm")) return "npm";
+
+  if (fs.existsSync(path.join(projectDir, "pnpm-lock.yaml"))) return "pnpm";
+  if (fs.existsSync(path.join(projectDir, "yarn.lock"))) return "yarn";
+
+  return "npm";
+}
+
+function hasLockfile(projectDir: string, packageManager: PackageManager): boolean {
+  if (packageManager === "pnpm") return fs.existsSync(path.join(projectDir, "pnpm-lock.yaml"));
+  if (packageManager === "yarn") return fs.existsSync(path.join(projectDir, "yarn.lock"));
+  return fs.existsSync(path.join(projectDir, "package-lock.json"));
+}
+
+function getInstallCommand(projectDir: string, packageManager: PackageManager): string {
+  const locked = hasLockfile(projectDir, packageManager);
+
+  switch (packageManager) {
+    case "pnpm":
+      return locked ? "RUN pnpm install --frozen-lockfile" : "RUN pnpm install";
+    case "yarn":
+      return locked ? "RUN yarn install --frozen-lockfile" : "RUN yarn install";
+    default:
+      return locked ? "RUN npm ci" : "RUN npm install";
+  }
+}
+
+function getBuildCommand(packageManager: PackageManager): string {
+  switch (packageManager) {
+    case "pnpm":
+      return "pnpm build";
+    case "yarn":
+      return "yarn build";
+    default:
+      return "npm run build";
+  }
+}
+
 function isFastApiFullStackTemplate(projectDir: string): boolean {
   const backendPyprojectPath = path.join(projectDir, "backend", "pyproject.toml");
   const frontendPackagePath = path.join(projectDir, "frontend", "package.json");
@@ -188,18 +239,15 @@ CMD ["fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]
     case "node": {
       // Check if it's a Next.js, Vite/SPA, or plain Node app
       const pkgJsonPath = path.join(projectDir, "package.json");
+      const packageManager = detectPackageManager(projectDir);
       let startCmd = "node index.js";
       let buildCmd = "";
-      let hasLockfile = "npm";
       let isStaticSPA = false; // Vite, CRA, or other SPA that builds to static files
       let spaBuildDir = "dist"; // Output directory: Vite→dist, CRA→build
 
       if (fs.existsSync(pkgJsonPath)) {
         const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
         const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
-
-        if (fs.existsSync(path.join(projectDir, "yarn.lock"))) hasLockfile = "yarn";
-        if (fs.existsSync(path.join(projectDir, "pnpm-lock.yaml"))) hasLockfile = "pnpm";
 
         // Detect static SPA frameworks (Vite, CRA, etc.) that build to static files
         // These have a build script but no start script (or a start script that just runs dev server)
@@ -217,22 +265,14 @@ CMD ["fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]
         }
 
         if (!isStaticSPA) {
-          startCmd = resolveNodeStartCommand(projectDir, hasLockfile as "npm" | "yarn" | "pnpm");
+          startCmd = resolveNodeStartCommand(projectDir, packageManager);
           if (pkg.scripts?.build) {
-            buildCmd = hasLockfile === "yarn"
-              ? "RUN yarn build"
-              : hasLockfile === "pnpm"
-              ? "RUN pnpm run build"
-              : "RUN npm run build";
+            buildCmd = `RUN ${getBuildCommand(packageManager)}`;
           }
         }
       }
 
-      const installCmd = hasLockfile === "yarn"
-        ? "RUN yarn install --frozen-lockfile"
-        : hasLockfile === "pnpm"
-        ? "RUN npm install -g pnpm && pnpm install --frozen-lockfile"
-        : "RUN npm ci || npm install";
+      const installCmd = getInstallCommand(projectDir, packageManager);
 
       // For static SPAs (Vite, CRA), use multi-stage build: Node for building, nginx for serving
       if (isStaticSPA) {
@@ -241,7 +281,7 @@ WORKDIR /app
 COPY package*.json yarn.lock* pnpm-lock.yaml* ./
 ${installCmd}
 COPY . .
-RUN npm run build
+RUN ${getBuildCommand(packageManager)}
 
 FROM nginx:alpine
 COPY --from=builder /app/${spaBuildDir} /usr/share/nginx/html

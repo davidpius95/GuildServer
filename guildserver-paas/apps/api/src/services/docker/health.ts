@@ -89,6 +89,22 @@ export async function postDeployHealthCheck(opts: {
       return { healthy: true, message: "Service is responding" };
     }
 
+    const actualPort = await detectActualListeningPort(containerId, dockerClient);
+    if (actualPort && actualPort !== expectedContainerPort) {
+      log(
+        `❌ Port mismatch detected early! Expected container port ${expectedContainerPort} ` +
+        `but the image exposes port ${actualPort}.`,
+      );
+      return {
+        healthy: false,
+        message:
+          `Port mismatch: Traefik is routing to container port ${expectedContainerPort} ` +
+          `but the container is actually listening on port ${actualPort}. ` +
+          `Try setting the correct port in the application settings.`,
+        portMismatch: { expected: expectedContainerPort, actual: actualPort },
+      };
+    }
+
     if (attempt < maxAttempts) {
       log(`⏳ Waiting for service to start (attempt ${attempt}/${maxAttempts})...`);
       await new Promise((r) => setTimeout(r, intervalMs));
