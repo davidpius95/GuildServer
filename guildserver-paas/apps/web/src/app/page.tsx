@@ -1,989 +1,490 @@
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
 import {
+  Activity,
   ArrowRight,
-  Zap,
-  Shield,
-  Globe,
-  Database,
-  Workflow,
   BarChart3,
-  Rocket,
-  Server,
-  GitBranch,
-  Terminal,
-  Lock,
-  Layers,
-  Box,
-  Cloud,
-  Monitor,
-  Code2,
+  Boxes,
   Check,
-  Users,
-  Cpu,
-  HardDrive,
-  Activity
+  ChevronRight,
+  CircleDot,
+  Cloud,
+  Code2,
+  Database,
+  GitBranch,
+  Globe2,
+  Lock,
+  Network,
+  Route,
+  Server,
+  ShieldCheck,
+  Sparkles,
+  Terminal,
+  AlertTriangle,
+  Workflow,
+  X,
+  Zap,
 } from "lucide-react"
 import Link from "next/link"
 
+const deploySteps = [
+  { label: "Select repo", value: "github.com/team/api", icon: GitBranch },
+  { label: "Detect stack", value: "Node, Python, Dockerfile", icon: Code2 },
+  { label: "Build image", value: "container + health probe", icon: Boxes },
+  { label: "Route traffic", value: "TLS domain + live logs", icon: Route },
+]
+
+const currentCapabilities = [
+  {
+    title: "GitHub to running container",
+    text: "Connect a repo, pick a branch, build from Dockerfile or detected project files, then deploy immediately.",
+    icon: GitBranch,
+  },
+  {
+    title: "Docker-native apps",
+    text: "Run prebuilt images or generated images with port routing, restart policy, and container health checks.",
+    icon: Boxes,
+  },
+  {
+    title: "Domains and TLS routing",
+    text: "Traefik-backed routing for generated app domains and custom domain workflows.",
+    icon: Globe2,
+  },
+  {
+    title: "Operational visibility",
+    text: "Deployment history, build logs, container status sync, metrics collection, and monitoring stack integrations.",
+    icon: Activity,
+  },
+  {
+    title: "Databases and backups foundation",
+    text: "Database provisioning and backup workflows are part of the product surface and need continued hardening.",
+    icon: Database,
+  },
+  {
+    title: "Self-hosted control plane",
+    text: "Designed for teams that want a Vercel-like flow on infrastructure they control, including Docker and Proxmox paths.",
+    icon: Server,
+  },
+]
+
+const comparisonRows = [
+  {
+    capability: "Git repo import and branch deploy",
+    leaders: "Vercel, Netlify, Render, Railway, Amplify",
+    guildServer: "Implemented for GitHub and generic Git; needs smoother repo permission recovery and provider expansion.",
+    status: "has",
+  },
+  {
+    capability: "Automatic build detection",
+    leaders: "Render, Railway, DigitalOcean App Platform, Heroku buildpacks",
+    guildServer: "Node, Python, Go, static, Dockerfile, and FastAPI template handling exist; needs broader framework test coverage.",
+    status: "has",
+  },
+  {
+    capability: "Preview environments for pull requests",
+    leaders: "Vercel, Netlify, Render, Railway, Heroku Review Apps",
+    guildServer: "Webhook and preview concepts exist, but PR preview UX and cleanup policies need product hardening.",
+    status: "partial",
+  },
+  {
+    capability: "Autoscaling",
+    leaders: "DigitalOcean App Platform, Render, Heroku, Fly.io",
+    guildServer: "Current Docker-local flow runs containers reliably; autoscaling policy and replica orchestration should be next.",
+    status: "gap",
+  },
+  {
+    capability: "Global edge network and CDN",
+    leaders: "Vercel, Cloudflare, Netlify, Amplify",
+    guildServer: "Cloudflare/Traefik routing path exists, but global CDN, cache controls, and edge functions are not yet a platform layer.",
+    status: "gap",
+  },
+  {
+    capability: "Managed databases",
+    leaders: "Railway, Render, Heroku add-ons, DigitalOcean",
+    guildServer: "Database workflows exist; production readiness needs clear supported engines, backups, restores, and metrics.",
+    status: "partial",
+  },
+  {
+    capability: "Secrets and environment management",
+    leaders: "Vercel, Railway, Render, Netlify, Heroku",
+    guildServer: "Environment variables exist; needs stronger secret UX, variable scopes, previews, and audit-friendly rotation.",
+    status: "partial",
+  },
+  {
+    capability: "Team controls and audit trail",
+    leaders: "Vercel, AWS Amplify, Heroku Enterprise, Render",
+    guildServer: "Organizations, members, and audit surfaces exist; needs policy polish, SSO/SAML, and enterprise permission presets.",
+    status: "partial",
+  },
+  {
+    capability: "Marketplace/add-ons",
+    leaders: "Heroku Elements, Netlify integrations, Vercel Marketplace",
+    guildServer: "Not yet a product advantage. Start with first-party templates and database/service blueprints before marketplace.",
+    status: "gap",
+  },
+]
+
+const roadmap = [
+  "Repo import should feel like Vercel: connect GitHub, select repo, select branch, deploy without asking for build internals.",
+  "Every failed deploy needs a plain-English diagnosis: clone, build, runtime, health check, or missing environment variable.",
+  "Preview deployments need PR comments, automatic cleanup, and branch-specific variables.",
+  "Databases need restore verification, connection strings, backups, and usage metrics in the app detail view.",
+  "Autoscaling should start simple: min/max replicas, CPU or memory target, and clear monthly cost impact before deploy.",
+]
+
+const competitorNotes = [
+  { name: "Vercel", note: "Best-in-class frontend and Git workflow; strong DX, previews, edge platform.", price: "Pro from $20/user/mo" },
+  { name: "DigitalOcean App Platform", note: "Simple app platform with static and dynamic apps, autoscaling, and optional dedicated egress IPs.", price: "Dynamic apps from about $5/mo" },
+  { name: "AWS Amplify", note: "Strong AWS-native full-stack app path with auth, backend resources, and pay-as-you-go hosting.", price: "Free Tier, then usage-based" },
+  { name: "Cloudflare Pages + Workers", note: "Global static hosting plus serverless backend on Cloudflare's network.", price: "Pages free; Workers paid plan from $5/mo" },
+  { name: "Netlify", note: "Fast static/full-stack workflow with deploy previews, functions, AI agent hooks, and database product.", price: "Free; Personal from $9/mo" },
+  { name: "Render", note: "Broad service model: web services, private services, workers, cron, Postgres, IaC, autoscaling.", price: "Free workspace; paid compute varies" },
+  { name: "Railway", note: "Strong full-stack deployment, variables, databases, volumes, health checks, and rollback UX.", price: "Free/hobby usage-credit model" },
+  { name: "Heroku", note: "Mature dyno runtime, add-ons, pipelines, review apps, metrics, and enterprise isolation.", price: "Eco $5; Basic dyno $7/mo" },
+  { name: "Fly.io", note: "Global machines close to users, fast boots, multi-region primitives, and scale-to-zero patterns.", price: "Usage-based; support plans from $29/mo" },
+]
+
+function StatusMark({ status }: { status: string }) {
+  if (status === "has") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+        <Check className="h-3.5 w-3.5" />
+        Have
+      </span>
+    )
+  }
+
+  if (status === "partial") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+        <AlertTriangle className="h-3.5 w-3.5" />
+        Partial
+      </span>
+    )
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/25 bg-rose-500/10 px-2.5 py-1 text-xs font-medium text-rose-700 dark:text-rose-300">
+      <X className="h-3.5 w-3.5" />
+      Gap
+    </span>
+  )
+}
+
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      {/* Navigation */}
-      <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
+    <div className="min-h-screen overflow-hidden bg-[#f6f3ec] text-[#181713] dark:bg-[#090b0a] dark:text-[#f6f3ec]">
+      <header className="sticky top-0 z-50 border-b border-black/10 bg-[#f6f3ec]/85 backdrop-blur-xl dark:border-white/10 dark:bg-[#090b0a]/85">
         <div className="main-container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-8">
-            <Link href="/" className="flex items-center gap-2.5">
-              <img src="/logo.png" alt="GuildServer Logo" className="h-8 w-8 object-contain dark:invert" />
-              <span className="text-xl font-bold tracking-tight">GuildServer</span>
-            </Link>
-            <nav className="hidden md:flex items-center gap-6 text-sm">
-              <Link href="#features" className="text-muted-foreground hover:text-foreground transition-colors">
-                Features
-              </Link>
-              <Link href="#use-cases" className="text-muted-foreground hover:text-foreground transition-colors">
-                Use Cases
-              </Link>
-              <Link href="#templates" className="text-muted-foreground hover:text-foreground transition-colors">
-                Templates
-              </Link>
-              <Link href="#infrastructure" className="text-muted-foreground hover:text-foreground transition-colors">
-                Infrastructure
-              </Link>
-              <Link href="/pricing" className="text-muted-foreground hover:text-foreground transition-colors">
-                Pricing
-              </Link>
-            </nav>
-          </div>
+          <Link href="/" className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-black/10 bg-black text-white dark:border-white/15 dark:bg-white dark:text-black">
+              <Network className="h-4 w-4" />
+            </span>
+            <span className="text-lg font-semibold tracking-tight">GuildServer</span>
+          </Link>
+
+          <nav className="hidden items-center gap-6 text-sm text-black/60 dark:text-white/60 md:flex">
+            <Link href="#deploy" className="transition-colors hover:text-black dark:hover:text-white">Deploy</Link>
+            <Link href="#platform" className="transition-colors hover:text-black dark:hover:text-white">Platform</Link>
+            <Link href="#comparison" className="transition-colors hover:text-black dark:hover:text-white">Comparison</Link>
+            <Link href="#roadmap" className="transition-colors hover:text-black dark:hover:text-white">Roadmap</Link>
+            <Link href="/pricing" className="transition-colors hover:text-black dark:hover:text-white">Pricing</Link>
+          </nav>
+
           <div className="flex items-center gap-3">
             <ThemeToggle />
-            <Link href="/auth/login" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
-              Log In
+            <Link href="/auth/login" className="hidden text-sm text-black/60 transition-colors hover:text-black dark:text-white/60 dark:hover:text-white sm:block">
+              Log in
             </Link>
-            <Button asChild size="sm" className="gradient-bg border-0 text-white hover:opacity-90 transition-opacity">
-              <Link href="/auth/register">
-                Sign Up
-              </Link>
+            <Button asChild size="sm" className="rounded-full bg-[#181713] text-white hover:bg-[#181713]/90 dark:bg-white dark:text-black dark:hover:bg-white/90">
+              <Link href="/auth/register">Start deploying</Link>
             </Button>
           </div>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative overflow-hidden">
-        {/* Subtle dotted grid + restrained brand wash */}
-        <div className="absolute inset-0 bg-grid [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_60%,transparent_100%)]" />
-        <div className="absolute inset-0 hero-mesh" />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/60 to-background" />
+      <main>
+        <section className="relative">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(69,116,87,0.22),transparent_30%),radial-gradient(circle_at_80%_0%,rgba(221,137,74,0.18),transparent_34%),linear-gradient(90deg,rgba(0,0,0,0.055)_1px,transparent_1px),linear-gradient(rgba(0,0,0,0.055)_1px,transparent_1px)] bg-[size:auto,auto,56px_56px,56px_56px] dark:bg-[radial-gradient(circle_at_20%_20%,rgba(82,173,114,0.18),transparent_30%),radial-gradient(circle_at_80%_0%,rgba(221,137,74,0.14),transparent_34%),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px)]" />
+          <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#f6f3ec] to-transparent dark:from-[#090b0a]" />
 
-        <div className="relative main-container pt-20 pb-24 md:pt-32 md:pb-36">
-          <div className="text-center max-w-4xl mx-auto">
-            {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-border/50 bg-muted/50 backdrop-blur-sm text-sm text-muted-foreground mb-8">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+          <div className="main-container relative grid gap-12 py-20 md:grid-cols-[1.05fr_0.95fr] md:py-28 lg:py-32">
+            <div className="flex flex-col justify-center">
+              <Badge className="mb-7 w-fit rounded-full border-black/10 bg-white/70 px-3 py-1 text-black/70 shadow-sm dark:border-white/10 dark:bg-white/10 dark:text-white/75">
+                Private-cloud PaaS for Git, Docker, and VPS-backed teams
+              </Badge>
+
+              <h1 className="max-w-4xl text-5xl font-black leading-[0.95] tracking-[-0.06em] text-[#181713] dark:text-white md:text-7xl lg:text-8xl">
+                Ship like Vercel. Run it on your own cloud.
+              </h1>
+
+              <p className="mt-7 max-w-2xl text-lg leading-8 text-black/65 dark:text-white/65 md:text-xl">
+                GuildServer turns GitHub repositories, Docker images, databases, and VPS capacity into one deployment control plane. The goal is simple: pick a repo, choose a branch, deploy, and see exactly why it worked or failed.
+              </p>
+
+              <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+                <Button asChild size="lg" className="h-12 rounded-full bg-[#181713] px-7 text-white hover:bg-[#181713]/90 dark:bg-white dark:text-black dark:hover:bg-white/90">
+                  <Link href="/auth/register">
+                    Deploy from GitHub
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button asChild size="lg" variant="outline" className="h-12 rounded-full border-black/15 bg-white/50 px-7 text-[#181713] hover:bg-white dark:border-white/15 dark:bg-white/10 dark:text-white dark:hover:bg-white/15">
+                  <Link href="#comparison">See what to build next</Link>
+                </Button>
+              </div>
+
+              <div className="mt-10 grid max-w-2xl grid-cols-3 gap-3 text-sm">
+                <div className="rounded-2xl border border-black/10 bg-white/55 p-4 dark:border-white/10 dark:bg-white/[0.06]">
+                  <p className="text-2xl font-black tracking-tight">Git</p>
+                  <p className="mt-1 text-black/55 dark:text-white/55">Repo and branch deploys</p>
+                </div>
+                <div className="rounded-2xl border border-black/10 bg-white/55 p-4 dark:border-white/10 dark:bg-white/[0.06]">
+                  <p className="text-2xl font-black tracking-tight">Docker</p>
+                  <p className="mt-1 text-black/55 dark:text-white/55">Images and generated builds</p>
+                </div>
+                <div className="rounded-2xl border border-black/10 bg-white/55 p-4 dark:border-white/10 dark:bg-white/[0.06]">
+                  <p className="text-2xl font-black tracking-tight">VPS</p>
+                  <p className="mt-1 text-black/55 dark:text-white/55">Infrastructure you control</p>
+                </div>
+              </div>
+            </div>
+
+            <div id="deploy" className="relative">
+              <div className="absolute -inset-6 rounded-[2.5rem] bg-[#dd894a]/20 blur-3xl dark:bg-[#52ad72]/15" />
+              <div className="relative rounded-[2rem] border border-black/10 bg-[#12140f] p-4 shadow-2xl shadow-black/20 dark:border-white/10">
+                <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full bg-[#ff6b5f]" />
+                    <span className="h-3 w-3 rounded-full bg-[#f4bd4f]" />
+                    <span className="h-3 w-3 rounded-full bg-[#52ad72]" />
+                  </div>
+                  <span className="rounded-full border border-white/10 px-3 py-1 font-mono text-xs text-white/50">live deploy</span>
+                </div>
+
+                <div className="space-y-3">
+                  {deploySteps.map((step, index) => {
+                    const Icon = step.icon
+                    return (
+                      <div key={step.label} className="group grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-black">
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-white">{step.label}</p>
+                          <p className="mt-1 font-mono text-xs text-white/50">{step.value}</p>
+                        </div>
+                        <div className="flex items-center gap-2 text-white/40">
+                          <span className="font-mono text-xs">{String(index + 1).padStart(2, "0")}</span>
+                          <ChevronRight className="h-4 w-4" />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-[#52ad72]/25 bg-[#52ad72]/10 p-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-[#a8f0c0]">
+                    <CircleDot className="h-4 w-4 animate-pulse" />
+                    Deployment verified
+                  </div>
+                  <pre className="mt-3 overflow-x-auto text-xs leading-6 text-white/65">
+{`$ guildserver deploy github.com/team/api --branch main
+Detected Node.js backend
+Built image gs-api:8f31c2
+Health check passed on port 3000
+Live at api.guild-technologies.com`}
+                  </pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="platform" className="relative py-20 md:py-28">
+          <div className="main-container">
+            <div className="mb-12 grid gap-6 md:grid-cols-[0.8fr_1.2fr]">
+              <div>
+                <p className="text-sm font-bold uppercase tracking-[0.25em] text-[#457457] dark:text-[#8ad7a3]">Platform shape</p>
+                <h2 className="mt-3 text-4xl font-black tracking-[-0.04em] md:text-6xl">
+                  The product should be honest about what it does today.
+                </h2>
+              </div>
+              <p className="self-end text-lg leading-8 text-black/62 dark:text-white/62">
+                The best platforms reduce decisions. Vercel wins on Git flow, Railway wins on full-stack speed, Render wins on service breadth, and Fly.io wins on global machines. GuildServer should win by giving that guided workflow to teams who want private, self-hosted, or hybrid infrastructure.
+              </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {currentCapabilities.map((capability) => {
+                const Icon = capability.icon
+                return (
+                  <div key={capability.title} className="rounded-[1.5rem] border border-black/10 bg-white/60 p-6 shadow-sm transition-transform hover:-translate-y-1 dark:border-white/10 dark:bg-white/[0.055]">
+                    <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#181713] text-white dark:bg-white dark:text-black">
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <h3 className="text-xl font-bold tracking-tight">{capability.title}</h3>
+                    <p className="mt-3 leading-7 text-black/60 dark:text-white/60">{capability.text}</p>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </section>
+
+        <section className="border-y border-black/10 bg-[#181713] py-20 text-white dark:border-white/10 md:py-28">
+          <div className="main-container">
+            <div className="grid gap-8 md:grid-cols-[0.9fr_1.1fr]">
+              <div>
+                <p className="text-sm font-bold uppercase tracking-[0.25em] text-[#dd894a]">Borrow the right lessons</p>
+                <h2 className="mt-3 text-4xl font-black tracking-[-0.04em] md:text-6xl">
+                  What the market already taught us.
+                </h2>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {competitorNotes.map((competitor) => (
+                  <div key={competitor.name} className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="font-bold">{competitor.name}</h3>
+                      <span className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] text-white/65">{competitor.price}</span>
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-white/60">{competitor.note}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="comparison" className="py-20 md:py-28">
+          <div className="main-container">
+            <div className="mx-auto mb-12 max-w-3xl text-center">
+              <p className="text-sm font-bold uppercase tracking-[0.25em] text-[#457457] dark:text-[#8ad7a3]">Gap matrix</p>
+              <h2 className="mt-3 text-4xl font-black tracking-[-0.04em] md:text-6xl">
+                What they have, what GuildServer needs.
+              </h2>
+              <p className="mt-5 text-lg leading-8 text-black/62 dark:text-white/62">
+                This should stay visible on the landing page for now. It creates trust, guides the roadmap, and makes the product feel serious.
+              </p>
+            </div>
+
+            <div className="overflow-hidden rounded-[1.75rem] border border-black/10 bg-white/70 shadow-sm dark:border-white/10 dark:bg-white/[0.055]">
+              <div className="hidden grid-cols-[1fr_1fr_1.35fr_110px] gap-0 border-b border-black/10 bg-black/[0.035] px-5 py-4 text-xs font-bold uppercase tracking-[0.18em] text-black/50 dark:border-white/10 dark:bg-white/[0.045] dark:text-white/45 md:grid">
+                <span>Capability</span>
+                <span>Market leaders</span>
+                <span>GuildServer position</span>
+                <span>Status</span>
+              </div>
+              {comparisonRows.map((row) => (
+                <div key={row.capability} className="grid gap-4 border-b border-black/10 px-5 py-5 last:border-b-0 dark:border-white/10 md:grid-cols-[1fr_1fr_1.35fr_110px] md:items-center">
+                  <div>
+                    <p className="font-bold">{row.capability}</p>
+                  </div>
+                  <p className="text-sm leading-6 text-black/58 dark:text-white/58">{row.leaders}</p>
+                  <p className="text-sm leading-6 text-black/68 dark:text-white/68">{row.guildServer}</p>
+                  <StatusMark status={row.status} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="roadmap" className="relative overflow-hidden border-y border-black/10 bg-[#ede7da] py-20 dark:border-white/10 dark:bg-[#10130f] md:py-28">
+          <div className="absolute right-0 top-0 h-72 w-72 rounded-full bg-[#dd894a]/20 blur-3xl" />
+          <div className="main-container relative grid gap-10 md:grid-cols-[0.85fr_1.15fr]">
+            <div>
+              <Badge className="rounded-full border-black/10 bg-white/70 px-3 py-1 text-black/70 dark:border-white/10 dark:bg-white/10 dark:text-white/70">
+                Product priority
+              </Badge>
+              <h2 className="mt-5 text-4xl font-black tracking-[-0.04em] md:text-6xl">
+                Make GitHub deploys feel boring.
+              </h2>
+              <p className="mt-5 text-lg leading-8 text-black/62 dark:text-white/62">
+                Boring is the compliment: no 404s, no guessed commands, no hidden build failure, no unclear next step.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {roadmap.map((item, index) => (
+                <div key={item} className="grid grid-cols-[auto_1fr] gap-4 rounded-2xl border border-black/10 bg-white/65 p-5 dark:border-white/10 dark:bg-white/[0.06]">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#181713] font-mono text-xs font-bold text-white dark:bg-white dark:text-black">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <p className="leading-7 text-black/70 dark:text-white/70">{item}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="py-20 md:py-28">
+          <div className="main-container">
+            <div className="grid overflow-hidden rounded-[2rem] border border-black/10 bg-[#181713] text-white shadow-2xl shadow-black/15 dark:border-white/10 md:grid-cols-[1fr_0.8fr]">
+              <div className="p-8 md:p-12">
+                <div className="mb-6 flex items-center gap-2 text-[#8ad7a3]">
+                  <Sparkles className="h-5 w-5" />
+                  <span className="text-sm font-bold uppercase tracking-[0.2em]">Next action</span>
+                </div>
+                <h2 className="max-w-2xl text-4xl font-black tracking-[-0.04em] md:text-6xl">
+                  Start with the flow users already expect.
+                </h2>
+                <p className="mt-5 max-w-2xl text-lg leading-8 text-white/62">
+                  Connect GitHub, select a repository, pick a branch, deploy, and get a readable result. Once that is perfect, add previews, autoscaling, and databases as deliberate upgrades.
+                </p>
+                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                  <Button asChild size="lg" className="h-12 rounded-full bg-white px-7 text-black hover:bg-white/90">
+                    <Link href="/auth/register">
+                      Connect GitHub
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                  <Button asChild size="lg" variant="outline" className="h-12 rounded-full border-white/15 bg-transparent px-7 text-white hover:bg-white/10 hover:text-white">
+                    <Link href="/dashboard/templates">Browse templates</Link>
+                  </Button>
+                </div>
+              </div>
+              <div className="border-t border-white/10 bg-white/[0.04] p-8 md:border-l md:border-t-0 md:p-10">
+                <div className="space-y-4">
+                  {[
+                    ["Clone", "branch fallback, private repo auth"],
+                    ["Build", "detected stack and generated Dockerfile"],
+                    ["Run", "container logs and health check"],
+                    ["Explain", "plain-English failure reason"],
+                  ].map(([label, detail]) => (
+                    <div key={label} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <div className="flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-[#dd894a]" />
+                        <p className="font-bold">{label}</p>
+                      </div>
+                      <p className="mt-2 text-sm text-white/55">{detail}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer className="border-t border-black/10 bg-[#f6f3ec] py-10 dark:border-white/10 dark:bg-[#090b0a]">
+        <div className="main-container flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#181713] text-white dark:bg-white dark:text-black">
+                <Cloud className="h-4 w-4" />
               </span>
-              Enterprise Platform as a Service
+              <span className="font-bold">GuildServer</span>
             </div>
-
-            {/* Headline */}
-            <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-[1.1] mb-6">
-              Deploy and scale
-              <br />
-              <span className="gradient-text">with confidence</span>
-            </h1>
-
-            <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
-              GuildServer provides enterprise-grade cloud infrastructure to build, deploy,
-              and scale applications. From Docker containers to managed databases — everything
-              you need in one platform.
-            </p>
-
-            {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row gap-3 justify-center mb-20">
-              <Button size="lg" asChild className="h-12 px-8 text-base gradient-bg border-0 text-white hover:opacity-90 transition-opacity shadow-lg shadow-[var(--gradient-1)]/20">
-                <Link href="/auth/register">
-                  Start Deploying
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-              <Button size="lg" variant="outline" asChild className="h-12 px-8 text-base backdrop-blur-sm">
-                <Link href="#features">
-                  Get a Demo
-                </Link>
-              </Button>
-            </div>
-
-            {/* Terminal Preview */}
-            <div className="max-w-3xl mx-auto">
-              <div className="rounded-2xl overflow-hidden shadow-2xl dark:shadow-[0_0_60px_-15px_var(--gradient-1)] border border-border/50 bg-[#0a0a0a]">
-                <div className="flex items-center gap-2 px-4 py-3 bg-[#111] border-b border-white/[0.06]">
-                  <div className="flex gap-1.5">
-                    <div className="w-3 h-3 rounded-full bg-[#ff5f57]" />
-                    <div className="w-3 h-3 rounded-full bg-[#febc2e]" />
-                    <div className="w-3 h-3 rounded-full bg-[#28c840]" />
-                  </div>
-                  <span className="ml-2 text-xs text-white/30 font-mono">terminal</span>
-                </div>
-                <div className="p-6 font-mono text-sm leading-7">
-                  <div>
-                    <span className="text-white/40">~</span>
-                    <span className="text-emerald-400 ml-2">$</span>
-                    <span className="text-white ml-2">guildserver deploy --image nginx:alpine</span>
-                  </div>
-                  <div className="text-white/40 pl-4">▸ Creating application...</div>
-                  <div className="text-white/40 pl-4">▸ Pulling image nginx:alpine</div>
-                  <div className="text-white/40 pl-4">▸ Starting container...</div>
-                  <div className="text-emerald-400 pl-4">✓ Deployed to <span className="underline decoration-emerald-400/30">my-app.guildserver.dev</span></div>
-                  <div className="mt-3">
-                    <span className="text-white/40">~</span>
-                    <span className="text-emerald-400 ml-2">$</span>
-                    <span className="text-white ml-2">guildserver status</span>
-                  </div>
-                  <div className="text-violet-400 pl-4">● my-app          running    2m ago    nginx:alpine</div>
-                  <div className="text-sky-400 pl-4">● api-backend      running    1h ago    node:20-alpine</div>
-                  <div className="text-pink-400 pl-4">● postgres-db      running    3d ago    postgres:16</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Metrics / Social Proof Section */}
-      <section className="border-y border-border/50 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-[var(--gradient-1)]/[0.03] via-[var(--gradient-3)]/[0.03] to-[var(--gradient-5)]/[0.03]" />
-        <div className="relative main-container py-16">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
-            <div className="text-center">
-              <div className="font-mono tabular-nums text-4xl md:text-5xl font-semibold tracking-tight mb-2 text-foreground">99.9%</div>
-              <p className="text-sm text-muted-foreground">Uptime SLA</p>
-            </div>
-            <div className="text-center">
-              <div className="font-mono tabular-nums text-4xl md:text-5xl font-semibold tracking-tight mb-2 text-foreground">&lt;2s</div>
-              <p className="text-sm text-muted-foreground">Average Deploy Time</p>
-            </div>
-            <div className="text-center">
-              <div className="font-mono tabular-nums text-4xl md:text-5xl font-semibold tracking-tight mb-2 text-foreground">50+</div>
-              <p className="text-sm text-muted-foreground">Pre-built Templates</p>
-            </div>
-            <div className="text-center">
-              <div className="font-mono tabular-nums text-4xl md:text-5xl font-semibold tracking-tight mb-2 text-foreground">24/7</div>
-              <p className="text-sm text-muted-foreground">Monitoring & Alerts</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Feature Cards Section */}
-      <section id="features" className="py-24 md:py-32 relative">
-        <div className="absolute top-0 right-[20%] w-[500px] h-[500px] rounded-full bg-[var(--gradient-2)] opacity-[0.04] blur-[120px]" />
-        <div className="relative main-container">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">
-              Your apps, <span className="gradient-text">delivered</span>
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Everything you need to build, deploy, and manage enterprise applications
-              in one unified platform.
+            <p className="mt-3 max-w-md text-sm leading-6 text-black/55 dark:text-white/55">
+              A private-cloud deployment platform for teams that want excellent Git workflow without giving up infrastructure control.
             </p>
           </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* Feature 1 */}
-            <div className="group relative rounded-2xl border border-border/50 bg-card p-8 hover:shadow-xl hover:shadow-[var(--gradient-1)]/5 transition-all duration-500 hover:-translate-y-1 overflow-hidden">
-              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-[var(--gradient-1)]/[0.03] to-transparent" />
-              <div className="relative">
-                <div className="mb-4 inline-flex p-3 rounded-xl bg-gradient-to-br from-[var(--gradient-1)]/10 to-[var(--gradient-2)]/10">
-                  <Rocket className="h-6 w-6 text-[var(--gradient-1)]" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">Instant Deployments</h3>
-                <p className="text-muted-foreground leading-relaxed mb-4">
-                  Deploy from Docker images or Git repositories in seconds.
-                  Zero-downtime deployments with automatic rollbacks.
-                </p>
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    Zero-downtime deployments
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    Auto-scaling containers
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    Instant rollbacks
-                  </li>
-                </ul>
-              </div>
-            </div>
-
-            {/* Feature 2 */}
-            <div className="group relative rounded-2xl border border-border/50 bg-card p-8 hover:shadow-xl hover:shadow-[var(--gradient-2)]/5 transition-all duration-500 hover:-translate-y-1 overflow-hidden">
-              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-[var(--gradient-2)]/[0.03] to-transparent" />
-              <div className="relative">
-                <div className="mb-4 inline-flex p-3 rounded-xl bg-gradient-to-br from-[var(--gradient-2)]/10 to-[var(--gradient-3)]/10">
-                  <Shield className="h-6 w-6 text-[var(--gradient-2)]" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">Enterprise Security</h3>
-                <p className="text-muted-foreground leading-relaxed mb-4">
-                  Bank-grade security with compliance frameworks, audit trails,
-                  and role-based access control.
-                </p>
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    SOC2 & HIPAA compliance
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    End-to-end encryption
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    RBAC & audit logging
-                  </li>
-                </ul>
-              </div>
-            </div>
-
-            {/* Feature 3 */}
-            <div className="group relative rounded-2xl border border-border/50 bg-card p-8 hover:shadow-xl hover:shadow-[var(--gradient-3)]/5 transition-all duration-500 hover:-translate-y-1 overflow-hidden">
-              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-[var(--gradient-3)]/[0.03] to-transparent" />
-              <div className="relative">
-                <div className="mb-4 inline-flex p-3 rounded-xl bg-gradient-to-br from-[var(--gradient-orange-1)]/10 to-[var(--gradient-orange-2)]/10">
-                  <Database className="h-6 w-6 text-[var(--gradient-orange-1)]" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">Managed Databases</h3>
-                <p className="text-muted-foreground leading-relaxed mb-4">
-                  Provision production-ready databases with automated backups,
-                  scaling, and high availability.
-                </p>
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    PostgreSQL, MySQL, Redis
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    Automated daily backups
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    High availability clusters
-                  </li>
-                </ul>
-              </div>
-            </div>
-
-            {/* Feature 4 */}
-            <div className="group relative rounded-2xl border border-border/50 bg-card p-8 hover:shadow-xl hover:shadow-[var(--gradient-blue-1)]/5 transition-all duration-500 hover:-translate-y-1 overflow-hidden">
-              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-[var(--gradient-blue-1)]/[0.03] to-transparent" />
-              <div className="relative">
-                <div className="mb-4 inline-flex p-3 rounded-xl bg-gradient-to-br from-[var(--gradient-blue-1)]/10 to-[var(--gradient-blue-2)]/10">
-                  <BarChart3 className="h-6 w-6 text-[var(--gradient-blue-1)]" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">Real-time Monitoring</h3>
-                <p className="text-muted-foreground leading-relaxed mb-4">
-                  Comprehensive observability with metrics, live logs, and
-                  intelligent alerting built in.
-                </p>
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    CPU & memory metrics
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    Live log streaming
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    Custom alert rules
-                  </li>
-                </ul>
-              </div>
-            </div>
-
-            {/* Feature 5 */}
-            <div className="group relative rounded-2xl border border-border/50 bg-card p-8 hover:shadow-xl hover:shadow-[var(--gradient-green-1)]/5 transition-all duration-500 hover:-translate-y-1 overflow-hidden">
-              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-[var(--gradient-green-1)]/[0.03] to-transparent" />
-              <div className="relative">
-                <div className="mb-4 inline-flex p-3 rounded-xl bg-gradient-to-br from-[var(--gradient-green-1)]/10 to-[var(--gradient-green-2)]/10">
-                  <GitBranch className="h-6 w-6 text-[var(--gradient-green-1)]" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">Git Integration</h3>
-                <p className="text-muted-foreground leading-relaxed mb-4">
-                  Connect your repository and deploy on every push. Preview
-                  deployments for every pull request.
-                </p>
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    GitHub & GitLab support
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    Auto-deploy on push
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    Preview environments
-                  </li>
-                </ul>
-              </div>
-            </div>
-
-            {/* Feature 6 */}
-            <div className="group relative rounded-2xl border border-border/50 bg-card p-8 hover:shadow-xl hover:shadow-[var(--gradient-4)]/5 transition-all duration-500 hover:-translate-y-1 overflow-hidden">
-              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-[var(--gradient-4)]/[0.03] to-transparent" />
-              <div className="relative">
-                <div className="mb-4 inline-flex p-3 rounded-xl bg-gradient-to-br from-[var(--gradient-4)]/10 to-[var(--gradient-5)]/10">
-                  <Users className="h-6 w-6 text-[var(--gradient-4)]" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">Team Collaboration</h3>
-                <p className="text-muted-foreground leading-relaxed mb-4">
-                  Invite your team, manage roles, and collaborate on projects
-                  with built-in workflows.
-                </p>
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    Organization management
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    Role-based permissions
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    Activity audit trail
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Use Cases Section */}
-      <section id="use-cases" className="py-24 md:py-32 border-y border-border/50 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-[var(--gradient-1)]/[0.02] via-transparent to-[var(--gradient-3)]/[0.02]" />
-        <div className="relative main-container">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">
-              Built for <span className="gradient-text-purple">every workload</span>
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Whether you&apos;re deploying containers, APIs, databases, or full-stack
-              applications — GuildServer handles it all.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {/* Use Case 1 */}
-            <div className="relative rounded-2xl border border-border/50 bg-card overflow-hidden group hover:shadow-lg transition-all duration-300">
-              <div className="absolute inset-0 bg-gradient-to-br from-[var(--gradient-blue-1)]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative p-8">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2.5 rounded-xl bg-gradient-to-br from-[var(--gradient-blue-1)]/15 to-[var(--gradient-blue-2)]/15">
-                    <Box className="h-5 w-5 text-[var(--gradient-blue-1)]" />
-                  </div>
-                  <h3 className="text-lg font-semibold">Docker Containers</h3>
-                </div>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-                  Deploy any Docker image with a single command. Automatic port mapping,
-                  health checks, and traffic routing included.
-                </p>
-                <div className="rounded-lg bg-[#0a0a0a] p-4 font-mono text-xs text-white/70 border border-white/[0.06]">
-                  <div><span className="text-emerald-400">$</span> guildserver deploy \</div>
-                  <div className="pl-4">--image nginx:alpine \</div>
-                  <div className="pl-4">--port 80</div>
-                  <div className="text-emerald-400 mt-1">✓ Live at my-app.guild.dev</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Use Case 2 */}
-            <div className="relative rounded-2xl border border-border/50 bg-card overflow-hidden group hover:shadow-lg transition-all duration-300">
-              <div className="absolute inset-0 bg-gradient-to-br from-[var(--gradient-2)]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative p-8">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2.5 rounded-xl bg-gradient-to-br from-[var(--gradient-2)]/15 to-[var(--gradient-3)]/15">
-                    <Code2 className="h-5 w-5 text-[var(--gradient-2)]" />
-                  </div>
-                  <h3 className="text-lg font-semibold">Full-Stack Apps</h3>
-                </div>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-                  Push your code and we build it. Auto-detect Node.js, Python, Go, and more.
-                  Dockerfile support for custom builds.
-                </p>
-                <div className="rounded-lg bg-[#0a0a0a] p-4 font-mono text-xs text-white/70 border border-white/[0.06]">
-                  <div><span className="text-emerald-400">$</span> git push guild main</div>
-                  <div className="text-white/40 mt-1">▸ Detecting Node.js project</div>
-                  <div className="text-white/40">▸ Building with npm...</div>
-                  <div className="text-emerald-400">✓ Deployed commit a3f2c1d</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Use Case 3 */}
-            <div className="relative rounded-2xl border border-border/50 bg-card overflow-hidden group hover:shadow-lg transition-all duration-300">
-              <div className="absolute inset-0 bg-gradient-to-br from-[var(--gradient-orange-1)]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative p-8">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2.5 rounded-xl bg-gradient-to-br from-[var(--gradient-orange-1)]/15 to-[var(--gradient-orange-2)]/15">
-                    <Database className="h-5 w-5 text-[var(--gradient-orange-1)]" />
-                  </div>
-                  <h3 className="text-lg font-semibold">Managed Databases</h3>
-                </div>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-                  Provision PostgreSQL, MySQL, Redis, or MongoDB instances.
-                  Automatic backups, scaling, and connection pooling.
-                </p>
-                <div className="rounded-lg bg-[#0a0a0a] p-4 font-mono text-xs text-white/70 border border-white/[0.06]">
-                  <div><span className="text-emerald-400">$</span> guildserver db create \</div>
-                  <div className="pl-4">--type postgres \</div>
-                  <div className="pl-4">--name my-db</div>
-                  <div className="text-emerald-400 mt-1">✓ postgresql://my-db.guild.dev</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Use Case 4 */}
-            <div className="relative rounded-2xl border border-border/50 bg-card overflow-hidden group hover:shadow-lg transition-all duration-300">
-              <div className="absolute inset-0 bg-gradient-to-br from-[var(--gradient-green-1)]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative p-8">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2.5 rounded-xl bg-gradient-to-br from-[var(--gradient-green-1)]/15 to-[var(--gradient-green-2)]/15">
-                    <Server className="h-5 w-5 text-[var(--gradient-green-1)]" />
-                  </div>
-                  <h3 className="text-lg font-semibold">APIs & Microservices</h3>
-                </div>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-                  Deploy REST or GraphQL APIs with automatic TLS, load balancing,
-                  and service discovery across your infrastructure.
-                </p>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Check className="h-4 w-4 text-emerald-500" />
-                  <span>Auto-TLS with Let&apos;s Encrypt</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Use Case 5 */}
-            <div className="relative rounded-2xl border border-border/50 bg-card overflow-hidden group hover:shadow-lg transition-all duration-300">
-              <div className="absolute inset-0 bg-gradient-to-br from-[var(--gradient-5)]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative p-8">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2.5 rounded-xl bg-gradient-to-br from-[var(--gradient-5)]/15 to-[var(--gradient-4)]/15">
-                    <Monitor className="h-5 w-5 text-[var(--gradient-5)]" />
-                  </div>
-                  <h3 className="text-lg font-semibold">Monitoring Stacks</h3>
-                </div>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-                  Deploy Grafana, Prometheus, or custom dashboards in one click.
-                  Built-in metrics collection for all your apps.
-                </p>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Check className="h-4 w-4 text-emerald-500" />
-                  <span>Real-time CPU, memory & network</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Use Case 6 */}
-            <div className="relative rounded-2xl border border-border/50 bg-card overflow-hidden group hover:shadow-lg transition-all duration-300">
-              <div className="absolute inset-0 bg-gradient-to-br from-[var(--gradient-1)]/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative p-8">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2.5 rounded-xl bg-gradient-to-br from-[var(--gradient-1)]/15 to-[var(--gradient-2)]/15">
-                    <Workflow className="h-5 w-5 text-[var(--gradient-1)]" />
-                  </div>
-                  <h3 className="text-lg font-semibold">CI/CD Pipelines</h3>
-                </div>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-                  Automated build and deploy pipelines. Branch-based previews,
-                  approval gates, and deployment protection rules.
-                </p>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Check className="h-4 w-4 text-emerald-500" />
-                  <span>Preview deploys for every PR</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Template Gallery Section */}
-      <section id="templates" className="py-24 md:py-32 relative">
-        <div className="absolute bottom-0 left-[20%] w-[400px] h-[400px] rounded-full bg-[var(--gradient-3)] opacity-[0.03] blur-[100px]" />
-        <div className="relative main-container">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">
-              Start with a <span className="gradient-text-blue">template</span>
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Deploy production-ready applications in seconds. Choose from our curated
-              collection of templates.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {[
-              { name: "Nginx", icon: "🌐", desc: "Web Server" },
-              { name: "Node.js", icon: "⬢", desc: "Runtime" },
-              { name: "Python", icon: "🐍", desc: "Framework" },
-              { name: "PostgreSQL", icon: "🐘", desc: "Database" },
-              { name: "Redis", icon: "◆", desc: "Cache" },
-              { name: "Go", icon: "🔷", desc: "Runtime" },
-              { name: "MySQL", icon: "🗄️", desc: "Database" },
-              { name: "MongoDB", icon: "🍃", desc: "Database" },
-              { name: "Grafana", icon: "📊", desc: "Monitoring" },
-              { name: "Caddy", icon: "🔒", desc: "Web Server" },
-              { name: "RabbitMQ", icon: "🐇", desc: "Messaging" },
-              { name: "MinIO", icon: "📦", desc: "Storage" },
-            ].map((template) => (
-              <Link
-                key={template.name}
-                href="/dashboard/templates"
-                className="group flex flex-col items-center gap-3 rounded-xl border border-border/50 bg-card p-6 hover:shadow-lg hover:shadow-[var(--gradient-1)]/5 hover:-translate-y-1 transition-all duration-300 hover:border-[var(--gradient-1)]/20"
-              >
-                <span className="text-3xl">{template.icon}</span>
-                <div className="text-center">
-                  <p className="font-medium text-sm">{template.name}</p>
-                  <p className="text-xs text-muted-foreground">{template.desc}</p>
-                </div>
-              </Link>
-            ))}
-          </div>
-
-          <div className="text-center mt-10">
-            <Button variant="outline" size="lg" asChild className="backdrop-blur-sm">
-              <Link href="/dashboard/templates">
-                Browse All Templates
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {/* Infrastructure Section */}
-      <section id="infrastructure" className="py-24 md:py-32 border-y border-border/50 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-tl from-[var(--gradient-blue-1)]/[0.02] via-transparent to-[var(--gradient-2)]/[0.02]" />
-        <div className="relative main-container">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">
-              Enterprise <span className="gradient-text">infrastructure</span>
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Built on Docker and Traefik for reliability, performance, and scale.
-              Every deployment is production-grade from day one.
-            </p>
-          </div>
-
-          {/* Infrastructure Grid */}
-          <div className="grid md:grid-cols-2 gap-8 mb-16">
-            {/* Container Orchestration */}
-            <div className="rounded-2xl border border-border/50 bg-card p-8 md:p-10 relative overflow-hidden group">
-              <div className="absolute inset-0 bg-gradient-to-br from-[var(--gradient-1)]/[0.03] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              <div className="relative">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-3 rounded-xl bg-gradient-to-br from-[var(--gradient-1)]/10 to-[var(--gradient-2)]/10">
-                    <Layers className="h-6 w-6 text-[var(--gradient-1)]" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-semibold">Container Orchestration</h3>
-                    <p className="text-sm text-muted-foreground">Docker-powered compute</p>
-                  </div>
-                </div>
-                <p className="text-muted-foreground leading-relaxed mb-6">
-                  Every application runs in isolated Docker containers with automatic resource
-                  management, health checks, and restart policies. Scale horizontally with a single command.
-                </p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Cpu className="h-4 w-4 text-muted-foreground" />
-                    <span>CPU isolation</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <HardDrive className="h-4 w-4 text-muted-foreground" />
-                    <span>Persistent volumes</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Activity className="h-4 w-4 text-muted-foreground" />
-                    <span>Health monitoring</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Zap className="h-4 w-4 text-muted-foreground" />
-                    <span>Auto-restart</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Reverse Proxy */}
-            <div className="rounded-2xl border border-border/50 bg-card p-8 md:p-10 relative overflow-hidden group">
-              <div className="absolute inset-0 bg-gradient-to-br from-[var(--gradient-blue-1)]/[0.03] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              <div className="relative">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-3 rounded-xl bg-gradient-to-br from-[var(--gradient-blue-1)]/10 to-[var(--gradient-blue-2)]/10">
-                    <Globe className="h-6 w-6 text-[var(--gradient-blue-1)]" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-semibold">Smart Traffic Routing</h3>
-                    <p className="text-sm text-muted-foreground">Traefik-powered edge</p>
-                  </div>
-                </div>
-                <p className="text-muted-foreground leading-relaxed mb-6">
-                  Automatic TLS certificates, load balancing, and traffic routing for every
-                  deployment. Custom domains with Let&apos;s Encrypt SSL in minutes.
-                </p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Lock className="h-4 w-4 text-muted-foreground" />
-                    <span>Auto SSL/TLS</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Globe className="h-4 w-4 text-muted-foreground" />
-                    <span>Custom domains</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Server className="h-4 w-4 text-muted-foreground" />
-                    <span>Load balancing</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Cloud className="h-4 w-4 text-muted-foreground" />
-                    <span>Edge caching</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* CLI Feature Highlight */}
-          <div className="rounded-2xl border border-border/50 bg-card overflow-hidden relative">
-            <div className="absolute inset-0 bg-gradient-to-r from-[var(--gradient-1)]/[0.02] to-[var(--gradient-3)]/[0.02]" />
-            <div className="relative grid md:grid-cols-2">
-              <div className="p-8 md:p-10 flex flex-col justify-center">
-                <div className="inline-flex items-center gap-2 mb-4">
-                  <Terminal className="h-5 w-5 text-[var(--gradient-1)]" />
-                  <span className="text-sm font-medium gradient-text">GuildServer CLI</span>
-                </div>
-                <h3 className="text-2xl font-bold mb-4">Deploy from your terminal</h3>
-                <p className="text-muted-foreground leading-relaxed mb-6">
-                  The GuildServer CLI gives you full control over your infrastructure.
-                  Login, deploy, manage environment variables, stream logs, and more —
-                  all from your terminal.
-                </p>
-                <div className="space-y-3 text-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-lg gradient-bg-purple flex items-center justify-center text-xs font-mono font-bold text-white">1</div>
-                    <code className="text-muted-foreground">npm install -g @guildserver/cli</code>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-lg gradient-bg-purple flex items-center justify-center text-xs font-mono font-bold text-white">2</div>
-                    <code className="text-muted-foreground">guildserver login</code>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-lg gradient-bg-purple flex items-center justify-center text-xs font-mono font-bold text-white">3</div>
-                    <code className="text-muted-foreground">guildserver deploy</code>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-[#0a0a0a] p-8 md:p-10 font-mono text-sm leading-7 border-l border-white/[0.06]">
-                <div>
-                  <span className="text-emerald-400">$</span>
-                  <span className="text-white ml-2">guildserver login</span>
-                </div>
-                <div className="text-white/40 pl-2">✓ Logged in as Admin User</div>
-                <div className="text-white/40 pl-2">✓ Organization: MyTeam</div>
-                <div className="mt-4">
-                  <span className="text-emerald-400">$</span>
-                  <span className="text-white ml-2">guildserver apps list</span>
-                </div>
-                <div className="text-violet-400 pl-2">┌──────────┬─────────┬───────┐</div>
-                <div className="text-violet-400 pl-2">│ Name     │ Status  │ Image │</div>
-                <div className="text-violet-400 pl-2">├──────────┼─────────┼───────┤</div>
-                <div className="text-violet-400 pl-2">│ my-api   │ running │ node  │</div>
-                <div className="text-violet-400 pl-2">│ web-app  │ running │ nginx │</div>
-                <div className="text-violet-400 pl-2">└──────────┴─────────┴───────┘</div>
-                <div className="mt-4">
-                  <span className="text-emerald-400">$</span>
-                  <span className="text-white ml-2">guildserver logs my-api -f</span>
-                </div>
-                <div className="text-white/40 pl-2">📡 Streaming logs...</div>
-                <div className="text-sky-400 pl-2">[INFO] Server started on :3000</div>
-                <div className="text-sky-400 pl-2">[INFO] Ready for connections</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* How It Works Section */}
-      <section className="py-24 md:py-32 relative">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-[var(--gradient-2)] opacity-[0.03] blur-[120px]" />
-        <div className="relative main-container">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">
-              Deploy in <span className="gradient-text-purple">three steps</span>
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Get from zero to production in under a minute.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            <div className="text-center group">
-              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl gradient-bg text-white text-2xl font-bold shadow-lg shadow-[var(--gradient-1)]/20 group-hover:shadow-[var(--gradient-1)]/40 transition-shadow">
-                1
-              </div>
-              <h3 className="text-lg font-semibold mb-2">Connect</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Sign up and create your organization. Connect a Git repo or choose a Docker image.
-              </p>
-            </div>
-            <div className="text-center group">
-              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl gradient-bg-purple text-white text-2xl font-bold shadow-lg shadow-[var(--gradient-2)]/20 group-hover:shadow-[var(--gradient-2)]/40 transition-shadow">
-                2
-              </div>
-              <h3 className="text-lg font-semibold mb-2">Configure</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Set environment variables, choose your resources, and configure your deployment settings.
-              </p>
-            </div>
-            <div className="text-center group">
-              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl gradient-bg-blue text-white text-2xl font-bold shadow-lg shadow-[var(--gradient-blue-1)]/20 group-hover:shadow-[var(--gradient-blue-1)]/40 transition-shadow">
-                3
-              </div>
-              <h3 className="text-lg font-semibold mb-2">Deploy</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Click deploy or push to Git. Your app is live with TLS, monitoring, and logging.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing Teaser */}
-      <section id="pricing" className="py-24 md:py-32 border-y border-border/50 relative overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] rounded-full bg-[var(--gradient-1)] opacity-[0.04] blur-[120px]" />
-        <div className="relative main-container">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">
-              Pricing that <span className="gradient-text">scales with you</span>
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Pay only for what you need — a managed platform to ship in seconds, or raw VPS power you control.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-            {/* Managed Platform */}
-            <div className="relative rounded-2xl border bg-card p-8 flex flex-col">
-              <div className="flex items-center gap-2 mb-2">
-                <Rocket className="h-5 w-5 text-[var(--gradient-1)]" />
-                <h3 className="text-xl font-bold">Managed Platform</h3>
-              </div>
-              <p className="text-sm text-muted-foreground mb-6">
-                Deploy from Git or Docker with databases, domains, SSL, and monitoring handled for you.
-              </p>
-              <p className="text-4xl font-bold mb-1">
-                $0<span className="text-lg font-normal text-muted-foreground">/mo to start</span>
-              </p>
-              <p className="text-sm text-muted-foreground mb-6">Hobby free · Starter $12 · Pro $29 · Enterprise custom</p>
-              <ul className="space-y-2 text-sm mb-8 flex-1">
-                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-green-500" /> Git &amp; Docker deploys, previews</li>
-                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-green-500" /> Managed databases &amp; backups</li>
-                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-green-500" /> Custom domains with auto SSL</li>
-                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-green-500" /> Team collaboration &amp; monitoring</li>
-              </ul>
-              <Button asChild size="lg" className="w-full gradient-bg border-0 text-white hover:opacity-90">
-                <Link href="/pricing">View platform plans<ArrowRight className="ml-2 h-4 w-4" /></Link>
-              </Button>
-            </div>
-
-            {/* VPS Instances */}
-            <div className="relative rounded-2xl border bg-card p-8 flex flex-col">
-              <div className="flex items-center gap-2 mb-2">
-                <Server className="h-5 w-5 text-[var(--gradient-2)]" />
-                <h3 className="text-xl font-bold">VPS Instances</h3>
-              </div>
-              <p className="text-sm text-muted-foreground mb-6">
-                Raw, sized compute — dedicated vCPU, RAM, and NVMe storage you fully control.
-              </p>
-              <p className="text-4xl font-bold mb-1">
-                $5<span className="text-lg font-normal text-muted-foreground">/mo</span>
-              </p>
-              <p className="text-sm text-muted-foreground mb-6">Shared from $5 · Dedicated from $42 · hourly or monthly</p>
-              <ul className="space-y-2 text-sm mb-8 flex-1">
-                <li className="flex items-center gap-2"><Cpu className="h-4 w-4 text-green-500" /> Up to 16 vCPU / 32 GB RAM</li>
-                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-green-500" /> NVMe storage &amp; generous transfer</li>
-                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-green-500" /> Hourly billing capped at monthly</li>
-                <li className="flex items-center gap-2"><Check className="h-4 w-4 text-green-500" /> Block storage, backups &amp; snapshots</li>
-              </ul>
-              <Button asChild size="lg" variant="outline" className="w-full">
-                <Link href="/pricing">View VPS pricing<ArrowRight className="ml-2 h-4 w-4" /></Link>
-              </Button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Security & Compliance Banner */}
-      <section className="border-y border-border/50 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-[var(--gradient-1)]/[0.02] via-[var(--gradient-3)]/[0.02] to-[var(--gradient-5)]/[0.02]" />
-        <div className="relative main-container py-16">
-          <div className="text-center mb-10">
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-3">
-              Enterprise-grade <span className="gradient-text">security</span>
-            </h2>
-            <p className="text-muted-foreground">
-              Built with security-first principles at every layer.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            <div className="text-center group">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--gradient-1)]/10 to-[var(--gradient-2)]/10 group-hover:from-[var(--gradient-1)]/20 group-hover:to-[var(--gradient-2)]/20 transition-colors">
-                <Lock className="h-5 w-5 text-[var(--gradient-1)]" />
-              </div>
-              <p className="font-medium text-sm">Encrypted at Rest</p>
-              <p className="text-xs text-muted-foreground mt-1">AES-256 encryption</p>
-            </div>
-            <div className="text-center group">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--gradient-2)]/10 to-[var(--gradient-3)]/10 group-hover:from-[var(--gradient-2)]/20 group-hover:to-[var(--gradient-3)]/20 transition-colors">
-                <Shield className="h-5 w-5 text-[var(--gradient-2)]" />
-              </div>
-              <p className="font-medium text-sm">RBAC</p>
-              <p className="text-xs text-muted-foreground mt-1">Role-based access control</p>
-            </div>
-            <div className="text-center group">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--gradient-3)]/10 to-[var(--gradient-4)]/10 group-hover:from-[var(--gradient-3)]/20 group-hover:to-[var(--gradient-4)]/20 transition-colors">
-                <Activity className="h-5 w-5 text-[var(--gradient-3)]" />
-              </div>
-              <p className="font-medium text-sm">Audit Logging</p>
-              <p className="text-xs text-muted-foreground mt-1">Complete activity trail</p>
-            </div>
-            <div className="text-center group">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--gradient-blue-1)]/10 to-[var(--gradient-blue-2)]/10 group-hover:from-[var(--gradient-blue-1)]/20 group-hover:to-[var(--gradient-blue-2)]/20 transition-colors">
-                <Globe className="h-5 w-5 text-[var(--gradient-blue-1)]" />
-              </div>
-              <p className="font-medium text-sm">SSL/TLS</p>
-              <p className="text-xs text-muted-foreground mt-1">Auto-provisioned certs</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Final CTA Section */}
-      <section className="py-24 md:py-32 relative overflow-hidden">
-        <div className="absolute inset-0 hero-mesh" />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-background" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] rounded-full bg-[var(--gradient-2)] opacity-[0.06] blur-[120px]" />
-
-        <div className="relative main-container text-center">
-          <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-6">
-            Deploy your first app
-            <br />
-            <span className="gradient-text">in seconds</span>
-          </h2>
-          <p className="text-lg text-muted-foreground mb-10 max-w-xl mx-auto">
-            Join teams that trust GuildServer for their mission-critical applications.
-            Start building today.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" asChild className="h-12 px-8 text-base gradient-bg border-0 text-white hover:opacity-90 transition-opacity shadow-lg shadow-[var(--gradient-1)]/20">
-              <Link href="/auth/register">
-                Start Deploying
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-            <Button size="lg" variant="outline" asChild className="h-12 px-8 text-base backdrop-blur-sm">
-              <Link href="/dashboard/templates">
-                Browse Templates
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t border-border/50 bg-muted/30">
-        <div className="main-container py-16">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-8">
-            {/* Brand Column */}
-            <div className="col-span-2 md:col-span-1">
-              <div className="flex items-center gap-2 mb-4">
-                <img src="/logo.png" alt="GuildServer Logo" className="h-7 w-7 object-contain dark:invert" />
-                <span className="font-bold">GuildServer</span>
-              </div>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Enterprise Platform
-                <br />
-                as a Service
-              </p>
-            </div>
-
-            {/* Product */}
-            <div>
-              <h4 className="font-semibold text-sm mb-4">Product</h4>
-              <ul className="space-y-3 text-sm text-muted-foreground">
-                <li><Link href="#features" className="hover:text-foreground transition-colors">Features</Link></li>
-                <li><Link href="/dashboard/templates" className="hover:text-foreground transition-colors">Templates</Link></li>
-                <li><Link href="#infrastructure" className="hover:text-foreground transition-colors">Infrastructure</Link></li>
-                <li><Link href="#" className="hover:text-foreground transition-colors">Pricing</Link></li>
-              </ul>
-            </div>
-
-            {/* Resources */}
-            <div>
-              <h4 className="font-semibold text-sm mb-4">Resources</h4>
-              <ul className="space-y-3 text-sm text-muted-foreground">
-                <li><Link href="#" className="hover:text-foreground transition-colors">Documentation</Link></li>
-                <li><Link href="#" className="hover:text-foreground transition-colors">API Reference</Link></li>
-                <li><Link href="#" className="hover:text-foreground transition-colors">CLI Guide</Link></li>
-                <li><Link href="#" className="hover:text-foreground transition-colors">Changelog</Link></li>
-              </ul>
-            </div>
-
-            {/* Company */}
-            <div>
-              <h4 className="font-semibold text-sm mb-4">Company</h4>
-              <ul className="space-y-3 text-sm text-muted-foreground">
-                <li><Link href="#" className="hover:text-foreground transition-colors">About</Link></li>
-                <li><Link href="#" className="hover:text-foreground transition-colors">Blog</Link></li>
-                <li><Link href="#" className="hover:text-foreground transition-colors">Careers</Link></li>
-                <li><Link href="#" className="hover:text-foreground transition-colors">Contact</Link></li>
-              </ul>
-            </div>
-
-            {/* Legal */}
-            <div>
-              <h4 className="font-semibold text-sm mb-4">Legal</h4>
-              <ul className="space-y-3 text-sm text-muted-foreground">
-                <li><Link href="#" className="hover:text-foreground transition-colors">Privacy Policy</Link></li>
-                <li><Link href="#" className="hover:text-foreground transition-colors">Terms of Service</Link></li>
-                <li><Link href="#" className="hover:text-foreground transition-colors">Security</Link></li>
-                <li><Link href="#" className="hover:text-foreground transition-colors">SLA</Link></li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="border-t border-border/50 mt-12 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-sm text-muted-foreground">
-              &copy; 2026 GuildTechnologies. All rights reserved.
-            </p>
-            <div className="flex items-center gap-6 text-sm text-muted-foreground">
-              <Link href="#" className="hover:text-foreground transition-colors">GitHub</Link>
-              <Link href="#" className="hover:text-foreground transition-colors">Twitter</Link>
-              <Link href="#" className="hover:text-foreground transition-colors">Discord</Link>
-            </div>
+          <div className="flex flex-wrap gap-4 text-sm text-black/55 dark:text-white/55">
+            <Link href="#deploy" className="hover:text-black dark:hover:text-white">Deploy</Link>
+            <Link href="#platform" className="hover:text-black dark:hover:text-white">Platform</Link>
+            <Link href="#comparison" className="hover:text-black dark:hover:text-white">Comparison</Link>
+            <Link href="/pricing" className="hover:text-black dark:hover:text-white">Pricing</Link>
           </div>
         </div>
       </footer>
