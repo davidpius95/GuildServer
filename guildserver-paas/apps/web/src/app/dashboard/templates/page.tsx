@@ -16,7 +16,8 @@ import {
   Boxes,
   ArrowRight,
   Star,
-  GitBranch,
+  Github,
+  Shield,
   Loader2,
   CheckCircle,
   X,
@@ -28,812 +29,17 @@ import { trpc } from "@/components/trpc-provider"
 import { useOrganization, useProjects } from "@/hooks/use-auth"
 import { EnvVarEditor, type EnvVarEntry } from "@/components/env-var-editor"
 import { cn } from "@/lib/utils"
-
-// ─── Template types ──────────────────────────────────────────────────────────
-
-type SourceKind = "docker" | "git"
-
-interface Template {
-  id: string
-  name: string
-  description: string
-  icon: string
-  category: string
-  tags: string[]
-  popular?: boolean
-  useCase: string[]
-  framework?: string
-  // Docker templates (sourceKind === "docker")
-  sourceKind: SourceKind
-  dockerImage?: string
-  containerPort?: number
-  envVars?: Record<string, string>
-  // Git templates (sourceKind === "git")
-  repository?: string
-  branch?: string
-  buildPath?: string
-  buildType?: string
-}
-
-// ─── Filter definitions ─────────────────────────────────────────────────────
-
-interface FilterSection {
-  id: string
-  label: string
-  options: string[]
-}
-
-// ─── Template catalogue ──────────────────────────────────────────────────────
-
-const TEMPLATES: Template[] = [
-  // ═══════════════════════════════════════════════════════════════════════════
-  //  DOCKER IMAGES — ready-to-run services
-  // ═══════════════════════════════════════════════════════════════════════════
-  {
-    id: "nginx",
-    name: "Nginx",
-    description: "High-performance web server and reverse proxy",
-    icon: "globe",
-    category: "Web Servers",
-    sourceKind: "docker",
-    dockerImage: "nginx:alpine",
-    containerPort: 80,
-    tags: ["web server", "proxy", "static"],
-    useCase: ["Backend", "Starter"],
-    popular: true,
-  },
-  {
-    id: "caddy",
-    name: "Caddy",
-    description: "Web server with automatic HTTPS",
-    icon: "globe",
-    category: "Web Servers",
-    sourceKind: "docker",
-    dockerImage: "caddy:2-alpine",
-    containerPort: 80,
-    tags: ["web server", "https", "proxy"],
-    useCase: ["Backend"],
-  },
-  {
-    id: "postgres",
-    name: "PostgreSQL",
-    description: "Advanced open-source relational database",
-    icon: "database",
-    category: "Databases",
-    sourceKind: "docker",
-    dockerImage: "postgres:16-alpine",
-    containerPort: 5432,
-    envVars: { POSTGRES_DB: "app", POSTGRES_USER: "admin", POSTGRES_PASSWORD: "changeme" },
-    tags: ["database", "sql", "relational"],
-    useCase: ["Database"],
-    popular: true,
-  },
-  {
-    id: "redis",
-    name: "Redis",
-    description: "In-memory data store for caching and messaging",
-    icon: "database",
-    category: "Databases",
-    sourceKind: "docker",
-    dockerImage: "redis:7-alpine",
-    containerPort: 6379,
-    tags: ["cache", "queue", "key-value"],
-    useCase: ["Database"],
-    popular: true,
-  },
-  {
-    id: "mysql",
-    name: "MySQL",
-    description: "Popular open-source relational database",
-    icon: "database",
-    category: "Databases",
-    sourceKind: "docker",
-    dockerImage: "mysql:8",
-    containerPort: 3306,
-    envVars: { MYSQL_ROOT_PASSWORD: "changeme", MYSQL_DATABASE: "app" },
-    tags: ["database", "sql", "relational"],
-    useCase: ["Database"],
-  },
-  {
-    id: "mongodb",
-    name: "MongoDB",
-    description: "Document-oriented NoSQL database",
-    icon: "database",
-    category: "Databases",
-    sourceKind: "docker",
-    dockerImage: "mongo:7",
-    containerPort: 27017,
-    tags: ["database", "nosql", "document"],
-    useCase: ["Database"],
-  },
-  {
-    id: "mariadb",
-    name: "MariaDB",
-    description: "Community-developed fork of MySQL",
-    icon: "database",
-    category: "Databases",
-    sourceKind: "docker",
-    dockerImage: "mariadb:11",
-    containerPort: 3306,
-    envVars: { MARIADB_ROOT_PASSWORD: "changeme", MARIADB_DATABASE: "app" },
-    tags: ["database", "sql", "mysql-compatible"],
-    useCase: ["Database"],
-  },
-  {
-    id: "grafana",
-    name: "Grafana",
-    description: "Open-source analytics and monitoring platform",
-    icon: "boxes",
-    category: "Monitoring",
-    sourceKind: "docker",
-    dockerImage: "grafana/grafana:latest",
-    containerPort: 3000,
-    tags: ["monitoring", "dashboards", "analytics"],
-    useCase: ["Monitoring"],
-  },
-  {
-    id: "uptime-kuma",
-    name: "Uptime Kuma",
-    description: "Self-hosted monitoring tool like Uptime Robot",
-    icon: "boxes",
-    category: "Monitoring",
-    sourceKind: "docker",
-    dockerImage: "louislam/uptime-kuma:1",
-    containerPort: 3001,
-    tags: ["monitoring", "uptime", "status page"],
-    useCase: ["Monitoring"],
-    popular: true,
-  },
-  {
-    id: "minio",
-    name: "MinIO",
-    description: "S3-compatible object storage server",
-    icon: "server",
-    category: "Storage",
-    sourceKind: "docker",
-    dockerImage: "minio/minio:latest",
-    containerPort: 9000,
-    envVars: { MINIO_ROOT_USER: "admin", MINIO_ROOT_PASSWORD: "changeme123" },
-    tags: ["storage", "s3", "object store"],
-    useCase: ["Backend"],
-  },
-  {
-    id: "rabbitmq",
-    name: "RabbitMQ",
-    description: "Open-source message broker with management UI",
-    icon: "server",
-    category: "Messaging",
-    sourceKind: "docker",
-    dockerImage: "rabbitmq:3-management-alpine",
-    containerPort: 15672,
-    envVars: { RABBITMQ_DEFAULT_USER: "admin", RABBITMQ_DEFAULT_PASS: "changeme" },
-    tags: ["messaging", "queue", "amqp"],
-    useCase: ["Backend"],
-  },
-  {
-    id: "ghost",
-    name: "Ghost",
-    description: "Professional publishing platform for blogs",
-    icon: "globe",
-    category: "CMS",
-    sourceKind: "docker",
-    dockerImage: "ghost:5-alpine",
-    containerPort: 2368,
-    envVars: { NODE_ENV: "production" },
-    tags: ["blog", "cms", "publishing"],
-    useCase: ["Blog", "CMS"],
-    popular: true,
-  },
-  {
-    id: "wordpress",
-    name: "WordPress",
-    description: "Most popular content management system",
-    icon: "globe",
-    category: "CMS",
-    sourceKind: "docker",
-    dockerImage: "wordpress:6-apache",
-    containerPort: 80,
-    envVars: { WORDPRESS_DB_HOST: "db:3306", WORDPRESS_DB_USER: "wp", WORDPRESS_DB_PASSWORD: "changeme" },
-    tags: ["cms", "blog", "php"],
-    useCase: ["Blog", "CMS", "Ecommerce"],
-  },
-  {
-    id: "plausible",
-    name: "Plausible Analytics",
-    description: "Privacy-friendly Google Analytics alternative",
-    icon: "boxes",
-    category: "Analytics",
-    sourceKind: "docker",
-    dockerImage: "plausible/analytics:latest",
-    containerPort: 8000,
-    envVars: { BASE_URL: "http://localhost", SECRET_KEY_BASE: "changeme-generate-a-secret" },
-    tags: ["analytics", "privacy", "web"],
-    useCase: ["Monitoring"],
-  },
-  {
-    id: "n8n",
-    name: "n8n",
-    description: "Workflow automation tool with 200+ integrations",
-    icon: "boxes",
-    category: "Automation",
-    sourceKind: "docker",
-    dockerImage: "n8nio/n8n:latest",
-    containerPort: 5678,
-    tags: ["automation", "workflow", "integrations"],
-    useCase: ["Backend", "AI"],
-  },
-  {
-    id: "gitea",
-    name: "Gitea",
-    description: "Lightweight self-hosted Git service",
-    icon: "code",
-    category: "Developer Tools",
-    sourceKind: "docker",
-    dockerImage: "gitea/gitea:latest",
-    containerPort: 3000,
-    tags: ["git", "version control", "devops"],
-    useCase: ["Backend"],
-  },
-  {
-    id: "drone",
-    name: "Drone CI",
-    description: "Container-native continuous integration",
-    icon: "boxes",
-    category: "Developer Tools",
-    sourceKind: "docker",
-    dockerImage: "drone/drone:latest",
-    containerPort: 80,
-    tags: ["ci", "cd", "devops"],
-    useCase: ["Backend"],
-  },
-  {
-    id: "portainer",
-    name: "Portainer",
-    description: "Docker management UI for containers and clusters",
-    icon: "boxes",
-    category: "Developer Tools",
-    sourceKind: "docker",
-    dockerImage: "portainer/portainer-ce:latest",
-    containerPort: 9000,
-    tags: ["docker", "management", "ui"],
-    useCase: ["Monitoring"],
-  },
-  {
-    id: "directus",
-    name: "Directus",
-    description: "Instant REST + GraphQL API for any SQL database",
-    icon: "server",
-    category: "CMS",
-    sourceKind: "docker",
-    dockerImage: "directus/directus:latest",
-    containerPort: 8055,
-    envVars: { KEY: "changeme", SECRET: "changeme", ADMIN_EMAIL: "admin@example.com", ADMIN_PASSWORD: "changeme" },
-    tags: ["headless cms", "api", "database"],
-    useCase: ["CMS", "Backend"],
-  },
-  {
-    id: "strapi",
-    name: "Strapi",
-    description: "Open-source headless CMS for building APIs",
-    icon: "server",
-    category: "CMS",
-    sourceKind: "docker",
-    dockerImage: "strapi/strapi:latest",
-    containerPort: 1337,
-    tags: ["headless cms", "api", "node"],
-    useCase: ["CMS", "Backend"],
-  },
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  //  GIT TEMPLATES — GuildServer examples
-  // ═══════════════════════════════════════════════════════════════════════════
-  {
-    id: "nextjs",
-    name: "Next.js",
-    description: "React framework with SSR, routing, and API routes",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "nextjs",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["react", "ssr", "javascript", "fullstack"],
-    useCase: ["Starter", "SaaS"],
-    framework: "Next.js",
-    popular: true,
-  },
-  {
-    id: "astro",
-    name: "Astro",
-    description: "Content-driven framework for fast, modern websites",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "astro",
-    buildType: "nixpacks",
-    containerPort: 4321,
-    tags: ["static", "ssr", "javascript", "content"],
-    useCase: ["Blog", "Portfolio", "Starter"],
-    framework: "Astro",
-    popular: true,
-  },
-  {
-    id: "astro-ssr",
-    name: "Astro SSR",
-    description: "Astro with server-side rendering enabled",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "astro-ssr",
-    buildType: "nixpacks",
-    containerPort: 4321,
-    tags: ["astro", "ssr", "javascript", "dynamic"],
-    useCase: ["Starter"],
-    framework: "Astro",
-  },
-  {
-    id: "svelte",
-    name: "Svelte",
-    description: "Cybernetically enhanced web framework",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "svelte",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["svelte", "ssr", "javascript", "fullstack"],
-    useCase: ["Starter"],
-    framework: "Svelte",
-  },
-  {
-    id: "nuxt",
-    name: "Nuxt",
-    description: "Full-stack Vue.js framework with SSR support",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "nuxt",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["vue", "ssr", "javascript", "fullstack"],
-    useCase: ["Starter", "SaaS"],
-    framework: "Nuxt",
-  },
-  {
-    id: "remix",
-    name: "Remix",
-    description: "Full-stack React framework focused on web standards",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "remix",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["react", "ssr", "javascript", "web standards"],
-    useCase: ["Starter"],
-    framework: "Remix",
-  },
-  {
-    id: "vuejs",
-    name: "Vue.js",
-    description: "Progressive JavaScript framework for building UIs",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "vuejs",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["vue", "spa", "javascript", "frontend"],
-    useCase: ["Starter"],
-    framework: "Vue",
-  },
-  {
-    id: "vite",
-    name: "Vite",
-    description: "Fast frontend build tool with HMR and optimized builds",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "vite",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["react", "vite", "javascript", "frontend"],
-    useCase: ["Starter"],
-    framework: "Vite",
-  },
-  {
-    id: "django",
-    name: "Django",
-    description: "High-level Python web framework for rapid development",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "Django-Example",
-    buildType: "nixpacks",
-    containerPort: 8000,
-    tags: ["python", "django", "api", "fullstack"],
-    useCase: ["Backend", "SaaS"],
-    framework: "Django",
-    popular: true,
-  },
-  {
-    id: "flask",
-    name: "Flask",
-    description: "Lightweight Python WSGI web application framework",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "Flask-Example",
-    buildType: "nixpacks",
-    containerPort: 5000,
-    tags: ["python", "flask", "api", "microservice"],
-    useCase: ["Backend"],
-    framework: "Flask",
-  },
-  {
-    id: "nestjs",
-    name: "NestJS",
-    description: "Progressive Node.js framework for enterprise APIs",
-    icon: "server",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "nestjs",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["node", "nestjs", "typescript", "api"],
-    useCase: ["Backend", "SaaS"],
-    framework: "NestJS",
-  },
-  {
-    id: "go-fiber",
-    name: "Go Fiber",
-    description: "Express-inspired Go web framework built on Fasthttp",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "go-fiber",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["go", "golang", "fiber", "api"],
-    useCase: ["Backend"],
-    framework: "Go",
-  },
-  {
-    id: "deno-app",
-    name: "Deno",
-    description: "Secure TypeScript runtime with built-in tooling",
-    icon: "server",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "deno",
-    buildType: "nixpacks",
-    containerPort: 8000,
-    tags: ["deno", "typescript", "runtime", "secure"],
-    useCase: ["Backend"],
-    framework: "Deno",
-  },
-  {
-    id: "solidjs",
-    name: "SolidJS",
-    description: "Simple and performant reactive JavaScript framework",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "solidjs",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["solid", "reactive", "javascript", "frontend"],
-    useCase: ["Starter"],
-    framework: "SolidJS",
-  },
-  {
-    id: "preact",
-    name: "Preact",
-    description: "Fast 3kB alternative to React with the same API",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "preact",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["preact", "react", "lightweight", "frontend"],
-    useCase: ["Starter"],
-    framework: "Preact",
-  },
-  {
-    id: "qwik",
-    name: "Qwik",
-    description: "Resumable framework for instant-loading web apps",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "qwik",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["qwik", "resumable", "javascript", "performance"],
-    useCase: ["Starter"],
-    framework: "Qwik",
-  },
-  {
-    id: "t3-stack",
-    name: "T3 Stack",
-    description: "Next.js + tRPC + Prisma + Tailwind full-stack starter",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "t3",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["next", "trpc", "prisma", "fullstack"],
-    useCase: ["SaaS", "Starter"],
-    framework: "Next.js",
-  },
-  {
-    id: "11ty",
-    name: "Eleventy (11ty)",
-    description: "Simple and flexible static site generator",
-    icon: "globe",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "11ty",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["static", "ssg", "javascript", "content"],
-    useCase: ["Blog", "Portfolio"],
-    framework: "Eleventy",
-  },
-  {
-    id: "lit",
-    name: "Lit",
-    description: "Simple library for building fast web components",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "lit",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["web components", "lit", "javascript", "lightweight"],
-    useCase: ["Starter"],
-    framework: "Lit",
-  },
-  {
-    id: "static-html",
-    name: "Static HTML",
-    description: "Simple static HTML website",
-    icon: "globe",
-    category: "Web Servers",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "html",
-    buildType: "nixpacks",
-    containerPort: 80,
-    tags: ["html", "static", "simple", "beginner"],
-    useCase: ["Starter", "Portfolio"],
-  },
-  {
-    id: "official-ai-chatgpt",
-    name: "AI ChatGPT App",
-    description: "An open-source AI chatbot app template built with Next.js",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "official/solutions/ai-chatgpt",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["nextjs", "ai", "chatgpt", "openai"],
-    useCase: ["AI", "Starter"],
-    framework: "Next.js",
-    popular: true,
-  },
-  {
-    id: "official-blog-starter",
-    name: "Blog Starter Kit",
-    description: "A statically generated blog example using Next.js and Markdown",
-    icon: "globe",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "official/solutions/blog",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["nextjs", "blog", "markdown"],
-    useCase: ["Blog", "Starter"],
-    framework: "Next.js",
-  },
-  {
-    id: "official-hono-ai-sdk",
-    name: "Hono AI SDK Starter",
-    description: "A starter for Hono with the AI SDK",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "official/starter/hono-ai-sdk",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["hono", "ai", "sdk"],
-    useCase: ["AI", "Starter", "Backend"],
-    framework: "Hono",
-  },
-  {
-    id: "official-express-ai",
-    name: "Express AI Chatbot",
-    description: "A lightweight Express API integrating with AI SDK",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "official/starter/express-ai-sdk",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["express", "node", "ai"],
-    useCase: ["AI", "Backend"],
-    framework: "Express",
-  },
-  {
-    id: "official-platforms-supabase",
-    name: "Platforms Starter (Supabase)",
-    description: "Multi-tenant platform builder using Next.js and Supabase",
-    icon: "boxes",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "official/solutions/platforms-slate-supabase",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["nextjs", "supabase", "multi-tenant"],
-    useCase: ["SaaS", "Starter", "Database"],
-    framework: "Next.js",
-    popular: true,
-  },
-  {
-    id: "official-web3-auth",
-    name: "Web3 Authentication",
-    description: "Web3 wallet sign-in and session management",
-    icon: "shield",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "official/solutions/web3-authentication",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["nextjs", "web3", "crypto", "auth"],
-    useCase: ["Security", "Starter"],
-    framework: "Next.js",
-  },
-  {
-    id: "official-cron",
-    name: "Cron Jobs Scheduler",
-    description: "Example showing how to run cron jobs in Next.js APIs",
-    icon: "code",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "official/solutions/cron",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["nextjs", "cron", "jobs", "automation"],
-    useCase: ["Backend", "Automation"],
-    framework: "Next.js",
-  },
-  {
-    id: "official-monorepo",
-    name: "Turborepo Next.js Monorepo",
-    description: "Advanced Turborepo workspace with shared UI and apps",
-    icon: "boxes",
-    category: "Frameworks",
-    sourceKind: "git",
-    repository: "https://github.com/davidpius95/guildserver-examples",
-    branch: "main",
-    buildPath: "official/solutions/monorepo",
-    buildType: "nixpacks",
-    containerPort: 3000,
-    tags: ["turborepo", "nextjs", "monorepo", "workspace"],
-    useCase: ["Starter", "SaaS"],
-    framework: "Next.js",
-  }
-]
-
-// ─── Derive filter sections from the templates ───────────────────────────────
-
-const FILTER_SECTIONS: FilterSection[] = [
-  {
-    id: "useCase",
-    label: "Use Case",
-    options: [...new Set(TEMPLATES.flatMap((t) => t.useCase))].sort(),
-  },
-  {
-    id: "framework",
-    label: "Framework",
-    options: [...new Set(TEMPLATES.map((t) => t.framework).filter(Boolean) as string[])].sort(),
-  },
-  {
-    id: "category",
-    label: "Category",
-    options: [...new Set(TEMPLATES.map((t) => t.category))].sort(),
-  },
-]
-
-// ─── Gradient map for cards ──────────────────────────────────────────────────
-
-const GRADIENT_MAP: Record<string, string> = {
-  "Next.js": "from-slate-900 via-slate-800 to-slate-900",
-  "Astro": "from-purple-950 via-indigo-950 to-slate-900",
-  "Svelte": "from-orange-950 via-red-950 to-slate-900",
-  "Nuxt": "from-emerald-950 via-green-950 to-slate-900",
-  "Vue": "from-emerald-950 via-teal-950 to-slate-900",
-  "Remix": "from-indigo-950 via-violet-950 to-slate-900",
-  "Django": "from-green-950 via-emerald-950 to-slate-900",
-  "Flask": "from-gray-900 via-slate-800 to-gray-900",
-  "NestJS": "from-red-950 via-rose-950 to-slate-900",
-  "Go": "from-cyan-950 via-sky-950 to-slate-900",
-  "Deno": "from-slate-900 via-gray-800 to-slate-900",
-  "SolidJS": "from-blue-950 via-indigo-950 to-slate-900",
-  "Vite": "from-violet-950 via-purple-950 to-slate-900",
-  "Preact": "from-purple-950 via-violet-950 to-slate-900",
-  "Qwik": "from-blue-950 via-cyan-950 to-slate-900",
-  "Eleventy": "from-gray-900 via-slate-800 to-gray-900",
-  "Lit": "from-blue-950 via-sky-950 to-slate-900",
-  "default": "from-slate-900 via-gray-800 to-slate-900",
-}
-
-const getIconComponent = (icon: string) => {
-  switch (icon) {
-    case "globe": return Globe
-    case "server": return Server
-    case "database": return Database
-    case "code": return Code2
-    case "boxes": return Boxes
-    default: return Server
-  }
-}
+import {
+  FILTER_SECTIONS,
+  GRADIENT_MAP,
+  TEMPLATES,
+  SOURCE_LABELS,
+  getFilterLabel,
+  getLogoSpec,
+  getTrackLabel,
+  type FilterSection,
+  type Template,
+} from "./templates-data"
 
 // ─── Sidebar filter section component ────────────────────────────────────────
 
@@ -887,13 +93,89 @@ function FilterGroup({
                 onCheckedChange={() => onToggle(option)}
                 className="h-4 w-4 rounded border-border/60"
               />
-              {option}
+              {getFilterLabel(section.id, option)}
             </label>
           ))}
         </div>
       )}
     </div>
   )
+}
+
+function TemplateLogo({
+  template,
+  className,
+  tone = "brand",
+}: {
+  template: Template
+  className?: string
+  tone?: "brand" | "white"
+}) {
+  const [failed, setFailed] = useState(false)
+  const spec = getLogoSpec(template)
+  const fallback = getIconComponent(spec.fallbackIcon || template.icon)
+  const Fallback = fallback
+
+  if (failed) {
+    return (
+      <div
+        className={cn(
+          tone === "white"
+            ? "flex items-center justify-center rounded-2xl bg-white/10 border border-white/10"
+            : "flex items-center justify-center rounded-2xl bg-background/70 border border-border/60",
+          className
+        )}
+      >
+        <Fallback className={cn("h-1/2 w-1/2", tone === "white" ? "text-white/70" : "text-foreground/70")} />
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className={cn(
+        tone === "white"
+          ? "flex items-center justify-center overflow-hidden rounded-2xl bg-white/10 border border-white/10"
+          : "flex items-center justify-center overflow-hidden rounded-2xl bg-background/70 border border-border/60",
+        className
+      )}
+      aria-label={spec.label}
+      title={spec.label}
+    >
+      <img
+        src={
+          tone === "white"
+            ? `https://cdn.simpleicons.org/${spec.slug}/ffffff?viewbox=auto&size=96`
+            : `https://cdn.simpleicons.org/${spec.slug}?viewbox=auto&size=96`
+        }
+        alt={spec.label}
+        className="h-full w-full object-contain p-2.5"
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(true)}
+      />
+    </div>
+  )
+}
+
+const getIconComponent = (icon: string) => {
+  switch (icon) {
+    case "globe": return Globe
+    case "server": return Server
+    case "database": return Database
+    case "code": return Code2
+    case "boxes": return Boxes
+    case "shield": return Shield
+    default: return Server
+  }
+}
+
+const TRACK_ACCENT_MAP: Record<string, string> = {
+  ai: "from-emerald-400 via-cyan-400 to-sky-400",
+  "open-source": "from-slate-400 via-emerald-400 to-teal-400",
+  starter: "from-amber-300 via-orange-400 to-rose-400",
+  production: "from-rose-400 via-fuchsia-400 to-purple-400",
+  ops: "from-blue-400 via-sky-400 to-cyan-400",
 }
 
 // ─── Template card component ─────────────────────────────────────────────────
@@ -909,10 +191,10 @@ function TemplateCard({
   projectId: string | null
   onDeploy: (t: Template) => void
 }) {
-  const Icon = getIconComponent(template.icon)
   const gradient = template.framework
     ? GRADIENT_MAP[template.framework] || GRADIENT_MAP.default
     : GRADIENT_MAP.default
+  const sourceLabel = SOURCE_LABELS[template.sourceKind]
 
   return (
     <Card
@@ -926,16 +208,30 @@ function TemplateCard({
           onDeploy(template)
         }
       }}
-      className="group cursor-pointer overflow-hidden border-border/40 hover:border-primary/40 hover:-translate-y-0.5 transition-all duration-300 hover:shadow-lg hover:shadow-black/10 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="group cursor-pointer overflow-hidden border-border/40 hover:border-primary/40 hover:-translate-y-0.5 transition-all duration-300 hover:shadow-xl hover:shadow-black/10 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
+      <div className={cn("h-1 bg-gradient-to-r", TRACK_ACCENT_MAP[template.track || "starter"] || TRACK_ACCENT_MAP.starter)} />
+
       {/* Top text section */}
-      <CardHeader className="p-4 pb-3">
-        <CardTitle className="text-[15px] font-semibold leading-tight line-clamp-1 group-hover:text-primary transition-colors">
-          {template.name}
-        </CardTitle>
-        <CardDescription className="text-xs text-muted-foreground line-clamp-2 mt-1 leading-relaxed">
-          {template.description}
-        </CardDescription>
+      <CardHeader className="p-4 pb-3 pt-3">
+        <div className="flex items-start gap-3">
+          <TemplateLogo template={template} className="h-12 w-12 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-[15px] font-semibold leading-tight line-clamp-1 group-hover:text-primary transition-colors">
+                {template.name}
+              </CardTitle>
+              {template.popular && (
+                <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-semibold uppercase tracking-wide">
+                  Popular
+                </Badge>
+              )}
+            </div>
+            <CardDescription className="text-xs text-muted-foreground line-clamp-2 mt-1 leading-relaxed">
+              {template.description}
+            </CardDescription>
+          </div>
+        </div>
       </CardHeader>
 
       {/* Visual preview area */}
@@ -955,10 +251,10 @@ function TemplateCard({
           }}
         />
 
-        {/* Centered icon */}
+        {/* Centered logo */}
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="p-5 rounded-2xl bg-white/[0.07] backdrop-blur-sm border border-white/[0.08] shadow-2xl group-hover:scale-110 transition-transform duration-500">
-            <Icon className="h-8 w-8 text-white/70" />
+          <div className="w-20 h-20 rounded-[1.25rem] bg-white/[0.08] backdrop-blur-sm border border-white/[0.08] shadow-2xl p-3 group-hover:scale-110 transition-transform duration-500">
+            <TemplateLogo template={template} tone="white" className="h-full w-full rounded-[1rem] bg-transparent border-0" />
           </div>
         </div>
 
@@ -970,14 +266,25 @@ function TemplateCard({
           >
             {template.sourceKind === "git" ? (
               <span className="flex items-center gap-1">
-                <GitBranch className="h-2.5 w-2.5" />
-                Git
+                <Github className="h-2.5 w-2.5" />
+                {sourceLabel}
               </span>
             ) : (
-              "Docker"
+              sourceLabel
             )}
           </Badge>
         </div>
+
+        {template.track && (
+          <div className="absolute bottom-2 left-2">
+            <Badge
+              variant="secondary"
+              className="text-[10px] px-1.5 py-0.5 bg-black/30 text-white/70 border-white/10 backdrop-blur-sm"
+            >
+              {getTrackLabel(template.track)}
+            </Badge>
+          </div>
+        )}
 
         {/* Popular star */}
         {template.popular && (
@@ -1006,6 +313,21 @@ function TemplateCard({
           </Button>
         </div>
       </div>
+
+      <CardContent className="px-4 pb-4 pt-0">
+        <div className="flex flex-wrap gap-2">
+          {template.framework && (
+            <Badge variant="outline" className="text-[11px] font-medium">
+              {template.framework}
+            </Badge>
+          )}
+          {template.useCase.slice(0, 2).map((useCase) => (
+            <Badge key={useCase} variant="secondary" className="text-[11px] font-medium">
+              {getFilterLabel("useCase", useCase)}
+            </Badge>
+          ))}
+        </div>
+      </CardContent>
     </Card>
   )
 }
@@ -1018,6 +340,8 @@ export default function TemplatesPage() {
     useCase: new Set(),
     framework: new Set(),
     category: new Set(),
+    track: new Set(),
+    sourceKind: new Set(),
   })
   const [deployingTemplate, setDeployingTemplate] = useState<string | null>(null)
   const [deployedApp, setDeployedApp] = useState<string | null>(null)
@@ -1033,6 +357,7 @@ export default function TemplatesPage() {
 
   const hasActiveFilters = Object.values(selectedFilters).some((s) => s.size > 0)
   const activeFilterCount = Object.values(selectedFilters).reduce((sum, s) => sum + s.size, 0)
+  const isFilterSelected = (sectionId: string, value: string) => selectedFilters[sectionId]?.has(value)
 
   const toggleFilter = (sectionId: string, value: string) => {
     setSelectedFilters((prev) => {
@@ -1053,6 +378,8 @@ export default function TemplatesPage() {
       useCase: new Set(),
       framework: new Set(),
       category: new Set(),
+      track: new Set(),
+      sourceKind: new Set(),
     })
   }
 
@@ -1064,7 +391,7 @@ export default function TemplatesPage() {
         !searchQuery ||
         t.name.toLowerCase().includes(q) ||
         t.description.toLowerCase().includes(q) ||
-        t.tags.some((tag) => tag.includes(q))
+        t.tags.some((tag) => tag.toLowerCase().includes(q))
 
       // Use Case filter
       const useCaseFilter = selectedFilters.useCase
@@ -1078,7 +405,15 @@ export default function TemplatesPage() {
       const categoryFilter = selectedFilters.category
       const matchesCategory = categoryFilter.size === 0 || categoryFilter.has(t.category)
 
-      return matchesSearch && matchesUseCase && matchesFramework && matchesCategory
+      // Track filter
+      const trackFilter = selectedFilters.track
+      const matchesTrack = trackFilter.size === 0 || (t.track && trackFilter.has(t.track))
+
+      // Source filter
+      const sourceFilter = selectedFilters.sourceKind
+      const matchesSource = sourceFilter.size === 0 || sourceFilter.has(t.sourceKind)
+
+      return matchesSearch && matchesUseCase && matchesFramework && matchesCategory && matchesTrack && matchesSource
     })
   }, [searchQuery, selectedFilters])
 
@@ -1136,30 +471,112 @@ export default function TemplatesPage() {
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Find your Template</h1>
-        <p className="text-muted-foreground mt-1">
-          Jumpstart your app development process with pre-built solutions from GuildServer and our community.
-        </p>
+      <div className="rounded-3xl border border-border/60 bg-gradient-to-br from-background via-background to-muted/25 p-6 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl space-y-3">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
+              <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500" />
+              Curated deployable templates
+            </div>
+            <div>
+              <h1 className="text-3xl font-semibold tracking-tight">Find your template</h1>
+              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                Start with a goal, narrow by stack, then deploy a ready-made app or service with the right brand logo and source clearly visible.
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 lg:min-w-[34rem]">
+            {[
+              { label: "AI", sectionId: "track", value: "ai", helper: "Agents, chat, and LLM tools" },
+              { label: "Open source", sectionId: "track", value: "open-source", helper: "Repo-backed templates" },
+              { label: "Ops", sectionId: "track", value: "ops", helper: "Infrastructure and service tools" },
+              { label: "Starter", sectionId: "track", value: "starter", helper: "Simple foundations for new apps" },
+            ].map((item) => {
+              const selected = isFilterSelected(item.sectionId, item.value)
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => toggleFilter(item.sectionId, item.value)}
+                  className={cn(
+                    "rounded-2xl border p-4 text-left transition-all duration-200 hover:-translate-y-0.5",
+                    selected
+                      ? "border-primary/40 bg-primary/5 shadow-sm"
+                      : "border-border/60 bg-background hover:border-primary/30"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold">{item.label}</span>
+                    <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
+                      {selected ? "Selected" : "Quick pick"}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{item.helper}</p>
+                </button>
+              )
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Full-width search bar */}
-      <div className="relative">
-        <Search className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Search templates..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-11 h-12 text-base bg-background border-border/60 focus:border-primary/40 rounded-xl"
-        />
-        {searchQuery && (
-          <button
-            type="button"
-            onClick={() => setSearchQuery("")}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
+      <div className="space-y-3">
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search by template, stack, or use case..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-12 rounded-2xl border-border/60 bg-background pl-11 text-base focus:border-primary/40"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        {(searchQuery || hasActiveFilters) && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Active filters
+            </span>
+            {searchQuery && (
+              <Badge variant="secondary" className="gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium">
+                Search: {searchQuery}
+                <button type="button" onClick={() => setSearchQuery("")} aria-label="Clear search">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
+            {Object.entries(selectedFilters).flatMap(([sectionId, values]) =>
+              Array.from(values).map((value) => (
+                <Badge
+                  key={`${sectionId}-${value}`}
+                  variant="secondary"
+                  className="gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium"
+                >
+                  {getFilterLabel(sectionId, value)}
+                  <button type="button" onClick={() => toggleFilter(sectionId, value)} aria-label={`Remove ${value}`}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))
+            )}
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="text-xs font-medium text-primary transition-colors hover:text-primary/80"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -1172,7 +589,7 @@ export default function TemplatesPage() {
           className="gap-2"
         >
           <SlidersHorizontal className="h-3.5 w-3.5" />
-          Filter Templates
+          Filter templates
           {activeFilterCount > 0 && (
             <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
               {activeFilterCount}
@@ -1186,18 +603,21 @@ export default function TemplatesPage() {
         {/* ── Sidebar ─────────────────────────────── */}
         <aside
           className={cn(
-            "w-[220px] flex-shrink-0 space-y-1",
+            "w-[248px] flex-shrink-0 space-y-1",
             "hidden lg:block",
             mobileSidebarOpen && "!block"
           )}
         >
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-foreground">Filter Templates</h2>
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Refine results</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">Start with a track, then narrow by stack.</p>
+            </div>
             {hasActiveFilters && (
               <button
                 type="button"
                 onClick={clearAllFilters}
-                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+                className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
               >
                 <X className="h-3 w-3" />
                 Clear
@@ -1217,22 +637,20 @@ export default function TemplatesPage() {
 
         {/* ── Template grid ───────────────────────── */}
         <div className="flex-1 min-w-0">
-          {(hasActiveFilters || searchQuery) && (
-            <div className="flex items-center gap-3 mb-4">
-              <p className="text-sm text-muted-foreground">
-                {filteredTemplates.length} template{filteredTemplates.length !== 1 ? "s" : ""} found
-              </p>
-              {hasActiveFilters && (
-                <button
-                  type="button"
-                  onClick={clearAllFilters}
-                  className="text-xs text-primary hover:text-primary/80 transition-colors"
-                >
-                  Clear filters
-                </button>
-              )}
-            </div>
-          )}
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              Showing {filteredTemplates.length} template{filteredTemplates.length !== 1 ? "s" : ""}{searchQuery ? ` for "${searchQuery}"` : ""}
+            </p>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="text-xs font-medium text-primary transition-colors hover:text-primary/80"
+              >
+                Reset filters
+              </button>
+            )}
+          </div>
 
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
             {filteredTemplates.map((template) => (
@@ -1270,12 +688,7 @@ export default function TemplatesPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-primary/10 rounded-lg">
-                    {(() => {
-                      const Icon = getIconComponent(preDeployTemplate.icon)
-                      return <Icon className="h-5 w-5 text-primary" />
-                    })()}
-                  </div>
+                  <TemplateLogo key={preDeployTemplate.id} template={preDeployTemplate} className="h-12 w-12" />
                   <div>
                     <CardTitle className="text-lg">Deploy {preDeployTemplate.name}</CardTitle>
                     <CardDescription className="text-xs mt-0.5">
@@ -1295,17 +708,23 @@ export default function TemplatesPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Template details */}
-              <div className="flex gap-2 text-sm">
+              <div className="flex flex-wrap gap-2 text-sm">
                 <Badge variant="secondary">
                   {preDeployTemplate.sourceKind === "git" ? (
                     <span className="flex items-center gap-1">
-                      <GitBranch className="h-3 w-3" />
-                      {preDeployTemplate.buildType || "Nixpacks"}
+                      <Github className="h-3 w-3" />
+                      Open source
                     </span>
                   ) : (
-                    preDeployTemplate.dockerImage
+                    SOURCE_LABELS.docker
                   )}
                 </Badge>
+                {preDeployTemplate.framework && (
+                  <Badge variant="outline">{preDeployTemplate.framework}</Badge>
+                )}
+                {preDeployTemplate.track && (
+                  <Badge variant="outline">{getTrackLabel(preDeployTemplate.track)}</Badge>
+                )}
                 {preDeployTemplate.containerPort && (
                   <Badge variant="outline">Port {preDeployTemplate.containerPort}</Badge>
                 )}
