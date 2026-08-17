@@ -283,6 +283,11 @@ services:
       - "traefik.http.routers.grafana-secure.rule=Host(`grafana.${BASE_DOMAIN:?BASE_DOMAIN is required}`)"
       - "traefik.http.routers.grafana-secure.entrypoints=websecure"
       - "traefik.http.routers.grafana-secure.service=grafana"
+      # Same low priority as web-secure. Without it this catch-all outranks
+      # Traefik's internal ACME challenge router, Grafana answers
+      # /.well-known/acme-challenge/* with a 302 to /login, and HTTP-01
+      # validation fails with a 403 unauthorized.
+      - "traefik.http.routers.grafana-secure.priority=1"
       - "traefik.http.routers.grafana-secure.tls.certresolver=letsencrypt"
     networks:
       - default
