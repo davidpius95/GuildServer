@@ -539,22 +539,24 @@ export default function SecurityPage() {
                     </div>
                   </div>
 
-                  {scan.status === 'completed' && (
+                  {/* `findings` is optional on the wire — never dereference it
+                      directly, or one missing field takes down the whole page. */}
+                  {scan.status === 'completed' && scan.findings && (
                     <div className="mt-4 grid grid-cols-4 gap-4">
                       <div className="text-center">
-                        <div className="text-lg font-bold text-red-600">{scan.findings.critical}</div>
+                        <div className="text-lg font-bold text-red-600">{scan.findings.critical ?? 0}</div>
                         <div className="text-xs text-muted-foreground">Critical</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-lg font-bold text-orange-600">{scan.findings.high}</div>
+                        <div className="text-lg font-bold text-orange-600">{scan.findings.high ?? 0}</div>
                         <div className="text-xs text-muted-foreground">High</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-lg font-bold text-yellow-600">{scan.findings.medium}</div>
+                        <div className="text-lg font-bold text-yellow-600">{scan.findings.medium ?? 0}</div>
                         <div className="text-xs text-muted-foreground">Medium</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-lg font-bold text-blue-600">{scan.findings.low}</div>
+                        <div className="text-lg font-bold text-blue-600">{scan.findings.low ?? 0}</div>
                         <div className="text-xs text-muted-foreground">Low</div>
                       </div>
                     </div>
