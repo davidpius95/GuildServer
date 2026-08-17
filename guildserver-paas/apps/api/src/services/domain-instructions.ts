@@ -55,7 +55,7 @@ export function buildForwardingInstructions(input: {
   const parts = cleanDomain.split(".");
   const isApex = parts.length === 2;
 
-  // e.g. input.target = 'https://app-name.guildserver.io'
+  // e.g. input.target = 'https://app-name.guild-technologies.com'
   // Let's ensure target has https:// prefix
   const targetUrl = input.target.startsWith("http") ? input.target : `https://${input.target}`;
 
@@ -174,7 +174,7 @@ export interface DnsInstructionsResult {
  */
 export function buildDnsInstructions(input: {
   domain: string;
-  /** Canonical app host the CNAME should target, e.g. "myapp.guildserver.io". */
+  /** Canonical app host the CNAME should target, e.g. "myapp.guild-technologies.com". */
   cnameTarget: string;
   /** Server public IP for apex A records; null if it couldn't be resolved. */
   apexIp: string | null;

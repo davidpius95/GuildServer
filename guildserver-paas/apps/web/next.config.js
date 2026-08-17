@@ -8,13 +8,13 @@ const nextConfig = {
   images: {
     remotePatterns: [
       { protocol: 'http', hostname: 'localhost' },
-      { protocol: 'https', hostname: 'guildserver.io' },
+      { protocol: 'https', hostname: 'guild-technologies.com' },
     ],
   },
   env: {
-    NEXTAUTH_URL: process.env.NEXTAUTH_URL || 'https://guildserver.io',
+    NEXTAUTH_URL: process.env.NEXTAUTH_URL || 'https://guild-technologies.com',
     NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
-    API_URL: process.env.API_URL || 'https://guildserver.io',
+    API_URL: process.env.API_URL || 'https://guild-technologies.com',
   },
   transpilePackages: ['@guildserver/database'],
   typescript: {
@@ -39,15 +39,30 @@ const nextConfig = {
         ],
       },
       {
+        // Hashed build assets: safe to cache forever, the filename changes on
+        // every build.
         source: '/_next/static/(.*)',
         headers: [
           { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
         ],
       },
+      {
+        // Everything that is NOT a hashed asset — i.e. the HTML documents.
+        // Next.js otherwise sends `s-maxage=31536000` on statically prerendered
+        // pages, which tells shared caches to keep the HTML for a year. That
+        // HTML references build-hashed chunk filenames, so after any redeploy a
+        // cached copy points at chunks that no longer exist: every script 404s
+        // and the page renders blank. Must stay uncached so HTML and chunks are
+        // always from the same build.
+        source: '/((?!_next/static|_next/image|favicon.ico).*)',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, must-revalidate' },
+        ],
+      },
     ]
   },
   async rewrites() {
-    const apiUrl = process.env.API_URL || 'https://guildserver.io'
+    const apiUrl = process.env.API_URL || 'https://guild-technologies.com'
     return [
       {
         source: '/trpc/:path*',

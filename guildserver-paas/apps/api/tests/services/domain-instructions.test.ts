@@ -4,7 +4,7 @@ describe("Domain Instructions Builder", () => {
   it("should correctly identify an apex domain", () => {
     const result = buildForwardingInstructions({
       domain: "example.com",
-      target: "my-app.guildserver.io",
+      target: "my-app.guild-technologies.com",
     });
 
     expect(result.isApex).toBe(true);
@@ -12,7 +12,7 @@ describe("Domain Instructions Builder", () => {
     
     // Check specific generic fields
     expect(result.generic.from).toBe("example.com");
-    expect(result.generic.to).toBe("https://my-app.guildserver.io");
+    expect(result.generic.to).toBe("https://my-app.guild-technologies.com");
 
     // Check registrar strings (GoDaddy uses 'Domain' for apex)
     const godaddy = result.registrars.find(r => r.name === "GoDaddy")!;
@@ -22,7 +22,7 @@ describe("Domain Instructions Builder", () => {
   it("should correctly identify a subdomain", () => {
     const result = buildForwardingInstructions({
       domain: "app.example.com",
-      target: "https://my-app.guildserver.io",
+      target: "https://my-app.guild-technologies.com",
     });
 
     expect(result.isApex).toBe(false);
@@ -36,7 +36,7 @@ describe("Domain Instructions Builder", () => {
   it("should correctly identify a wildcard domain", () => {
     const result = buildForwardingInstructions({
       domain: "*.example.com",
-      target: "my-app.guildserver.io",
+      target: "my-app.guild-technologies.com",
     });
 
     expect(result.isApex).toBe(true); // example.com is an apex for the split, but we only care about wildcard flag

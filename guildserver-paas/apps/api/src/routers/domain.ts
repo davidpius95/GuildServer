@@ -417,7 +417,7 @@ export const domainRouter = createTRPCRouter({
             domainId: domain.id,
             domain: domain.domain,
             sslStatus: "not_applicable" as const,
-            sslMessage: "TLS is handled by your registrar's forwarding; the app itself is served over HTTPS at its guildserver.io URL.",
+            sslMessage: "TLS is handled by your registrar's forwarding; the app itself is served over HTTPS at its guild-technologies.com URL.",
             isLocal: false,
           };
         }

@@ -7,7 +7,7 @@ const config: Config = {
   tagline: 'Enterprise Platform as a Service — Deploy, scale, and manage applications with ease',
   favicon: 'img/favicon.ico',
 
-  url: 'https://guildserver.io',
+  url: 'https://guild-technologies.com',
   baseUrl: '/docs/',
 
   organizationName: 'davidpius95',
@@ -131,7 +131,7 @@ const config: Config = {
           items: [
             {
               label: 'Dashboard',
-              href: 'https://guildserver.io/dashboard',
+              href: 'https://guild-technologies.com/dashboard',
             },
             {
               label: 'Status Page',

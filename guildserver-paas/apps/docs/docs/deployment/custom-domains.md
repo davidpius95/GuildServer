@@ -6,14 +6,14 @@ sidebar_label: Custom Domains
 
 # Custom Domains
 
-GuildServer handles custom domains using **Registrar-Level Redirects**. Instead of updating DNS records to point to our servers (which can be complex and error-prone), you configure your domain registrar to forward traffic from your custom domain to your app's canonical `*.guildserver.io` address.
+GuildServer handles custom domains using **Registrar-Level Redirects**. Instead of updating DNS records to point to our servers (which can be complex and error-prone), you configure your domain registrar to forward traffic from your custom domain to your app's canonical `*.guild-technologies.com` address.
 
 ## Why We Use Redirects
 
-GuildServer routes all traffic through a secure Cloudflare Tunnel that exclusively listens on `*.guildserver.io`. We do not expose a public IP address for direct DNS A-record mapping, and we do not terminate TLS for arbitrary third-party domains on our edge.
+GuildServer routes all traffic through a secure Cloudflare Tunnel that exclusively listens on `*.guild-technologies.com`. We do not expose a public IP address for direct DNS A-record mapping, and we do not terminate TLS for arbitrary third-party domains on our edge.
 
 By using registrar-level forwarding:
-- **Instant SSL:** Your registrar handles the TLS certificate for your custom domain, and Cloudflare handles the TLS certificate for your `*.guildserver.io` app. No waiting for Let's Encrypt provisioning.
+- **Instant SSL:** Your registrar handles the TLS certificate for your custom domain, and Cloudflare handles the TLS certificate for your `*.guild-technologies.com` app. No waiting for Let's Encrypt provisioning.
 - **Zero Downtime Routing:** Traffic is seamlessly forwarded to your canonical URL.
 - **No Complex DNS:** You don't need to manage CNAME flattening, ALIAS records, or complex verification TXT records.
 
@@ -28,7 +28,7 @@ By using registrar-level forwarding:
 
 ### Verification
 
-When you click Verify, GuildServer automatically tests the redirect by following the HTTP chain from your custom domain to ensure it lands exactly on your `*.guildserver.io` canonical URL. Once verified, the domain will be marked as Active.
+When you click Verify, GuildServer automatically tests the redirect by following the HTTP chain from your custom domain to ensure it lands exactly on your `*.guild-technologies.com` canonical URL. Once verified, the domain will be marked as Active.
 
 ## Limitations
 
@@ -37,4 +37,4 @@ When you click Verify, GuildServer automatically tests the redirect by following
 > 
 > "URL Masking" or "Frame Forwarding" (keeping the custom domain in the address bar while loading the destination content in a hidden iframe) is **not supported** and strongly discouraged. Modern browsers block iframed content for security reasons, and it ruins SEO and mobile responsiveness. 
 > 
-> When users visit your custom domain, their browser's address bar will update to your canonical `*.guildserver.io` URL (a standard HTTP 301/302 redirect).
+> When users visit your custom domain, their browser's address bar will update to your canonical `*.guild-technologies.com` URL (a standard HTTP 301/302 redirect).
