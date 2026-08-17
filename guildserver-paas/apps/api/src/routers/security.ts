@@ -41,6 +41,15 @@ export const securityRouter = createTRPCRouter({
           issuesFound: posture.totalIssues,
           startedAt: posture.lastScan,
           completedAt: posture.lastScan,
+          // The UI renders a per-severity breakdown for every completed scan.
+          // Omitting this made the page dereference `scan.findings.critical`
+          // on undefined and crash the whole dashboard.
+          findings: {
+            critical: posture.criticalIssues,
+            high: posture.highIssues,
+            medium: posture.mediumIssues,
+            low: posture.lowIssues,
+          },
         },
       ];
     }),
