@@ -19,7 +19,6 @@ import { webhookRouter } from "./handlers/webhooks";
 import { oauthRouter } from "./handlers/oauth";
 import { downloadRouter } from "./handlers/downloads";
 import { stripeWebhookRouter } from "./handlers/stripe-webhooks";
-import { backupsRouter } from "./handlers/backups";
 import { register, httpRequestCounter, httpRequestDuration } from "./services/prometheus-metrics";
 import { AppError } from "./lib/errors";
 
@@ -113,9 +112,6 @@ app.use("/api/auth", oauthRouter);
 
 // Authenticated file downloads (e.g. database backups)
 app.use("/downloads", downloadRouter);
-
-// Database backup download route (token-authed file streaming)
-app.use("/backups", backupsRouter);
 
 // tRPC middleware
 app.use(
