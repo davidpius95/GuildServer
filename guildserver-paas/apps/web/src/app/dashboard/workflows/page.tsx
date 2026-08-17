@@ -307,9 +307,9 @@ export default function WorkflowsPage() {
                     </div>
 
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm" className="flex-1" disabled title="Workflow execution engine is coming soon (preview)">
+                      <Button variant="outline" size="sm" className="flex-1" onClick={() => handleRun(workflow)} disabled={executeWorkflow.isLoading}>
                         <Play className="mr-2 h-3 w-3" />
-                        Run (soon)
+                        Run
                       </Button>
                       <Button variant="outline" size="sm" className="flex-1" disabled title="Editing workflows is coming soon (preview)">
                         <Edit className="mr-2 h-3 w-3" />

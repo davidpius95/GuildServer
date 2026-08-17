@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc/trpc";
 import { workflowTemplates, workflowExecutions, approvalRequests, members } from "@guildserver/database";
 import { eq, and, desc } from "drizzle-orm";
+import { runExecution, resumeExecution } from "../services/workflow-engine";
 
 const createWorkflowSchema = z.object({
   name: z.string().min(1),
@@ -270,7 +271,8 @@ export const workflowRouter = createTRPCRouter({
         })
         .returning();
 
-      // TODO: Start workflow execution engine
+      // Kick off the execution engine (async; UI polls listExecutions).
+      runExecution(execution.id).catch(() => {});
 
       return execution;
     }),
@@ -461,7 +463,10 @@ export const workflowRouter = createTRPCRouter({
         .where(eq(approvalRequests.id, requestId))
         .returning();
 
-      // TODO: Continue workflow execution based on approval
+      // Resume (or cancel) the paused workflow execution based on the decision.
+      if (request.workflowExecutionId) {
+        resumeExecution(request.workflowExecutionId, approved).catch(() => {});
+      }
 
       return updatedRequest;
     }),

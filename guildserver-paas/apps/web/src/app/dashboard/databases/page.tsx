@@ -458,7 +458,7 @@ export default function DatabasesPage() {
                         Restart
                       </Button>
                       <Button variant="outline" size="sm" className="flex-1" onClick={() => handleBackup(db.id)} disabled={backupDatabase.isLoading}>
-                        <Download className="mr-2 h-3 w-3" />
+                        {backupDatabase.isLoading ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Download className="mr-2 h-3 w-3" />}
                         Backup
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => openSettings(db)}>
