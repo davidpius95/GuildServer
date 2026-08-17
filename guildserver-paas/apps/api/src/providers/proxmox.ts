@@ -368,6 +368,7 @@ export class ProxmoxProvider implements ComputeProvider {
             config.userId,
             config.deploymentId,
             remoteDocker,
+            config.registryAuth,
           );
           logs.push(...pullLogs);
         }
@@ -388,6 +389,7 @@ export class ProxmoxProvider implements ComputeProvider {
           sourceType: config.sourceType,
           domains: config.domains,
           containerPort: config.containerPort,
+          registryAuth: config.registryAuth,
         };
 
         const deployResult = await deployContainer(deployOpts, remoteDocker);

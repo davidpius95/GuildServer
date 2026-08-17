@@ -23,8 +23,9 @@ COPY package.json turbo.json pnpm-workspace.yaml ./
 COPY packages/database ./packages/database
 COPY apps/api ./apps/api
 
-# Build only the database package (API runs via tsx from source)
-RUN pnpm --filter @guildserver/database build
+# Build the database package from the workspace root so pnpm resolves the
+# TypeScript binary from the installed root toolchain in this image layout.
+RUN pnpm exec tsc -p packages/database/tsconfig.json
 
 # --- Runner stage ---
 FROM base AS runner
@@ -43,6 +44,7 @@ COPY --from=deps /app/packages/database/node_modules ./packages/database/node_mo
 
 # Copy source and built database
 COPY --from=builder /app/apps/api/src ./apps/api/src
+COPY --from=builder /app/apps/api/scripts ./apps/api/scripts
 COPY --from=builder /app/apps/api/package.json ./apps/api/
 COPY --from=builder /app/apps/api/tsconfig.json ./apps/api/
 COPY --from=builder /app/packages/database ./packages/database

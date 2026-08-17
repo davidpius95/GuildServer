@@ -12,9 +12,12 @@ import { appRouter } from "./trpc/router";
 import { logger } from "./utils/logger";
 import { createWebSocketServer } from "./websocket/server";
 import { initializeQueues } from "./queues/setup";
+import "./queues/instances"; // self-contained instance provisioning queue/worker
+import "./queues/backups"; // self-contained database backup queue/worker + scheduler
 import { setupSwagger } from "./swagger";
 import { webhookRouter } from "./handlers/webhooks";
 import { oauthRouter } from "./handlers/oauth";
+import { downloadRouter } from "./handlers/downloads";
 import { stripeWebhookRouter } from "./handlers/stripe-webhooks";
 import { backupsRouter } from "./handlers/backups";
 import { register, httpRequestCounter, httpRequestDuration } from "./services/prometheus-metrics";
@@ -102,9 +105,14 @@ app.get("/metrics", async (req, res) => {
 
 // Webhook routes (before tRPC, these are plain Express routes)
 app.use("/webhooks", webhookRouter);
+app.use("/api/webhooks", webhookRouter);
 
 // OAuth routes (GitHub + Google login)
 app.use("/auth", oauthRouter);
+app.use("/api/auth", oauthRouter);
+
+// Authenticated file downloads (e.g. database backups)
+app.use("/downloads", downloadRouter);
 
 // Database backup download route (token-authed file streaming)
 app.use("/backups", backupsRouter);

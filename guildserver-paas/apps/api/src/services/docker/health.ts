@@ -10,15 +10,31 @@ export interface HealthCheckResult {
   portMismatch?: { expected: number; actual: number };
 }
 
-function probeHttp(port: number, timeoutMs = 3000): Promise<boolean> {
+function probeHttp(hostname: string, port: number, timeoutMs = 3000): Promise<boolean> {
   return new Promise((resolve) => {
     const req = http.get(
-      { hostname: "127.0.0.1", port, path: "/", timeout: timeoutMs },
+      { hostname, port, path: "/", timeout: timeoutMs },
       (res) => { res.resume(); resolve(true); },
     );
     req.on("error", () => resolve(false));
     req.on("timeout", () => { req.destroy(); resolve(false); });
   });
+}
+
+async function getContainerIPAddress(containerId: string, dockerClient?: Docker): Promise<string | null> {
+  const d = dockerClient || docker;
+  try {
+    const container = d.getContainer(containerId);
+    const inspection = await container.inspect();
+    const networks = inspection.NetworkSettings?.Networks || {};
+
+    for (const network of Object.values(networks)) {
+      if (network?.IPAddress) return network.IPAddress;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
 }
 
 async function detectActualListeningPort(containerId: string, dockerClient?: Docker): Promise<number | null> {
@@ -47,7 +63,7 @@ export async function postDeployHealthCheck(opts: {
   maxWaitMs?: number;
   dockerClient?: Docker;
 }): Promise<HealthCheckResult> {
-  const { containerId, hostPort, expectedContainerPort, userId, deploymentId, maxWaitMs = 30000, dockerClient } = opts;
+  const { containerId, hostPort, expectedContainerPort, userId, deploymentId, maxWaitMs = 120000, dockerClient } = opts;
 
   const log = (msg: string) => {
     logger.info(`[healthcheck] ${msg}`);
@@ -58,14 +74,35 @@ export async function postDeployHealthCheck(opts: {
 
   const intervalMs = 2000;
   const maxAttempts = Math.ceil(maxWaitMs / intervalMs);
+  const containerIP = await getContainerIPAddress(containerId, dockerClient);
 
   log(`Running health check on port ${hostPort} (expecting container port ${expectedContainerPort})...`);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const reachable = await probeHttp(hostPort);
+    const reachable = containerIP
+      ? await probeHttp(containerIP, expectedContainerPort)
+      : await probeHttp("127.0.0.1", hostPort);
+
     if (reachable) {
-      log(`✅ Service is responding on port ${hostPort} (attempt ${attempt}/${maxAttempts})`);
+      const target = containerIP ? `${containerIP}:${expectedContainerPort}` : `127.0.0.1:${hostPort}`;
+      log(`✅ Service is responding on ${target} (attempt ${attempt}/${maxAttempts})`);
       return { healthy: true, message: "Service is responding" };
+    }
+
+    const actualPort = await detectActualListeningPort(containerId, dockerClient);
+    if (actualPort && actualPort !== expectedContainerPort) {
+      log(
+        `❌ Port mismatch detected early! Expected container port ${expectedContainerPort} ` +
+        `but the image exposes port ${actualPort}.`,
+      );
+      return {
+        healthy: false,
+        message:
+          `Port mismatch: Traefik is routing to container port ${expectedContainerPort} ` +
+          `but the container is actually listening on port ${actualPort}. ` +
+          `Try setting the correct port in the application settings.`,
+        portMismatch: { expected: expectedContainerPort, actual: actualPort },
+      };
     }
 
     if (attempt < maxAttempts) {

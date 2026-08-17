@@ -32,6 +32,27 @@ interface UseDeploymentStreamResult {
   clearLogs: () => void
 }
 
+const PHASE_STATUS_LABELS: Record<string, string> = {
+  validate: "Validating deployment configuration...",
+  clone: "Cloning source repository...",
+  build: "Building the image...",
+  deploy: "Deploying the container...",
+  health_check: "Verifying container health and URL reachability...",
+  rollback: "Rolling back deployment...",
+  preview: "Preparing preview deployment...",
+}
+
+function getDerivedStatusFromPhase(phase: string, status: string): string | null {
+  if (status === "failed") return "failed"
+  if (status !== "running") return null
+
+  if (phase === "build") return "building"
+  if (phase === "health_check") return "verifying"
+  if (phase === "deploy") return "deploying"
+  if (phase === "validate") return "validating"
+  return phase
+}
+
 // Process a single WS message into state updates
 function processMessage(
   message: any,
@@ -48,7 +69,7 @@ function processMessage(
     setLogs((prev) => [
       ...prev,
       {
-        timestamp: new Date().toISOString(),
+        timestamp: message.timestamp || new Date().toISOString(),
         message: message.log || message.message || "",
         phase: message.phase,
       },
@@ -56,6 +77,11 @@ function processMessage(
   }
 
   if (message.type === "deployment_phase") {
+    const derivedStatus = getDerivedStatusFromPhase(message.phase, message.status)
+    if (derivedStatus) {
+      setStatus(derivedStatus)
+    }
+
     setPhases((prev) => {
       const existing = prev.find((p) => p.name === message.phase)
       if (existing) {
@@ -84,6 +110,18 @@ function processMessage(
         },
       ]
     })
+
+    const phaseLog = PHASE_STATUS_LABELS[message.phase]
+    if (phaseLog && message.status === "running") {
+      setLogs((prev) => [
+        ...prev,
+        {
+          timestamp: message.timestamp || new Date().toISOString(),
+          message: `🔎 ${phaseLog}`,
+          phase: message.phase,
+        },
+      ])
+    }
   }
 
   if (message.type === "deployment_status") {
@@ -114,7 +152,7 @@ function processMessage(
       setLogs((prev) => [
         ...prev,
         {
-          timestamp: new Date().toISOString(),
+          timestamp: message.timestamp || new Date().toISOString(),
           message: statusMessages[message.status],
           phase: "status",
         },

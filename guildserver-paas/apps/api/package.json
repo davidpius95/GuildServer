@@ -15,6 +15,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:ci": "jest --ci --coverage --watchAll=false",
+    "smoke:database": "tsx scripts/database-smoke.ts",
     "db:generate": "drizzle-kit generate:pg",
     "db:studio": "drizzle-kit studio"
   },

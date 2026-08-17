@@ -28,6 +28,10 @@ services:
       - default
       - guildserver
     restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
 
   # PostgreSQL Database
   postgres:
@@ -73,27 +77,29 @@ services:
     container_name: guildserver-api
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - api_backups:/app/data/backups
+      - database_backups:/var/lib/guildserver/backups
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://guildserver:${POSTGRES_PASSWORD:-password123}@postgres:5432/guildserver
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       PORT: 4000
-      FRONTEND_URL: https://${BASE_DOMAIN:-guildserver.io}
-      API_URL: https://${BASE_DOMAIN:-guildserver.io}
+      FRONTEND_URL: https://${BASE_DOMAIN:?BASE_DOMAIN is required}
+      API_URL: https://${BASE_DOMAIN:?BASE_DOMAIN is required}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
-      GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:-https://${BASE_DOMAIN:-guildserver.io}/auth/github/callback}
+      GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:-https://${BASE_DOMAIN:?BASE_DOMAIN is required}/auth/github/callback}
       GITLAB_CLIENT_ID: ${GITLAB_CLIENT_ID:-}
       GITLAB_CLIENT_SECRET: ${GITLAB_CLIENT_SECRET:-}
       BITBUCKET_CLIENT_ID: ${BITBUCKET_CLIENT_ID:-}
       BITBUCKET_CLIENT_SECRET: ${BITBUCKET_CLIENT_SECRET:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      BASE_DOMAIN: ${BASE_DOMAIN:-guildserver.io}
-      APP_URL: https://${BASE_DOMAIN:-guildserver.io}
-      API_PUBLIC_URL: https://${BASE_DOMAIN:-guildserver.io}
+      BASE_DOMAIN: ${BASE_DOMAIN:?BASE_DOMAIN is required}
+      DATABASE_PUBLIC_HOST: ${DATABASE_PUBLIC_HOST:-${BASE_DOMAIN:?BASE_DOMAIN is required}}
+      BACKUP_DIR: /var/lib/guildserver/backups
+      APP_URL: https://${BASE_DOMAIN:?BASE_DOMAIN is required}
+      API_PUBLIC_URL: https://${BASE_DOMAIN:?BASE_DOMAIN is required}
       ENV_ENCRYPTION_KEY: ${ENV_ENCRYPTION_KEY:-}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
@@ -108,34 +114,61 @@ services:
       - "traefik.enable=true"
       - "traefik.http.services.api.loadbalancer.server.port=4000"
       # tRPC API
-      - "traefik.http.routers.api-trpc.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && PathPrefix(`/trpc`)"
+      - "traefik.http.routers.api-trpc.rule=Host(`${BASE_DOMAIN:?BASE_DOMAIN is required}`) && PathPrefix(`/trpc`)"
       - "traefik.http.routers.api-trpc.entrypoints=web"
       - "traefik.http.routers.api-trpc.service=api"
       # Health check
-      - "traefik.http.routers.api-health.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && PathPrefix(`/health`)"
+      - "traefik.http.routers.api-health.rule=Host(`${BASE_DOMAIN:?BASE_DOMAIN is required}`) && PathPrefix(`/health`)"
       - "traefik.http.routers.api-health.entrypoints=web"
       - "traefik.http.routers.api-health.service=api"
       # REST API
-      - "traefik.http.routers.api-rest.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.api-rest.rule=Host(`${BASE_DOMAIN:?BASE_DOMAIN is required}`) && PathPrefix(`/api`)"
       - "traefik.http.routers.api-rest.entrypoints=web"
       - "traefik.http.routers.api-rest.service=api"
       # OAuth routes — must route to API, not web
-      - "traefik.http.routers.api-oauth.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && (PathPrefix(`/auth/github`) || PathPrefix(`/auth/gitlab`) || PathPrefix(`/auth/bitbucket`) || PathPrefix(`/auth/google`))"
+      - "traefik.http.routers.api-oauth.rule=Host(`${BASE_DOMAIN:?BASE_DOMAIN is required}`) && (PathPrefix(`/auth/github`) || PathPrefix(`/auth/gitlab`) || PathPrefix(`/auth/bitbucket`) || PathPrefix(`/auth/google`))"
       - "traefik.http.routers.api-oauth.entrypoints=web"
       - "traefik.http.routers.api-oauth.service=api"
       - "traefik.http.routers.api-oauth.priority=10"
       # Webhooks
-      - "traefik.http.routers.api-webhooks.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && PathPrefix(`/webhooks`)"
+      - "traefik.http.routers.api-webhooks.rule=Host(`${BASE_DOMAIN:?BASE_DOMAIN is required}`) && PathPrefix(`/webhooks`)"
       - "traefik.http.routers.api-webhooks.entrypoints=web"
       - "traefik.http.routers.api-webhooks.service=api"
       # WebSocket for deployment logs
-      - "traefik.http.routers.api-ws.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.api-ws.rule=Host(`${BASE_DOMAIN:?BASE_DOMAIN is required}`) && PathPrefix(`/ws`)"
       - "traefik.http.routers.api-ws.entrypoints=web"
       - "traefik.http.routers.api-ws.service=api"
+      # HTTPS twins. Separate routers so the plain-HTTP ones above keep serving
+      # Cloudflare, which talks HTTP to this origin.
+      - "traefik.http.routers.api-trpc-secure.rule=Host(`${BASE_DOMAIN:?BASE_DOMAIN is required}`) && PathPrefix(`/trpc`)"
+      - "traefik.http.routers.api-trpc-secure.entrypoints=websecure"
+      - "traefik.http.routers.api-trpc-secure.service=api"
+      - "traefik.http.routers.api-trpc-secure.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.api-health-secure.rule=Host(`${BASE_DOMAIN:?BASE_DOMAIN is required}`) && PathPrefix(`/health`)"
+      - "traefik.http.routers.api-health-secure.entrypoints=websecure"
+      - "traefik.http.routers.api-health-secure.service=api"
+      - "traefik.http.routers.api-health-secure.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.api-rest-secure.rule=Host(`${BASE_DOMAIN:?BASE_DOMAIN is required}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.api-rest-secure.entrypoints=websecure"
+      - "traefik.http.routers.api-rest-secure.service=api"
+      - "traefik.http.routers.api-rest-secure.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.api-oauth-secure.rule=Host(`${BASE_DOMAIN:?BASE_DOMAIN is required}`) && (PathPrefix(`/auth/github`) || PathPrefix(`/auth/gitlab`) || PathPrefix(`/auth/bitbucket`) || PathPrefix(`/auth/google`))"
+      - "traefik.http.routers.api-oauth-secure.entrypoints=websecure"
+      - "traefik.http.routers.api-oauth-secure.service=api"
+      - "traefik.http.routers.api-oauth-secure.priority=10"
+      - "traefik.http.routers.api-oauth-secure.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.api-ws-secure.rule=Host(`${BASE_DOMAIN:?BASE_DOMAIN is required}`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.api-ws-secure.entrypoints=websecure"
+      - "traefik.http.routers.api-ws-secure.service=api"
+      - "traefik.http.routers.api-ws-secure.tls.certresolver=letsencrypt"
       # Webhooks (Stripe, Git, etc.)
-      - "traefik.http.routers.api-webhooks.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && PathPrefix(`/webhooks`)"
+      - "traefik.http.routers.api-webhooks.rule=Host(`${BASE_DOMAIN:?BASE_DOMAIN is required}`) && PathPrefix(`/webhooks`)"
       - "traefik.http.routers.api-webhooks.entrypoints=web"
       - "traefik.http.routers.api-webhooks.service=api"
+      - "traefik.http.routers.api-webhooks-secure.rule=Host(`${BASE_DOMAIN:?BASE_DOMAIN is required}`) && PathPrefix(`/webhooks`)"
+      - "traefik.http.routers.api-webhooks-secure.entrypoints=websecure"
+      - "traefik.http.routers.api-webhooks-secure.service=api"
+      - "traefik.http.routers.api-webhooks-secure.tls.certresolver=letsencrypt"
     networks:
       - default
       - guildserver
@@ -147,17 +180,17 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
-        NEXT_PUBLIC_API_BASE_URL: https://${BASE_DOMAIN:-guildserver.io}
+        NEXT_PUBLIC_API_BASE_URL: https://${BASE_DOMAIN:?BASE_DOMAIN is required}
         NEXT_PUBLIC_API_URL: /trpc
         API_URL: http://api:4000
-        NEXTAUTH_URL: https://${BASE_DOMAIN:-guildserver.io}
+        NEXTAUTH_URL: https://${BASE_DOMAIN:?BASE_DOMAIN is required}
     container_name: guildserver-web
     environment:
       NODE_ENV: production
       API_URL: http://api:4000
       NEXT_PUBLIC_API_URL: /trpc
-      NEXT_PUBLIC_API_BASE_URL: https://${BASE_DOMAIN:-guildserver.io}
-      NEXTAUTH_URL: https://${BASE_DOMAIN:-guildserver.io}
+      NEXT_PUBLIC_API_BASE_URL: https://${BASE_DOMAIN:?BASE_DOMAIN is required}
+      NEXTAUTH_URL: https://${BASE_DOMAIN:?BASE_DOMAIN is required}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me-in-production}
     depends_on:
       - api
@@ -165,10 +198,18 @@ services:
       - "traefik.enable=true"
       - "traefik.http.services.web.loadbalancer.server.port=3000"
       # Catchall for all frontend pages (lowest priority)
-      - "traefik.http.routers.web.rule=Host(`${BASE_DOMAIN:-guildserver.io}`)"
+      - "traefik.http.routers.web.rule=Host(`${BASE_DOMAIN:?BASE_DOMAIN is required}`)"
       - "traefik.http.routers.web.entrypoints=web"
       - "traefik.http.routers.web.service=web"
       - "traefik.http.routers.web.priority=1"
+      # HTTPS twin. Kept as a separate router so the plain-HTTP one above keeps
+      # working (Cloudflare talks HTTP to this origin); certresolver here is what
+      # actually makes Traefik request the Let's Encrypt cert for BASE_DOMAIN.
+      - "traefik.http.routers.web-secure.rule=Host(`${BASE_DOMAIN:?BASE_DOMAIN is required}`)"
+      - "traefik.http.routers.web-secure.entrypoints=websecure"
+      - "traefik.http.routers.web-secure.service=web"
+      - "traefik.http.routers.web-secure.priority=1"
+      - "traefik.http.routers.web-secure.tls.certresolver=letsencrypt"
     networks:
       - default
       - guildserver
@@ -183,9 +224,13 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.docs.loadbalancer.server.port=80"
-      - "traefik.http.routers.docs.rule=Host(`${BASE_DOMAIN:-guildserver.io}`) && PathPrefix(`/docs`)"
+      - "traefik.http.routers.docs.rule=Host(`${BASE_DOMAIN:?BASE_DOMAIN is required}`) && PathPrefix(`/docs`)"
       - "traefik.http.routers.docs.entrypoints=web"
       - "traefik.http.routers.docs.service=docs"
+      - "traefik.http.routers.docs-secure.rule=Host(`${BASE_DOMAIN:?BASE_DOMAIN is required}`) && PathPrefix(`/docs`)"
+      - "traefik.http.routers.docs-secure.entrypoints=websecure"
+      - "traefik.http.routers.docs-secure.service=docs"
+      - "traefik.http.routers.docs-secure.tls.certresolver=letsencrypt"
       - "traefik.http.routers.docs.priority=10"
     networks:
       - default
@@ -228,9 +273,17 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.grafana.loadbalancer.server.port=3000"
-      - "traefik.http.routers.grafana.rule=Host(`grafana.${BASE_DOMAIN:-guildserver.io}`)"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.${BASE_DOMAIN:?BASE_DOMAIN is required}`)"
       - "traefik.http.routers.grafana.entrypoints=web"
       - "traefik.http.routers.grafana.service=grafana"
+      # Low priority so Traefik's internal ACME challenge router outranks this
+      # catch-all. Without it Grafana answers /.well-known/acme-challenge/* with
+      # a redirect to /login and HTTP-01 validation fails.
+      - "traefik.http.routers.grafana.priority=1"
+      - "traefik.http.routers.grafana-secure.rule=Host(`grafana.${BASE_DOMAIN:?BASE_DOMAIN is required}`)"
+      - "traefik.http.routers.grafana-secure.entrypoints=websecure"
+      - "traefik.http.routers.grafana-secure.service=grafana"
+      - "traefik.http.routers.grafana-secure.tls.certresolver=letsencrypt"
     networks:
       - default
     restart: unless-stopped
@@ -267,21 +320,12 @@ services:
       - /dev/disk:/dev/disk:ro
     command:
       - '-port=8081'
-    networks:
-      - default
-    restart: unless-stopped
-
-  # Cloudflare Metrics Exporter
-  cloudflare-exporter:
-    image: ghcr.io/lablabs/cloudflare-exporter:latest
-    container_name: guildserver-cloudflare-exporter
-    environment:
-      - CF_API_TOKEN=${CLOUDFLARE_API_TOKEN}
-      - CF_ZONES=${CF_ZONES:-}
-      - CF_ACCOUNTS=${CF_ACCOUNTS:-}
-      - FREE_TIER=${FREE_TIER:-true}
-    ports:
-      - "8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8081/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - default
     restart: unless-stopped
@@ -339,13 +383,16 @@ services:
       - default
     restart: unless-stopped
 
+  # Shared HTTP→HTTPS redirect middleware (declared once, reused)
+  # (defined here via label on a dummy no-op; Traefik picks it up from any container)
+
 volumes:
   postgres_data:
   redis_data:
   prometheus_data:
   grafana_data:
   loki_data:
-  api_backups:
+  database_backups:
 
 networks:
   default:

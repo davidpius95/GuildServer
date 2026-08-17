@@ -37,6 +37,8 @@ startMetricsCollection(30000);
 
 Collection starts automatically during queue initialization in `initializeQueues()` once Docker connectivity is confirmed.
 
+Production also runs Prometheus and cAdvisor for infrastructure-level metrics. cAdvisor listens on `8081` in this deployment, so Prometheus targets and health checks should use `cadvisor:8081` or `http://127.0.0.1:8081/healthz` from inside the cAdvisor container.
+
 ## Collected Metrics
 
 Each collection cycle produces five metric rows per running container:

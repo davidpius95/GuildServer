@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure, enforcePlanLimit } from "../trpc/trpc";
 import { applications, projects, members, deployments, computeProviders, oauthAccounts } from "@guildserver/database";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { deploymentQueue } from "../queues/deployment";
 import {
   restartContainer,
@@ -11,11 +11,14 @@ import {
   getAppContainerInfo,
   removeExistingContainers,
   stopContainer,
+  searchDockerHubImages,
+  listDockerHubTags,
 } from "../services/docker";
 import { healthCheck } from "../services/container-manager";
 import { listGithubRepos, listGithubBranches } from "../services/git-provider";
 import { getProvider } from "../providers/factory";
 import { registerGithubWebhook } from "../services/github";
+import { encryptSecret } from "../utils/crypto";
 
 const createApplicationSchema = z.object({
   name: z.string().min(1),
@@ -25,9 +28,12 @@ const createApplicationSchema = z.object({
   repository: z.string().optional(),
   branch: z.string().default("main"),
   buildPath: z.string().optional(), // Subdirectory for monorepo builds
-  buildType: z.enum(["dockerfile", "nixpacks", "heroku", "paketo", "static", "railpack"]),
+  buildType: z.enum(["dockerfile", "nixpacks", "heroku", "paketo", "static", "railpack"]).optional(),
   dockerImage: z.string().optional(),
   dockerTag: z.string().default("latest"),
+  registryUrl: z.string().optional().nullable(),
+  registryUsername: z.string().optional().nullable(),
+  registryPassword: z.string().optional().nullable(),
   containerPort: z.number().optional(),
   environment: z.record(z.string()).default({}),
   memoryLimit: z.number().optional(),
@@ -46,6 +52,9 @@ const updateApplicationSchema = z.object({
   branch: z.string().optional(),
   dockerImage: z.string().optional(),
   dockerTag: z.string().optional(),
+  registryUrl: z.string().optional().nullable(),
+  registryUsername: z.string().optional().nullable(),
+  registryPassword: z.string().optional().nullable(),
   environment: z.record(z.string()).optional(),
   memoryLimit: z.number().optional(),
   cpuLimit: z.number().optional(),
@@ -93,7 +102,51 @@ export const applicationRouter = createTRPCRouter({
         },
       });
 
-      return projectApplications;
+      // Never expose stored registry credentials to the client
+      return projectApplications.map(({ registryPassword, ...app }) => app);
+    }),
+
+  listByOrg: protectedProcedure
+    .input(z.object({ organizationId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      // Check if user has access to the organization
+      const member = await ctx.db.query.members.findFirst({
+        where: and(
+          eq(members.organizationId, input.organizationId),
+          eq(members.userId, ctx.user.id)
+        ),
+      });
+
+      if (!member) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You don't have access to this organization",
+        });
+      }
+
+      // Get all projects in the organization
+      const orgProjects = await ctx.db.query.projects.findMany({
+        where: eq(projects.organizationId, input.organizationId),
+        columns: { id: true },
+      });
+
+      if (orgProjects.length === 0) {
+        return [];
+      }
+
+      const projectIds = orgProjects.map((p) => p.id);
+
+      const projectApplications = await ctx.db.query.applications.findMany({
+        where: inArray(applications.projectId, projectIds),
+        orderBy: [desc(applications.createdAt)],
+        with: {
+          domains: true,
+          project: true,
+        },
+      });
+
+      // Never expose stored registry credentials to the client
+      return projectApplications.map(({ registryPassword, ...app }) => app);
     }),
 
   getById: protectedProcedure
@@ -127,7 +180,9 @@ export const applicationRouter = createTRPCRouter({
         });
       }
 
-      return application;
+      // Never expose the stored registry password to the client
+      const { registryPassword, ...safeApplication } = application;
+      return safeApplication;
     }),
 
   create: protectedProcedure
@@ -193,6 +248,8 @@ export const applicationRouter = createTRPCRouter({
           environment: input.environment || {},
           // Convert cpuLimit from number to string (DB column is decimal)
           cpuLimit: input.cpuLimit != null ? String(input.cpuLimit) : undefined,
+          // Encrypt the registry password at rest
+          registryPassword: encryptSecret(input.registryPassword),
         } as any)
         .returning();
 
@@ -208,10 +265,10 @@ export const applicationRouter = createTRPCRouter({
 
           if (account?.accessToken) {
             // Determine the API base URL from env
-            const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guildserver.io";
+            const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guild-technologies.com";
             // Check if it's the traefik setup where webhook route is on main domain under /api?
             // Actually, /webhooks is at the root of the api container. 
-            // The Traefik rule for webhooks should be under the BASE_DOMAIN, for example https://guildserver.io/webhooks/github
+            // The Traefik rule for webhooks should be under the BASE_DOMAIN, for example https://guild-technologies.com/webhooks/github
             const webhookUrl = `${baseUrl}/webhooks/github`;
             const secret = process.env.GITHUB_WEBHOOK_SECRET || "guildserver-webhook-secret-default";
             
@@ -222,7 +279,8 @@ export const applicationRouter = createTRPCRouter({
         }
       }
 
-      return newApplication;
+      const { registryPassword: _pw, ...safeApplication } = newApplication;
+      return safeApplication;
     }),
 
   update: protectedProcedure
@@ -255,10 +313,17 @@ export const applicationRouter = createTRPCRouter({
         });
       }
 
+      // Only re-encrypt the registry password when the client actually sent one;
+      // leave the stored value untouched otherwise.
+      const encryptedUpdates =
+        updates.registryPassword !== undefined
+          ? { ...updates, registryPassword: encryptSecret(updates.registryPassword) }
+          : updates;
+
       const [updatedApplication] = await ctx.db
         .update(applications)
         .set({
-          ...updates,
+          ...encryptedUpdates,
           updatedAt: new Date(),
         })
         .where(eq(applications.id, id))
@@ -275,7 +340,7 @@ export const applicationRouter = createTRPCRouter({
           });
 
           if (account?.accessToken) {
-            const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guildserver.io";
+            const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guild-technologies.com";
             const webhookUrl = `${baseUrl}/webhooks/github`;
             const secret = process.env.GITHUB_WEBHOOK_SECRET || "guildserver-webhook-secret-default";
             
@@ -286,7 +351,8 @@ export const applicationRouter = createTRPCRouter({
         }
       }
 
-      return updatedApplication;
+      const { registryPassword: _pw, ...safeApplication } = updatedApplication;
+      return safeApplication;
     }),
 
   // Toggle preview deployments and update main branch
@@ -713,5 +779,24 @@ export const applicationRouter = createTRPCRouter({
     .input(z.object({ token: z.string(), owner: z.string(), repo: z.string() }))
     .query(async ({ input }) => {
       return await listGithubBranches(input.token, input.owner, input.repo);
+    }),
+
+  // Docker Hub image discovery
+  searchDockerImages: protectedProcedure
+    .input(
+      z.object({
+        query: z.string().min(1),
+        page: z.number().int().min(1).default(1),
+        pageSize: z.number().int().min(1).max(50).default(25),
+      })
+    )
+    .query(async ({ input }) => {
+      return await searchDockerHubImages(input.query, input.page, input.pageSize);
+    }),
+
+  listDockerImageTags: protectedProcedure
+    .input(z.object({ repository: z.string().min(1) }))
+    .query(async ({ input }) => {
+      return await listDockerHubTags(input.repository);
     }),
 });
