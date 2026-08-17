@@ -91,7 +91,7 @@ These 4 services will be added to [docker-compose.prod.yml](file:///Users/user/G
 
 #### 2. Grafana (Visualization)
 - **Image:** `grafana/grafana:11.1.0`
-- **Port:** `3001` (exposed via Traefik at `grafana.guildserver.io` or `/grafana`)
+- **Port:** `3001` (exposed via Traefik at `grafana.guild-technologies.com` or `/grafana`)
 - **Storage:** `grafana_data` volume (persistent dashboards)
 - **Config:** Auto-provisioned data source (Prometheus) + dashboards via JSON files
 - **Auth:** Embedded mode for GuildServer dashboard integration, admin access for standalone
@@ -388,7 +388,7 @@ Two approaches for surfacing Grafana within the GuildServer web UI:
 - Grafana handles all the time-series rendering, zooming, and aggregation
 
 ### Option B: Standalone Grafana Link
-- Route Grafana at `grafana.guildserver.io` via Traefik
+- Route Grafana at `grafana.guild-technologies.com` via Traefik
 - Add a "Open Grafana" button on the monitoring page
 - Full Grafana experience with all dashboards
 
@@ -496,7 +496,7 @@ Two approaches for surfacing Grafana within the GuildServer web UI:
 ## Open Questions
 
 > [!IMPORTANT]
-> **Grafana Access:** Should Grafana be publicly accessible at `grafana.guildserver.io`, or restricted to admin users only (with basic auth or IP whitelist)?
+> **Grafana Access:** Should Grafana be publicly accessible at `grafana.guild-technologies.com`, or restricted to admin users only (with basic auth or IP whitelist)?
 
 > [!IMPORTANT]
 > **Cloudflare API Token:** Do you have one available? If so, we can enable the Cloudflare Exporter in Phase 4 for CDN-level metrics (geo map, cache hit rate, bandwidth saved, threats blocked).

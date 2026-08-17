@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure, enforcePlanLimit } from "../trpc/trpc";
 import { applications, projects, members, deployments, computeProviders, oauthAccounts } from "@guildserver/database";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { deploymentQueue } from "../queues/deployment";
 import {
   restartContainer,
@@ -28,7 +28,7 @@ const createApplicationSchema = z.object({
   repository: z.string().optional(),
   branch: z.string().default("main"),
   buildPath: z.string().optional(), // Subdirectory for monorepo builds
-  buildType: z.enum(["dockerfile", "nixpacks", "heroku", "paketo", "static", "railpack"]),
+  buildType: z.enum(["dockerfile", "nixpacks", "heroku", "paketo", "static", "railpack"]).optional(),
   dockerImage: z.string().optional(),
   dockerTag: z.string().default("latest"),
   registryUrl: z.string().optional().nullable(),
@@ -99,6 +99,49 @@ export const applicationRouter = createTRPCRouter({
         orderBy: [desc(applications.createdAt)],
         with: {
           domains: true,
+        },
+      });
+
+      // Never expose stored registry credentials to the client
+      return projectApplications.map(({ registryPassword, ...app }) => app);
+    }),
+
+  listByOrg: protectedProcedure
+    .input(z.object({ organizationId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      // Check if user has access to the organization
+      const member = await ctx.db.query.members.findFirst({
+        where: and(
+          eq(members.organizationId, input.organizationId),
+          eq(members.userId, ctx.user.id)
+        ),
+      });
+
+      if (!member) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You don't have access to this organization",
+        });
+      }
+
+      // Get all projects in the organization
+      const orgProjects = await ctx.db.query.projects.findMany({
+        where: eq(projects.organizationId, input.organizationId),
+        columns: { id: true },
+      });
+
+      if (orgProjects.length === 0) {
+        return [];
+      }
+
+      const projectIds = orgProjects.map((p) => p.id);
+
+      const projectApplications = await ctx.db.query.applications.findMany({
+        where: inArray(applications.projectId, projectIds),
+        orderBy: [desc(applications.createdAt)],
+        with: {
+          domains: true,
+          project: true,
         },
       });
 
@@ -222,10 +265,10 @@ export const applicationRouter = createTRPCRouter({
 
           if (account?.accessToken) {
             // Determine the API base URL from env
-            const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guildserver.io";
+            const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guild-technologies.com";
             // Check if it's the traefik setup where webhook route is on main domain under /api?
             // Actually, /webhooks is at the root of the api container. 
-            // The Traefik rule for webhooks should be under the BASE_DOMAIN, for example https://guildserver.io/webhooks/github
+            // The Traefik rule for webhooks should be under the BASE_DOMAIN, for example https://guild-technologies.com/webhooks/github
             const webhookUrl = `${baseUrl}/webhooks/github`;
             const secret = process.env.GITHUB_WEBHOOK_SECRET || "guildserver-webhook-secret-default";
             
@@ -297,7 +340,7 @@ export const applicationRouter = createTRPCRouter({
           });
 
           if (account?.accessToken) {
-            const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guildserver.io";
+            const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guild-technologies.com";
             const webhookUrl = `${baseUrl}/webhooks/github`;
             const secret = process.env.GITHUB_WEBHOOK_SECRET || "guildserver-webhook-secret-default";
             

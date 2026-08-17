@@ -86,6 +86,17 @@ function buildCloneUrl(config: GitProviderConfig): string {
   return fullUrl;
 }
 
+function isMissingRemoteBranchError(error: any): boolean {
+  const message = String(error?.message || error || "");
+  return /remote branch .* not found|couldn't find remote ref|remote ref does not exist/i.test(message);
+}
+
+async function getRemoteDefaultBranch(git: SimpleGit, cloneUrl: string): Promise<string | undefined> {
+  const output = await git.raw(["ls-remote", "--symref", cloneUrl, "HEAD"]);
+  const match = output.match(/^ref:\s+refs\/heads\/(.+)\s+HEAD$/m);
+  return match?.[1]?.trim();
+}
+
 /**
  * Clone a git repository to a local directory
  */
@@ -112,19 +123,43 @@ export async function cloneRepository(
   const safeUrl = config.repository.startsWith("http")
     ? config.repository
     : `${config.provider}:${config.repository}`;
-  log(`Cloning ${safeUrl} (branch: ${config.branch})...`);
+  const requestedBranch = config.branch?.trim() || "main";
+  let clonedBranch = requestedBranch;
+  log(`Cloning ${safeUrl} (branch: ${requestedBranch})...`);
 
   try {
     const git: SimpleGit = simpleGit();
 
-    // Clone with depth 1 for speed (shallow clone)
-    await git.clone(cloneUrl, cloneDir, [
-      "--branch", config.branch,
-      "--depth", "1",
-      "--single-branch",
-    ]);
+    const shallowClone = async (branch: string) => {
+      await git.clone(cloneUrl, cloneDir, [
+        "--branch", branch,
+        "--depth", "1",
+        "--single-branch",
+      ]);
+    };
 
-    log("Clone completed");
+    try {
+      // Clone with depth 1 for speed (shallow clone)
+      await shallowClone(requestedBranch);
+    } catch (error: any) {
+      if (!isMissingRemoteBranchError(error)) {
+        throw error;
+      }
+
+      const defaultBranch = await getRemoteDefaultBranch(git, cloneUrl);
+      if (!defaultBranch || defaultBranch === requestedBranch) {
+        throw error;
+      }
+
+      log(`Branch "${requestedBranch}" was not found. Retrying with remote default branch "${defaultBranch}"...`);
+      if (fs.existsSync(cloneDir)) {
+        fs.rmSync(cloneDir, { recursive: true, force: true });
+      }
+      await shallowClone(defaultBranch);
+      clonedBranch = defaultBranch;
+    }
+
+    log(`Clone completed from branch "${clonedBranch}"`);
 
     // Get commit info
     const repoGit = simpleGit(cloneDir);
@@ -142,7 +177,7 @@ export async function cloneRepository(
       commitSha: latestCommit.hash,
       commitMessage: latestCommit.message,
       commitAuthor: latestCommit.author_name,
-      branch: config.branch,
+      branch: clonedBranch,
     };
   } catch (error: any) {
     // Clean up on failure

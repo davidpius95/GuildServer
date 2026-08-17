@@ -220,6 +220,26 @@ This returns an HTTP 200 response when the API server is operational. Use this e
 - Kubernetes liveness/readiness probes
 - Docker Compose `healthcheck` directives
 
+## Production Infrastructure Health
+
+Production Docker Compose also health-checks infrastructure containers.
+
+| Container | Check | Expected Result |
+|---|---|---|
+| `guildserver-postgres` | `pg_isready -U guildserver -d guildserver` | accepting connections |
+| `guildserver-redis` | `redis-cli ping` | `PONG` |
+| `guildserver-cadvisor` | `wget -q -O - http://127.0.0.1:8081/healthz` | `ok` |
+
+cAdvisor is intentionally started with `-port=8081`. If Docker reports `guildserver-cadvisor` as unhealthy and logs mention a failed probe to port `8080`, the health check is stale. The probe and Prometheus target must use `8081`.
+
+Useful production checks:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml ps
+docker exec guildserver-cadvisor wget -q -O - http://127.0.0.1:8081/healthz
+curl -f https://yourdomain.com/health
+```
+
 ## Initial Sync on Startup
 
 When the API server starts, an initial container status sync runs immediately after Docker connectivity is confirmed:
@@ -241,3 +261,4 @@ This ensures the database reflects actual container state even after an API serv
 | `apps/api/src/queues/setup.ts` | BullMQ cron job configuration |
 | `apps/api/src/routers/monitoring.ts` | `getSystemHealth`, `getAlerts`, `getApplicationsSummary` |
 | `apps/api/src/services/docker.ts` | `testDockerConnection()`, `listManagedContainers()` |
+| `docker-compose.prod.yml` | Production health checks for PostgreSQL, Redis, and cAdvisor |

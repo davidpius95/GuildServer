@@ -39,9 +39,10 @@ export default function LoginPage() {
 
   const loginMutation = trpc.auth.login.useMutation({
     onSuccess: (data) => {
-      localStorage.setItem('guildserver-token', data.token)
+      localStorage.setItem("guildserver-token", data.token)
+      localStorage.setItem("guildserver-preferred-product", "paas")
       toast.success("Successfully logged in!")
-      router.push('/dashboard')
+      router.push("/dashboard")
     },
     onError: (error) => {
       toast.error(error.message)

@@ -188,6 +188,10 @@ export const authRouter = createTRPCRouter({
           lastLogin: user.lastLogin,
         },
         token,
+        organizationId: (await ctx.db.query.members.findFirst({
+          where: eq(members.userId, user.id),
+          columns: { organizationId: true },
+        }))?.organizationId ?? null,
       };
     }),
 

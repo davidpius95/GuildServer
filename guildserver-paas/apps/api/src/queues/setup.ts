@@ -10,6 +10,7 @@ import {
   postDeployHealthCheck,
 } from "../services/docker";
 import { getProvider } from "../providers/factory";
+import { buildDeploymentAccessUrl, waitForUrlReachable } from "../services/deployment-access";
 import { selectNode } from "../services/node-scheduler";
 import { syncContainerStatuses } from "../services/container-manager";
 import { broadcastToUser } from "../websocket/server";
@@ -584,20 +585,34 @@ const deploymentWorker = new Worker(
         timestamp: new Date().toISOString(),
       });
 
+      const primaryDomain = appDomains.find((d) => d.isPrimary)?.domain || appDomains[0]?.domain || null;
+      const providerType = computeProvider.type;
+      const deploymentUrls = buildDeploymentAccessUrl({
+        hostPort: result.hostPort,
+        providerType,
+        providerMetadata: result.providerMetadata || null,
+        primaryDomain,
+        previewDomain,
+      });
+      const accessUrl = deploymentUrls.accessUrl;
+      const directUrl = deploymentUrls.directUrl;
+
       // 6b. Run actual post-deploy health check
       const expectedPort = app.containerPort || detectedPort || 80;
-      const healthResult = await postDeployHealthCheck({
-        containerId: result.containerId,
-        hostPort: result.hostPort,
-        expectedContainerPort: expectedPort,
-        userId,
-        deploymentId,
-        maxWaitMs: 30000,
-      });
+      const containerHealth = providerType === "proxmox"
+        ? await computeProvider.healthCheck(applicationId)
+        : await postDeployHealthCheck({
+            containerId: result.containerId,
+            hostPort: result.hostPort,
+            expectedContainerPort: expectedPort,
+            userId,
+            deploymentId,
+            maxWaitMs: 120000,
+          });
 
       // If port mismatch detected, auto-correct the Traefik labels
-      if (healthResult.portMismatch) {
-        const { actual } = healthResult.portMismatch;
+      if ("portMismatch" in containerHealth && containerHealth.portMismatch) {
+        const { actual } = containerHealth.portMismatch;
         allBuildLogs.push(
           `⚠️ Auto-correcting: port mismatch detected (expected ${expectedPort}, actual ${actual}).`,
           `Updating application port to ${actual} and redeploying routing...`,
@@ -615,33 +630,56 @@ const deploymentWorker = new Worker(
         });
       }
 
+      broadcastToUser(userId, {
+        type: "deployment_log",
+        deploymentId,
+        log: `Verifying reachable URL: ${accessUrl}`,
+        phase: "health_check",
+      });
+
+      const urlHealth = await waitForUrlReachable({
+        url: accessUrl,
+        maxWaitMs: 300000,
+        intervalMs: 3000,
+      });
+
       // 7. Update deployment status to "completed"
       allBuildLogs.push(...result.logs);
 
       // Add health check result to logs
-      if (!healthResult.healthy) {
-        allBuildLogs.push(`⚠️ Health check warning: ${healthResult.message}`);
+      if (!containerHealth.healthy) {
+        allBuildLogs.push(`⚠️ Container health warning: ${containerHealth.message}`);
       } else {
-        allBuildLogs.push(`✅ Health check passed: ${healthResult.message}`);
+        allBuildLogs.push(`✅ Container health passed: ${containerHealth.message}`);
+      }
+
+      if (!urlHealth.healthy) {
+        allBuildLogs.push(`❌ Public URL check failed: ${urlHealth.message}`);
+        if (directUrl !== accessUrl) {
+          allBuildLogs.push(`Direct URL tested at: ${directUrl}`);
+        }
+      } else {
+        allBuildLogs.push(`✅ Public URL reachable: ${accessUrl}`);
+        if (directUrl !== accessUrl) {
+          allBuildLogs.push(`Direct URL: ${directUrl}`);
+        }
       }
 
       const allLogs = allBuildLogs.join("\n");
-
-      // Resolve the friendly access URL
-      const accessUrl = previewDomain
-        ? `https://${previewDomain}`
-        : appDomains.find((d) => d.isPrimary) || appDomains[0]
-          ? `https://${(appDomains.find((d) => d.isPrimary) || appDomains[0]).domain}`
-          : `http://localhost:${result.hostPort}`;
+      const deploymentHealthy = containerHealth.healthy && urlHealth.healthy;
 
       // Save the image tag for future rollbacks
       const finalImageTag = resolvedImageTag || `${effectiveImage}:${effectiveTag}`;
 
       // Build deployment update with provider metadata (for Proxmox VMID lookup, etc.)
       const deploymentUpdate: Record<string, unknown> = {
-        status: healthResult.healthy ? "completed" : "unhealthy",
+        status: deploymentHealthy ? "completed" : "failed",
         buildLogs: allLogs,
-        deploymentLogs: `Container: ${result.containerName}\nPort: ${result.hostPort}\nContainer ID: ${result.containerId}\nURL: ${accessUrl}${!healthResult.healthy ? `\n⚠️ ${healthResult.message}` : ""}`,
+        deploymentLogs: `Container: ${result.containerName}\nPort: ${result.hostPort}\nContainer ID: ${result.containerId}\nURL: ${accessUrl}\nDirect URL: ${directUrl}${
+          !deploymentHealthy
+            ? `\n⚠️ ${!containerHealth.healthy ? containerHealth.message : urlHealth.message}`
+            : ""
+        }`,
         completedAt: new Date(),
         imageTag: finalImageTag,
       };
@@ -664,42 +702,32 @@ const deploymentWorker = new Worker(
         .where(eq(deployments.id, deploymentId));
 
       // 8. Update application status
-      await updateApplicationStatus(applicationId, healthResult.healthy ? "running" : "unhealthy");
+      await updateApplicationStatus(applicationId, deploymentHealthy ? "running" : "failed");
 
       // Mark health check complete (with appropriate status)
       broadcastToUser(userId, {
         type: "deployment_phase",
         deploymentId,
         phase: "health_check",
-        status: healthResult.healthy ? "completed" : "warning",
-        message: healthResult.healthy
-          ? "Container is healthy"
-          : `⚠️ ${healthResult.message}`,
+        status: deploymentHealthy ? "completed" : "warning",
+        message: deploymentHealthy
+          ? "Container is healthy and reachable"
+          : `⚠️ ${!containerHealth.healthy ? containerHealth.message : urlHealth.message}`,
         timestamp: new Date().toISOString(),
       });
 
       // 9. Notify user with friendly URL
-      if (healthResult.healthy) {
-        broadcastToUser(userId, {
-          type: "deployment_status",
-          deploymentId,
-          status: "completed",
-          message: `Deployment successful! Access at ${accessUrl}`,
-          url: accessUrl,
-          directUrl: `http://localhost:${result.hostPort}`,
-          containerId: result.containerId,
-        });
-      } else {
-        broadcastToUser(userId, {
-          type: "deployment_status",
-          deploymentId,
-          status: "unhealthy",
-          message: `Deployment completed but health check failed. The app may still be starting up.`,
-          url: accessUrl,
-          directUrl: `http://localhost:${result.hostPort}`,
-          containerId: result.containerId,
-        });
-      }
+      broadcastToUser(userId, {
+        type: "deployment_status",
+        deploymentId,
+        status: deploymentHealthy ? "completed" : "failed",
+        message: deploymentHealthy
+          ? `Deployment successful! Access at ${accessUrl}`
+          : `Deployment failed health checks. ${!containerHealth.healthy ? containerHealth.message : urlHealth.message}`,
+        url: accessUrl,
+        directUrl,
+        containerId: result.containerId,
+      });
 
       // 10. Send notifications (in-app, email, Slack)
       const project = await db.query.projects.findFirst({
@@ -707,13 +735,18 @@ const deploymentWorker = new Worker(
       });
       const orgId = project?.organizationId || null;
 
-      const notifyEvent = isPreview ? "preview_created" as const : "deployment_success" as const;
+      const notifyEvent = deploymentHealthy
+        ? (isPreview ? "preview_created" as const : "deployment_success" as const)
+        : "deployment_failed" as const;
       notify(notifyEvent, userId, orgId, {
         appName: app.appName,
         url: accessUrl,
         commitSha: app.repository ? deploymentId.slice(0, 8) : undefined,
         branch: previewBranch || app.branch || "main",
         previewUrl: isPreview ? accessUrl : undefined,
+        error: deploymentHealthy
+          ? undefined
+          : (!containerHealth.healthy ? containerHealth.message : urlHealth.message),
       }).catch((err) => logger.warn("Notification error:", err.message));
 
       // 11. Track usage metrics (billing)
@@ -727,24 +760,25 @@ const deploymentWorker = new Worker(
         );
       }
 
-      logger.info("Deployment completed successfully", {
+      logger.info("Deployment completed", {
         deploymentId,
         applicationId,
         containerId: result.containerId,
         port: result.hostPort,
+        healthy: deploymentHealthy,
       });
 
       // Track deployment success in Prometheus
-      deploymentsTotal.inc({ status: "success", app_id: applicationId });
+      deploymentsTotal.inc({ status: deploymentHealthy ? "success" : "failed", app_id: applicationId });
       
       const diff = process.hrtime(jobStartTime);
       deploymentDuration.observe(
-        { status: "success", app_id: applicationId },
+        { status: deploymentHealthy ? "success" : "failed", app_id: applicationId },
         diff[0] + diff[1] / 1e9
       );
 
       return {
-        success: true,
+        success: deploymentHealthy,
         deploymentId,
         containerId: result.containerId,
         port: result.hostPort,

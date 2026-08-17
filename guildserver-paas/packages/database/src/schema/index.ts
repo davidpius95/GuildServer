@@ -108,7 +108,16 @@ export const providerStatusEnum = pgEnum("provider_status", [
 ]);
 
 // Billing enums
-export const planSlugEnum = pgEnum("plan_slug", ["hobby", "pro", "enterprise"]);
+export const planSlugEnum = pgEnum("plan_slug", ["hobby", "starter", "pro", "enterprise"]);
+export const instanceFamilyEnum = pgEnum("instance_family", ["shared", "dedicated"]);
+export const instanceStatusEnum = pgEnum("instance_status", [
+  "pending",
+  "provisioning",
+  "active",
+  "stopped",
+  "error",
+  "terminated",
+]);
 export const subscriptionStatusEnum = pgEnum("subscription_status", [
   "active",
   "trialing",
@@ -304,7 +313,19 @@ export const databases = pgTable("databases", {
   
   // External access
   externalPort: integer("external_port"),
-  
+
+  // Persistence / runtime (populated by the provisioner)
+  volumeName: text("volume_name"),
+  containerId: text("container_id"),
+  hostPort: integer("host_port"),
+
+  // Automatic backup configuration
+  backupEnabled: boolean("backup_enabled").default(false),
+  backupFrequency: varchar("backup_frequency", { length: 20 }).default("daily"), // hourly | daily | weekly
+  backupHour: integer("backup_hour"), // preferred hour-of-day (0-23) for the backup window
+  backupRetentionDays: integer("backup_retention_days").default(7),
+  backupDir: text("backup_dir"), // host directory for dumps (null = derived default)
+
   // Status
   status: varchar("status", { length: 50 }).default("inactive"),
 
@@ -320,9 +341,14 @@ export const databaseBackups = pgTable("database_backups", {
   databaseId: uuid("database_id").references(() => databases.id, { onDelete: "cascade" }),
   sizeBytes: integer("size_bytes").default(0),
   status: backupStatusEnum("status").default("pending"),
+  backupType: varchar("backup_type", { length: 20 }).default("manual"), // manual | automatic
+  filePath: text("file_path"), // absolute path of the dump on the host
   fileUrl: text("file_url"),
+  error: text("error"),
   startedAt: timestamp("started_at").defaultNow(),
   completedAt: timestamp("completed_at"),
+  expiresAt: timestamp("expires_at"), // completedAt + retentionDays; used by the retention sweep
+  createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   databaseIdIdx: index("database_backups_database_id_idx").on(table.databaseId),
 }));
@@ -408,11 +434,17 @@ export const domains = pgTable("domains", {
 
   // DNS verification
   verificationToken: varchar("verification_token", { length: 255 }),
-  verificationMethod: varchar("verification_method", { length: 50 }).default("cname"), // cname, txt
+  verificationMethod: varchar("verification_method", { length: 50 }).default("cname"), // cname, txt, redirect
   verified: boolean("verified").default(false),
 
   // Status
   status: domainStatusEnum("status").default("pending"),
+
+  // Redirect alias specifics
+  redirectsTo: varchar("redirects_to", { length: 255 }),
+  lastCheckedAt: timestamp("last_checked_at"),
+  verificationError: text("verification_error"),
+  lastHttpStatus: integer("last_http_status"),
 
   // SSL/TLS
   certificateId: uuid("certificate_id"),
@@ -616,6 +648,82 @@ export const plans = pgTable("plans", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// VPS instance types (the IaaS catalog — sized compute, seeded not user-created)
+export const instanceTypes = pgTable("instance_types", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: varchar("slug", { length: 64 }).notNull().unique(), // e.g. "gs-s3"
+  name: varchar("name", { length: 255 }).notNull(),
+  family: instanceFamilyEnum("family").notNull(), // shared | dedicated
+  description: text("description"),
+
+  // Specs
+  vcpu: decimal("vcpu").notNull(),            // vCPU cores (supports fractional)
+  ramMb: integer("ram_mb").notNull(),         // RAM in MB
+  storageGb: integer("storage_gb").notNull(), // NVMe storage in GB
+  transferTb: integer("transfer_tb").notNull(), // included egress in TB
+
+  // Pricing (cents). priceHourly is stored as micro-cents (1e-6 USD) for sub-cent precision.
+  priceMonthly: integer("price_monthly").notNull(),     // cents
+  priceHourlyMicro: integer("price_hourly_micro").notNull(), // micro-cents per hour
+
+  stripePriceIdMonthly: varchar("stripe_price_id_monthly", { length: 255 }),
+  stripePriceIdHourly: varchar("stripe_price_id_hourly", { length: 255 }),
+
+  sortOrder: integer("sort_order").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Provisioned VPS instances (user-created compute)
+export const instances = pgTable("instances", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  instanceTypeId: uuid("instance_type_id").references(() => instanceTypes.id, { onDelete: "restrict" }),
+  providerId: uuid("provider_id").references(() => computeProviders.id, { onDelete: "set null" }),
+
+  region: varchar("region", { length: 64 }).default("default"),
+  billingPeriod: varchar("billing_period", { length: 16 }).default("monthly"), // monthly | hourly
+
+  // Optional add-ons captured at provision time
+  extraStorageGb: integer("extra_storage_gb").default(0),
+  backupsEnabled: boolean("backups_enabled").default(false),
+
+  status: instanceStatusEnum("status").default("pending"),
+  hostname: varchar("hostname", { length: 255 }),
+  ipv4: inet("ipv4"),
+  statusMessage: text("status_message"),
+
+  // Backing resource (Proxmox LXC) — used to manage/destroy the real instance
+  vmid: integer("vmid"),
+  node: varchar("node", { length: 128 }),
+
+  // Stripe billing
+  stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  organizationIdIdx: index("instances_organization_id_idx").on(table.organizationId),
+  statusIdx: index("instances_status_idx").on(table.status),
+}));
+
+export const instancesRelations = relations(instances, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [instances.organizationId],
+    references: [organizations.id],
+  }),
+  instanceType: one(instanceTypes, {
+    fields: [instances.instanceTypeId],
+    references: [instanceTypes.id],
+  }),
+  provider: one(computeProviders, {
+    fields: [instances.providerId],
+    references: [computeProviders.id],
+  }),
+}));
 
 // Subscriptions (links an organization to a plan)
 export const subscriptions = pgTable("subscriptions", {

@@ -58,24 +58,25 @@ pnpm --version
 ## Step 3: Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/guildserver-paas.git
-cd guildserver-paas
+git clone https://github.com/davidpius95/GuildServer.git
+cd GuildServer/guildserver-paas
 ```
 
 ## Step 4: Configure Environment
 
 ```bash
-cp .env.example .env
+cp .env.example .env.production
 ```
 
-Edit the `.env` file with your production values:
+Edit `.env.production` with your production values:
 
 ```bash
 # Database
-DATABASE_URL="postgresql://guildserver:YOUR_STRONG_PASSWORD@localhost:5433/guildserver"
+POSTGRES_PASSWORD="YOUR_STRONG_PASSWORD"
+DATABASE_URL="postgresql://guildserver:YOUR_STRONG_PASSWORD@postgres:5432/guildserver"
 
 # Redis
-REDIS_URL="redis://localhost:6380"
+REDIS_URL="redis://redis:6379"
 
 # Application
 NODE_ENV="production"
@@ -125,13 +126,13 @@ docker network create guildserver
 ## Step 7: Start Services
 
 ```bash
-docker compose up -d
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
 Watch the logs to ensure everything starts correctly:
 
 ```bash
-docker compose logs -f
+docker compose --env-file .env.production -f docker-compose.prod.yml logs -f
 ```
 
 Wait for the health checks to pass. You should see log lines indicating PostgreSQL and Redis are ready.
@@ -155,8 +156,8 @@ pnpm run db:seed
 # Check API health
 curl http://localhost:4000/health
 
-# Check all containers are running
-docker compose ps
+# Check all production containers are running
+docker compose --env-file .env.production -f docker-compose.prod.yml ps
 
 # Check Traefik dashboard (development only)
 curl http://localhost:8080/api/overview
@@ -167,7 +168,7 @@ curl http://localhost:8080/api/overview
 Open your browser and navigate to your domain. If DNS and SSL are configured correctly:
 
 - **Web UI**: `https://yourdomain.com`
-- **API**: `https://api.yourdomain.com` (or `http://localhost:4000` directly)
+- **API health**: `https://yourdomain.com/health`
 
 Log in with the credentials created by the seed script.
 
@@ -187,7 +188,7 @@ sudo ufw status
 ```
 
 :::warning
-Do not expose ports 5433 (PostgreSQL), 6380 (Redis), or 8080 (Traefik dashboard) to the public internet.
+Do not expose PostgreSQL, Redis, or the Traefik dashboard to the public internet. In the production compose file PostgreSQL is bound to `127.0.0.1:5432` for SSH-tunneled admin access, Redis is internal only, and Traefik dashboard port `8080` should be protected or disabled before public launch.
 :::
 
 ## Updating GuildServer
@@ -205,7 +206,7 @@ pnpm install
 pnpm run db:migrate
 
 # Rebuild and restart containers
-docker compose up -d --build
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
 ## Troubleshooting

@@ -5,7 +5,11 @@ sidebar_position: 3
 
 # Database Schema
 
-GuildServer uses PostgreSQL 15 with Drizzle ORM. The schema is defined in `packages/database/src/schema/index.ts` and contains 28 tables organized into functional groups.
+GuildServer uses PostgreSQL 15 with Drizzle ORM. The schema is defined in `packages/database/src/schema/index.ts` and is organized into functional groups.
+
+:::info
+This repository is the PaaS product. The active schema must not contain legacy BaaS objects such as `baas_*` tables, `baas_*` enum types, the `product` enum type, or an `organizations.product` column. If an old production database still has those objects, take a database backup first, then clean them up as legacy data rather than reintroducing BaaS into normal migrations.
+:::
 
 ## Schema Overview
 

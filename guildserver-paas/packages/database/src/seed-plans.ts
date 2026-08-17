@@ -42,11 +42,43 @@ async function seedPlans() {
       sortOrder: 0,
     },
     {
+      name: "Starter",
+      slug: "starter" as const,
+      description: "For solo developers shipping real projects",
+      priceMonthly: 1200, // $12.00
+      priceYearly: 12000, // $120.00 (2 months free)
+      stripePriceIdMonthly: process.env.STRIPE_STARTER_MONTHLY_PRICE_ID || null,
+      stripePriceIdYearly: process.env.STRIPE_STARTER_YEARLY_PRICE_ID || null,
+      limits: {
+        maxApps: 10,
+        maxDatabases: 3,
+        maxDeployments: 200,
+        maxBandwidthGb: 50,
+        maxBuildMinutes: 400,
+        maxMemoryMb: 2048,
+        maxCpuCores: 1,
+        maxDomainsPerApp: 10,
+        maxTeamMembers: 3,
+        auditRetentionDays: 30,
+      },
+      features: {
+        previewDeployments: true,
+        teamCollaboration: true,
+        customDomains: true,
+        prioritySupport: false,
+        sso: false,
+        spendManagement: false,
+        webhooks: true,
+        apiAccess: true,
+      },
+      sortOrder: 1,
+    },
+    {
       name: "Pro",
       slug: "pro" as const,
       description: "For teams and commercial projects with usage-based pricing",
-      priceMonthly: 2000, // $20.00
-      priceYearly: 20000, // $200.00 (2 months free)
+      priceMonthly: 2900, // $29.00
+      priceYearly: 29000, // $290.00 (2 months free)
       stripePriceIdMonthly: process.env.STRIPE_PRO_MONTHLY_PRICE_ID || null,
       stripePriceIdYearly: process.env.STRIPE_PRO_YEARLY_PRICE_ID || null,
       limits: {
@@ -71,7 +103,7 @@ async function seedPlans() {
         webhooks: true,
         apiAccess: true,
       },
-      sortOrder: 1,
+      sortOrder: 2,
     },
     {
       name: "Enterprise",
@@ -103,7 +135,7 @@ async function seedPlans() {
         webhooks: true,
         apiAccess: true,
       },
-      sortOrder: 2,
+      sortOrder: 3,
     },
   ];
 

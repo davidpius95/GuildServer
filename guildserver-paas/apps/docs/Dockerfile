@@ -8,7 +8,7 @@ WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/docs/package.json ./apps/docs/
 
-RUN pnpm install --frozen-lockfile --filter @guildserver/docs
+RUN pnpm install --frozen-lockfile
 
 # --- Builder stage ---
 FROM base AS builder
@@ -17,10 +17,12 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/docs/node_modules ./apps/docs/node_modules
 
-COPY package.json pnpm-workspace.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/docs ./apps/docs
 
-RUN pnpm --filter @guildserver/docs build
+RUN cp pnpm-lock.yaml apps/docs/pnpm-lock.yaml && pnpm --dir apps/docs install --frozen-lockfile && rm apps/docs/pnpm-lock.yaml
+
+RUN pnpm --dir apps/docs build
 
 # --- Runner stage ---
 FROM nginx:alpine AS runner

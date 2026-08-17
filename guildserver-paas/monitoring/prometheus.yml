@@ -41,12 +41,7 @@ scrape_configs:
       - targets: ["api:4000"]
     metrics_path: "/metrics"
 
-  # 6. Cloudflare Exporter
-  - job_name: "cloudflare"
-    static_configs:
-      - targets: ["cloudflare-exporter:8080"]
-
-  # 7. Postgres Exporter
+  # 6. Postgres Exporter
   - job_name: "postgres"
     static_configs:
       - targets: ["postgres-exporter:9187"]

@@ -15,7 +15,7 @@ const phaseLabels: Record<string, string> = {
   clone: "Clone",
   build: "Build",
   deploy: "Deploy",
-  health_check: "Health Check",
+  health_check: "Verifying",
   rollback: "Rollback",
   pull: "Pull Image",
   preview: "Preview",
@@ -29,6 +29,11 @@ function formatDuration(start?: string, end?: string): string | null {
   if (diff < 1) return "<1s"
   if (diff < 60) return `${diff}s`
   return `${Math.floor(diff / 60)}m ${diff % 60}s`
+}
+
+function formatClock(value?: string): string | null {
+  if (!value) return null
+  return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
 }
 
 function StepIcon({ status }: { status: DeploymentPhase["status"] }) {
@@ -95,9 +100,21 @@ export function DeployStepper({ phases, className }: DeployStepperProps) {
                 >
                   {phaseLabels[phase.name] || phase.name}
                 </span>
+                <span className="mt-1 text-[11px] leading-tight text-muted-foreground line-clamp-2">
+                  {phase.message}
+                </span>
                 {duration && (
                   <span className="text-[10px] text-muted-foreground">{duration}</span>
                 )}
+                <span className="text-[10px] text-muted-foreground">
+                  {phase.status === "running" && phase.startedAt
+                    ? `Started ${formatClock(phase.startedAt)}`
+                    : phase.status === "completed" && phase.completedAt
+                      ? `Completed ${formatClock(phase.completedAt)}`
+                      : phase.startedAt
+                        ? `Started ${formatClock(phase.startedAt)}`
+                        : "Waiting"}
+                </span>
               </div>
 
               {/* Connector line */}
@@ -181,6 +198,15 @@ export function DeployStepper({ phases, className }: DeployStepperProps) {
                 {duration && (
                   <p className="text-xs text-muted-foreground mt-0.5">{duration}</p>
                 )}
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {phase.status === "running" && phase.startedAt
+                    ? `Started ${formatClock(phase.startedAt)}`
+                    : phase.status === "completed" && phase.completedAt
+                      ? `Completed ${formatClock(phase.completedAt)}`
+                      : phase.startedAt
+                        ? `Started ${formatClock(phase.startedAt)}`
+                        : "Waiting"}
+                </p>
               </div>
             </div>
           )

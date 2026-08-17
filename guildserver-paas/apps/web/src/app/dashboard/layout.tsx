@@ -36,6 +36,7 @@ const navigation = [
   { name: "Applications", href: "/dashboard/applications", icon: Rocket },
   { name: "Deployments", href: "/dashboard/deployments", icon: History },
   { name: "Databases", href: "/dashboard/databases", icon: Database },
+  { name: "VPS Instances", href: "/dashboard/instances", icon: Server },
   { name: "Templates", href: "/dashboard/templates", icon: Boxes },
   { name: "Workflows", href: "/dashboard/workflows", icon: Workflow },
   { name: "Monitoring", href: "/dashboard/monitoring", icon: BarChart3 },
@@ -177,7 +178,7 @@ export default function DashboardLayout({
             </Badge>
           </div>
           <SidebarNav pathname={pathname} isAdmin={isAdmin} />
-          <div className="border-t p-4">
+          <div className="border-t p-4 space-y-2">
             <Button
               variant="ghost"
               className="w-full justify-start gap-3"
@@ -220,7 +221,7 @@ export default function DashboardLayout({
                   </Badge>
                 </div>
                 <SidebarNav pathname={pathname} isAdmin={isAdmin} />
-                <div className="border-t p-4">
+                <div className="border-t p-4 space-y-2">
                   <Button
                     variant="ghost"
                     className="w-full justify-start gap-3"

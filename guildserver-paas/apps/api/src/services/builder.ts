@@ -9,7 +9,14 @@ const docker = new Docker({
   socketPath: process.platform === "win32" ? "//./pipe/docker_engine" : "/var/run/docker.sock",
 });
 
-export type DetectedBuildType = "dockerfile" | "node" | "python" | "go" | "static" | "unknown";
+export type DetectedBuildType =
+  | "dockerfile"
+  | "fastapi-fullstack"
+  | "node"
+  | "python"
+  | "go"
+  | "static"
+  | "unknown";
 
 export interface BuildResult {
   imageTag: string;
@@ -29,16 +36,219 @@ export interface BuildOptions {
   environment?: Record<string, string>;
 }
 
+type PackageManager = "npm" | "yarn" | "pnpm";
+
+function readPackageJson(projectDir: string): any {
+  const pkgJsonPath = path.join(projectDir, "package.json");
+  return fs.existsSync(pkgJsonPath) ? JSON.parse(fs.readFileSync(pkgJsonPath, "utf8")) : {};
+}
+
+export function detectPackageManager(projectDir: string): PackageManager {
+  const pkg = readPackageJson(projectDir);
+  const declared = typeof pkg.packageManager === "string" ? pkg.packageManager.toLowerCase() : "";
+
+  if (declared.startsWith("pnpm")) return "pnpm";
+  if (declared.startsWith("yarn")) return "yarn";
+  if (declared.startsWith("npm")) return "npm";
+
+  if (fs.existsSync(path.join(projectDir, "pnpm-lock.yaml"))) return "pnpm";
+  if (fs.existsSync(path.join(projectDir, "yarn.lock"))) return "yarn";
+
+  return "npm";
+}
+
+function hasLockfile(projectDir: string, packageManager: PackageManager): boolean {
+  if (packageManager === "pnpm") return fs.existsSync(path.join(projectDir, "pnpm-lock.yaml"));
+  if (packageManager === "yarn") return fs.existsSync(path.join(projectDir, "yarn.lock"));
+  return fs.existsSync(path.join(projectDir, "package-lock.json"));
+}
+
+function getInstallCommand(projectDir: string, packageManager: PackageManager): string {
+  const locked = hasLockfile(projectDir, packageManager);
+
+  switch (packageManager) {
+    case "pnpm":
+      return locked ? "RUN pnpm install --frozen-lockfile" : "RUN pnpm install";
+    case "yarn":
+      return locked ? "RUN yarn install --frozen-lockfile" : "RUN yarn install";
+    default:
+      return locked ? "RUN npm ci" : "RUN npm install";
+  }
+}
+
+function getBuildCommand(packageManager: PackageManager): string {
+  switch (packageManager) {
+    case "pnpm":
+      return "pnpm build";
+    case "yarn":
+      return "yarn build";
+    default:
+      return "npm run build";
+  }
+}
+
+function isFastApiFullStackTemplate(projectDir: string): boolean {
+  const backendPyprojectPath = path.join(projectDir, "backend", "pyproject.toml");
+  const frontendPackagePath = path.join(projectDir, "frontend", "package.json");
+  const backendMainPath = path.join(projectDir, "backend", "app", "main.py");
+
+  if (
+    !fs.existsSync(backendPyprojectPath) ||
+    !fs.existsSync(frontendPackagePath) ||
+    !fs.existsSync(backendMainPath)
+  ) {
+    return false;
+  }
+
+  const backendPyproject = fs.readFileSync(backendPyprojectPath, "utf8");
+  const backendMain = fs.readFileSync(backendMainPath, "utf8");
+
+  return /fastapi/i.test(backendPyproject) && backendMain.includes("app.frontend(");
+}
+
+function commandUsesDevServer(command: string): boolean {
+  return /\b(vite|next\s+dev|nuxt\s+dev|remix\s+dev|astro\s+dev)\b/.test(command);
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function hasWorkspaceIndicators(projectDir: string): boolean {
+  const pkg = readPackageJson(projectDir)
+  const scripts = pkg.scripts || {}
+
+  if (Array.isArray(pkg.workspaces) && pkg.workspaces.length > 0) return true
+  if (pkg.workspaces && typeof pkg.workspaces === "object") return true
+  if (fs.existsSync(path.join(projectDir, "turbo.json"))) return true
+  if (fs.existsSync(path.join(projectDir, "nx.json"))) return true
+  if (fs.existsSync(path.join(projectDir, "pnpm-workspace.yaml"))) return true
+
+  return Object.values(scripts).some(
+    (value) => typeof value === "string" && /\b(turbo|nx)\b/.test(value)
+  )
+}
+
+function findNestedAppContext(projectDir: string): string | undefined {
+  const candidates = [
+    "frontend",
+    "apps/main",
+    "apps/dashboard",
+    "apps/web",
+    "app",
+  ]
+
+  for (const candidate of candidates) {
+    const candidateDir = path.join(projectDir, candidate)
+    if (fs.existsSync(path.join(candidateDir, "package.json"))) return candidateDir
+    if (
+      fs.existsSync(path.join(candidateDir, "pyproject.toml")) ||
+      fs.existsSync(path.join(candidateDir, "requirements.txt"))
+    ) {
+      return candidateDir
+    }
+  }
+
+  return undefined
+}
+
+function resolveBuildContext(projectDir: string): string {
+  const hasRootNodeManifest = fs.existsSync(path.join(projectDir, "package.json"))
+  const hasRootPythonManifest =
+    fs.existsSync(path.join(projectDir, "requirements.txt")) ||
+    fs.existsSync(path.join(projectDir, "pyproject.toml")) ||
+    fs.existsSync(path.join(projectDir, "Pipfile"))
+
+  if (hasWorkspaceIndicators(projectDir)) {
+    const nestedContext = findNestedAppContext(projectDir)
+    if (nestedContext) return nestedContext
+  }
+
+  if (hasRootNodeManifest || hasRootPythonManifest) {
+    return projectDir
+  }
+
+  const frontendDir = path.join(projectDir, "frontend")
+  if (fs.existsSync(path.join(frontendDir, "package.json"))) {
+    return frontendDir
+  }
+
+  const backendDir = path.join(projectDir, "backend")
+  if (
+    fs.existsSync(path.join(backendDir, "package.json")) ||
+    fs.existsSync(path.join(backendDir, "requirements.txt")) ||
+    fs.existsSync(path.join(backendDir, "pyproject.toml")) ||
+    fs.existsSync(path.join(backendDir, "server.py"))
+  ) {
+    return backendDir
+  }
+
+  return projectDir
+}
+
+export function resolveNodeStartCommand(projectDir: string, packageManager: "npm" | "yarn" | "pnpm"): string {
+  const pkgJsonPath = path.join(projectDir, "package.json");
+  const pkg = fs.existsSync(pkgJsonPath) ? JSON.parse(fs.readFileSync(pkgJsonPath, "utf8")) : {};
+  const scripts = pkg.scripts || {};
+  const runScript = packageManager === "yarn" ? "yarn" : `${packageManager} run`;
+
+  if (scripts.start) {
+    return packageManager === "yarn" ? "yarn start" : `${packageManager} start`;
+  }
+
+  if (scripts.dev && !commandUsesDevServer(scripts.dev)) {
+    return `${runScript} dev`;
+  }
+
+  if (typeof pkg.main === "string" && fs.existsSync(path.join(projectDir, pkg.main))) {
+    return `node ${shellQuote(pkg.main)}`;
+  }
+
+  const commonEntries = [
+    "dist/server.js",
+    "dist/index.js",
+    "server.js",
+    "index.js",
+    "src/server.js",
+    "src/index.js",
+    "src/server.ts",
+    "src/index.ts",
+    "src/app.ts",
+    "server.ts",
+    "index.ts",
+    "app.ts",
+  ];
+
+  for (const entry of commonEntries) {
+    if (!fs.existsSync(path.join(projectDir, entry))) continue;
+    if (entry.endsWith(".ts")) return `npx tsx ${shellQuote(entry)}`;
+    return `node ${shellQuote(entry)}`;
+  }
+
+  return [
+    "echo 'No Node.js start command found.'",
+    "echo 'Add a package.json start script, set a main file, or include a common entry such as src/server.ts.'",
+    "exit 1",
+  ].join(" && ");
+}
+
 /**
  * Detect the build type by looking at files in the project directory
  */
-export function detectBuildType(projectDir: string): DetectedBuildType {
+export function detectBuildType(projectDir: string, opts: { ignoreDockerfile?: boolean } = {}): DetectedBuildType {
   // Check for Dockerfile first
   if (
-    fs.existsSync(path.join(projectDir, "Dockerfile")) ||
-    fs.existsSync(path.join(projectDir, "dockerfile"))
+    !opts.ignoreDockerfile &&
+    (fs.existsSync(path.join(projectDir, "Dockerfile")) ||
+      fs.existsSync(path.join(projectDir, "dockerfile")))
   ) {
     return "dockerfile";
+  }
+
+  // FastAPI's full-stack template has both a frontend workspace and a backend app.
+  // Treat it specially before generic Node detection sees the root package.json.
+  if (isFastApiFullStackTemplate(projectDir)) {
+    return "fastapi-fullstack";
   }
 
   // Node.js
@@ -74,21 +284,42 @@ export function detectBuildType(projectDir: string): DetectedBuildType {
  */
 function generateDockerfile(buildType: DetectedBuildType, projectDir: string): { dockerfile: string; port: number } {
   switch (buildType) {
+    case "fastapi-fullstack": {
+      return { dockerfile: `FROM oven/bun:1 AS frontend-build
+WORKDIR /app
+COPY package.json bun.lock* ./
+COPY frontend/package.json frontend/package.json
+WORKDIR /app/frontend
+RUN bun install
+COPY frontend/ /app/frontend/
+ARG VITE_API_URL=
+RUN bun run build
+
+FROM python:3.14-slim
+ENV PYTHONUNBUFFERED=1
+WORKDIR /app/backend
+COPY backend/pyproject.toml ./
+COPY backend/alembic.ini ./
+COPY backend/app ./app
+COPY --from=frontend-build /app/backend/app/frontend ./app/frontend
+RUN pip install --no-cache-dir .
+EXPOSE 8000
+CMD ["fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]
+`, port: 8000 };
+    }
+
     case "node": {
       // Check if it's a Next.js, Vite/SPA, or plain Node app
       const pkgJsonPath = path.join(projectDir, "package.json");
+      const packageManager = detectPackageManager(projectDir);
       let startCmd = "node index.js";
       let buildCmd = "";
-      let hasLockfile = "npm";
       let isStaticSPA = false; // Vite, CRA, or other SPA that builds to static files
       let spaBuildDir = "dist"; // Output directory: Vite→dist, CRA→build
 
       if (fs.existsSync(pkgJsonPath)) {
         const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
         const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
-
-        if (fs.existsSync(path.join(projectDir, "yarn.lock"))) hasLockfile = "yarn";
-        if (fs.existsSync(path.join(projectDir, "pnpm-lock.yaml"))) hasLockfile = "pnpm";
 
         // Detect static SPA frameworks (Vite, CRA, etc.) that build to static files
         // These have a build script but no start script (or a start script that just runs dev server)
@@ -106,20 +337,14 @@ function generateDockerfile(buildType: DetectedBuildType, projectDir: string): {
         }
 
         if (!isStaticSPA) {
-          if (pkg.scripts?.start) {
-            startCmd = "npm start";
-          }
+          startCmd = resolveNodeStartCommand(projectDir, packageManager);
           if (pkg.scripts?.build) {
-            buildCmd = "RUN npm run build";
+            buildCmd = `RUN ${getBuildCommand(packageManager)}`;
           }
         }
       }
 
-      const installCmd = hasLockfile === "yarn"
-        ? "RUN yarn install --frozen-lockfile"
-        : hasLockfile === "pnpm"
-        ? "RUN npm install -g pnpm && pnpm install --frozen-lockfile"
-        : "RUN npm ci || npm install";
+      const installCmd = getInstallCommand(projectDir, packageManager);
 
       // For static SPAs (Vite, CRA), use multi-stage build: Node for building, nginx for serving
       if (isStaticSPA) {
@@ -128,7 +353,7 @@ WORKDIR /app
 COPY package*.json yarn.lock* pnpm-lock.yaml* ./
 ${installCmd}
 COPY . .
-RUN npm run build
+RUN ${getBuildCommand(packageManager)}
 
 FROM nginx:alpine
 COPY --from=builder /app/${spaBuildDir} /usr/share/nginx/html
@@ -158,12 +383,19 @@ CMD ["sh", "-c", "${startCmd}"]
     case "python": {
       const hasRequirements = fs.existsSync(path.join(projectDir, "requirements.txt"));
       const hasPyproject = fs.existsSync(path.join(projectDir, "pyproject.toml"));
+      const requirementsText = hasRequirements
+        ? fs.readFileSync(path.join(projectDir, "requirements.txt"), "utf8")
+        : "";
+      const pyprojectText = hasPyproject
+        ? fs.readFileSync(path.join(projectDir, "pyproject.toml"), "utf8")
+        : "";
+      const hasFastApi = /fastapi/i.test(`${requirementsText}\n${pyprojectText}`);
 
       let installCmd = "";
       if (hasRequirements) {
         installCmd = "COPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt";
       } else if (hasPyproject) {
-        installCmd = "COPY pyproject.toml .\nRUN pip install --no-cache-dir .";
+        installCmd = "COPY . .\nRUN pip install --no-cache-dir .";
       }
 
       // Detect common entry points
@@ -172,11 +404,13 @@ CMD ["sh", "-c", "${startCmd}"]
         entryPoint = "python manage.py runserver 0.0.0.0:8000";
       } else if (fs.existsSync(path.join(projectDir, "main.py"))) {
         entryPoint = "python main.py";
+      } else if (hasFastApi && fs.existsSync(path.join(projectDir, "app", "main.py"))) {
+        entryPoint = "fastapi run app/main.py --host 0.0.0.0 --port 8000";
       } else if (fs.existsSync(path.join(projectDir, "app.py"))) {
         entryPoint = "python app.py";
       }
 
-      return { dockerfile: `FROM python:3.12-slim
+      return { dockerfile: `FROM python:3.14-slim
 WORKDIR /app
 ${installCmd}
 COPY . .
@@ -233,6 +467,10 @@ export async function buildImage(
 ): Promise<BuildResult> {
   const d = dockerClient || docker;
   const logs: string[] = [];
+  const buildContextDir = resolveBuildContext(opts.localPath);
+  if (buildContextDir !== opts.localPath) {
+    logger.info(`[build:${opts.appName}] Using nested build context: ${path.relative(opts.localPath, buildContextDir)}`);
+  }
   // Sanitize app name for Docker image reference format:
   // must be lowercase, only [a-z0-9._-], can't start/end with separator
   const sanitizedName = opts.appName
@@ -254,7 +492,18 @@ export async function buildImage(
   };
 
   // 1. Detect or use specified build type
-  const detectedType = detectBuildType(opts.localPath);
+  let detectedType = detectBuildType(buildContextDir);
+  const defaultDockerfilePath = path.join(buildContextDir, "Dockerfile");
+  const hasContextSensitiveDockerfile =
+    detectedType === "dockerfile" &&
+    fs.existsSync(defaultDockerfilePath) &&
+    fs.readFileSync(defaultDockerfilePath, "utf8").includes("--mount=type=") &&
+    (fs.existsSync(path.join(buildContextDir, "pyproject.toml")) ||
+      fs.existsSync(path.join(buildContextDir, "requirements.txt")));
+  if (!opts.dockerfile && hasContextSensitiveDockerfile) {
+    detectedType = detectBuildType(buildContextDir, { ignoreDockerfile: true });
+    log("Ignoring BuildKit-only Python Dockerfile and generating a portable Dockerfile...");
+  }
   const effectiveType = opts.buildType === "dockerfile" && detectedType === "dockerfile"
     ? "dockerfile"
     : opts.buildType && opts.buildType !== "nixpacks"
@@ -269,11 +518,11 @@ export async function buildImage(
     : path.join(opts.localPath, "Dockerfile");
 
   let generatedPort: number | undefined;
-  if (!fs.existsSync(dockerfilePath) && detectedType !== "dockerfile") {
+  if ((hasContextSensitiveDockerfile || !fs.existsSync(dockerfilePath)) && detectedType !== "dockerfile") {
     // Generate a Dockerfile based on detected type
-    log(`No Dockerfile found. Generating one for ${detectedType} project...`);
-    const generated = generateDockerfile(detectedType, opts.localPath);
-    fs.writeFileSync(path.join(opts.localPath, "Dockerfile"), generated.dockerfile);
+    log(`${hasContextSensitiveDockerfile ? "Replacing context-sensitive Dockerfile" : "No Dockerfile found"}. Generating one for ${detectedType} project...`);
+    const generated = generateDockerfile(detectedType, buildContextDir);
+    fs.writeFileSync(path.join(buildContextDir, "Dockerfile"), generated.dockerfile);
     generatedPort = generated.port;
     log(`Generated Dockerfile written (container port: ${generatedPort})`);
   }
@@ -310,7 +559,7 @@ __pycache__
 
     const stream = await d.buildImage(
       {
-        context: opts.localPath,
+        context: buildContextDir,
         src: ["."],
       },
       {
@@ -374,6 +623,8 @@ export function getPortForBuildType(buildType: DetectedBuildType): number {
   switch (buildType) {
     case "node":
       return 3000;
+    case "fastapi-fullstack":
+      return 8000;
     case "python":
       return 8000;
     case "go":

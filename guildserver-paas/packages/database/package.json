@@ -14,6 +14,8 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/seed.ts",
     "db:seed-plans": "tsx src/seed-plans.ts",
+    "db:migrate-instances": "tsx src/migrate-instances.ts",
+    "db:seed-instances": "tsx src/seed-instance-types.ts",
     "db:backfill-subscriptions": "tsx src/backfill-subscriptions.ts"
   },
   "dependencies": {

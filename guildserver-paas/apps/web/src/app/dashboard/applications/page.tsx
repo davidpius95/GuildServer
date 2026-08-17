@@ -48,8 +48,17 @@ import { AppListSkeleton } from "@/components/skeletons/app-list-skeleton"
 import { EmptyState } from "@/components/empty-state"
 import { AnimatedList, AnimatedItem } from "@/components/motion/animated-list"
 import { ResponsiveModal } from "@/components/ui/responsive-modal"
+import { CardLinkOverlay } from "@/components/ui/card-link-overlay"
 
 const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || ""
+
+function buildOAuthUrl(provider: "github" | "gitlab" | "bitbucket" | "google", opts: { scope?: string; returnTo?: string } = {}) {
+  const params = new URLSearchParams()
+  if (opts.scope) params.set("scope", opts.scope)
+  if (opts.returnTo) params.set("returnTo", opts.returnTo)
+  const query = params.toString()
+  return `${API_URL}/auth/${provider}${query ? `?${query}` : ""}`
+}
 
 function GitHubIcon({ className }: { className?: string }) {
   return (
@@ -140,7 +149,6 @@ export default function ApplicationsPage() {
   // GitHub repo browser state
   const [repoSearch, setRepoSearch] = useState("")
   const [selectedRepo, setSelectedRepo] = useState<{ owner: string; name: string; fullName: string; url: string; defaultBranch: string } | null>(null)
-  const [showBranchDropdown, setShowBranchDropdown] = useState(false)
   const [selectedGitProvider, setSelectedGitProvider] = useState<"github" | "gitlab" | "bitbucket">("github")
 
 
@@ -154,19 +162,23 @@ export default function ApplicationsPage() {
   const isValidUUID = (s: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
 
-  // Real data queries - only fetch when we have a valid project UUID
-  const appsQuery = trpc.application.list.useQuery(
-    { projectId },
-    { enabled: isValidUUID(projectId), refetchInterval: 30000 }
+  // Real data queries - only fetch when we have a valid org UUID
+  const appsQuery = trpc.application.listByOrg.useQuery(
+    { organizationId: orgId },
+    { enabled: isValidUUID(orgId), refetchInterval: 30000 }
   )
 
   const utils = trpc.useUtils()
 
   // Mutations
   const createApp = trpc.application.create.useMutation({
-    onSuccess: () => {
-      toast.success("Application created!")
-      utils.application.list.invalidate()
+    onSuccess: (createdApp: any) => {
+      const shouldDeployImmediately = createMode === "git" && createdApp?.id
+      toast.success(shouldDeployImmediately ? "Application created. Starting deployment..." : "Application created!")
+      if (shouldDeployImmediately) {
+        deployApp.mutate({ id: createdApp.id })
+      }
+      utils.application.listByOrg.invalidate({ organizationId: orgId })
       setShowCreateModal(false)
       resetForm()
     },
@@ -176,9 +188,9 @@ export default function ApplicationsPage() {
   const deployApp = trpc.application.deploy.useMutation({
     // Optimistic: immediately show "deploying" status
     onMutate: async ({ id }) => {
-      await utils.application.list.cancel()
-      const previous = utils.application.list.getData({ projectId })
-      utils.application.list.setData({ projectId }, (old: any) =>
+      await utils.application.listByOrg.cancel()
+      const previous = utils.application.listByOrg.getData({ organizationId: orgId })
+      utils.application.listByOrg.setData({ organizationId: orgId }, (old: any) =>
         old?.map((a: any) => (a.id === id ? { ...a, status: "deploying" } : a))
       )
       return { previous }
@@ -187,16 +199,16 @@ export default function ApplicationsPage() {
       toast.success("Deployment started!")
     },
     onError: (err, _vars, ctx: any) => {
-      if (ctx?.previous) utils.application.list.setData({ projectId }, ctx.previous)
+      if (ctx?.previous) utils.application.listByOrg.setData({ organizationId: orgId }, ctx.previous)
       toast.error(err.message)
     },
-    onSettled: () => utils.application.list.invalidate(),
+    onSettled: () => utils.application.listByOrg.invalidate({ organizationId: orgId }),
   })
 
   const restartApp = trpc.application.restart.useMutation({
     onSuccess: () => {
       toast.success("Application restarted!")
-      utils.application.list.invalidate()
+      utils.application.listByOrg.invalidate({ organizationId: orgId })
     },
     onError: (err) => toast.error(err.message),
   })
@@ -204,9 +216,9 @@ export default function ApplicationsPage() {
   const deleteApp = trpc.application.delete.useMutation({
     // Optimistic: remove from list immediately
     onMutate: async ({ id }) => {
-      await utils.application.list.cancel()
-      const previous = utils.application.list.getData({ projectId })
-      utils.application.list.setData({ projectId }, (old: any) =>
+      await utils.application.listByOrg.cancel()
+      const previous = utils.application.listByOrg.getData({ organizationId: orgId })
+      utils.application.listByOrg.setData({ organizationId: orgId }, (old: any) =>
         old?.filter((a: any) => a.id !== id)
       )
       return { previous }
@@ -215,22 +227,25 @@ export default function ApplicationsPage() {
       toast.success("Application deleted!")
     },
     onError: (err, _vars, ctx: any) => {
-      if (ctx?.previous) utils.application.list.setData({ projectId }, ctx.previous)
+      if (ctx?.previous) utils.application.listByOrg.setData({ organizationId: orgId }, ctx.previous)
       toast.error(err.message)
     },
-    onSettled: () => utils.application.list.invalidate(),
+    onSettled: () => utils.application.listByOrg.invalidate({ organizationId: orgId }),
   })
 
   // Git Provider integration queries
   const connectedAccountsQuery = trpc.github.getConnectedAccounts.useQuery(undefined, { retry: false })
-  const connectedProviders = useMemo(() => {
-    return (connectedAccountsQuery.data ?? []).map((a: any) => a.provider)
-  }, [connectedAccountsQuery.data])
-  
-  const gitProviderConnected = connectedProviders.includes(selectedGitProvider)
+  const connectedProvider = useMemo(() => {
+    return (connectedAccountsQuery.data ?? []).find((a: any) => a.provider === selectedGitProvider)
+  }, [connectedAccountsQuery.data, selectedGitProvider])
+
+  const gitProviderConnected = !!connectedProvider
+  const gitProviderHasRepoAccess = selectedGitProvider === "github"
+    ? !!connectedProvider?.scope?.split(/[,\s]+/).includes("repo")
+    : gitProviderConnected
 
   const reposQuery = trpc.github.listRepos.useQuery({ provider: selectedGitProvider }, {
-    enabled: gitProviderConnected && createMode === "git" && showCreateModal,
+    enabled: gitProviderHasRepoAccess && createMode === "git" && showCreateModal,
     retry: false,
   })
 
@@ -296,7 +311,6 @@ export default function ApplicationsPage() {
     setCreateEnvVars([{ key: "", value: "" }])
     setSelectedRepo(null)
     setRepoSearch("")
-    setShowBranchDropdown(false)
     setDeployTarget("docker-local")
     setSelectedProviderId(null)
   }
@@ -323,7 +337,6 @@ export default function ApplicationsPage() {
     const data: any = {
       name: appName.trim(),
       projectId,
-      buildType: "dockerfile",
       environment: envRecord,
       deploymentTarget: deployTarget,
     }
@@ -337,6 +350,7 @@ export default function ApplicationsPage() {
         toast.error("Please select or enter a Docker image")
         return
       }
+      data.buildType = "dockerfile"
       data.sourceType = "docker"
       data.dockerTag = (dockerTag || "latest").trim()
       if (dockerMode === "registry") {
@@ -459,21 +473,22 @@ export default function ApplicationsPage() {
           {filteredApps.map((app: any) => (
             <AnimatedItem key={app.id}>
             <Card
-              className="relative group hover:shadow-md transition-shadow"
-              onMouseEnter={() => {
-                // Prefetch app detail data on hover
-                utils.application.getById.prefetch({ id: app.id })
-              }}
+              className="relative group cursor-pointer hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5 transition-all duration-200"
             >
+              {/* Whole-card click target → opens the application detail page.
+                  Action buttons below sit above this overlay via relative z-10. */}
+              <CardLinkOverlay
+                href={`/dashboard/applications/${app.id}`}
+                label={`Open ${app.appName}`}
+                onMouseEnter={() => utils.application.getById.prefetch({ id: app.id })}
+                onFocus={() => utils.application.getById.prefetch({ id: app.id })}
+              />
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
-                  <Link
-                    href={`/dashboard/applications/${app.id}`}
-                    className="flex items-center gap-2 hover:underline"
-                  >
+                  <div className="flex items-center gap-2">
                     {getStatusIcon(app.status)}
-                    <CardTitle className="text-lg">{app.appName}</CardTitle>
-                  </Link>
+                    <CardTitle className="text-lg group-hover:text-primary transition-colors">{app.appName}</CardTitle>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 mt-1">
                   <Badge
@@ -510,7 +525,8 @@ export default function ApplicationsPage() {
                           href={`https://${primaryDomain.domain}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-blue-500 hover:underline flex items-center gap-1 truncate ml-2"
+                          onClick={(e) => e.stopPropagation()}
+                          className="relative z-10 text-xs text-blue-500 hover:underline flex items-center gap-1 truncate ml-2"
                         >
                           {primaryDomain.domain}
                           <ExternalLink className="h-3 w-3 flex-shrink-0" />
@@ -535,7 +551,7 @@ export default function ApplicationsPage() {
                   </div>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="relative z-10 flex gap-2">
                   <Button
                     variant="default"
                     size="sm"
@@ -607,6 +623,29 @@ export default function ApplicationsPage() {
         open={showCreateModal}
         onClose={() => { setShowCreateModal(false); resetForm() }}
         title="New Application"
+        footer={
+          <div className="flex w-full gap-3">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => { setShowCreateModal(false); resetForm() }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={handleCreate}
+              disabled={createApp.isPending}
+            >
+              {createApp.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="mr-2 h-4 w-4" />
+              )}
+              {createMode === "git" ? "Create and Deploy" : "Create Application"}
+            </Button>
+          </div>
+        }
       >
         <div className="space-y-6">
               {/* App Name */}
@@ -916,7 +955,7 @@ export default function ApplicationsPage() {
                         </Button>
                       </div>
 
-                  {gitProviderConnected ? (
+                  {gitProviderHasRepoAccess ? (
                     <>
                       {/* Git Repo Browser */}
                       {!selectedRepo ? (
@@ -947,8 +986,10 @@ export default function ApplicationsPage() {
                                   size="sm"
                                   variant="outline"
                                   onClick={() => {
-                                    const returnUrl = encodeURIComponent("/dashboard/applications?action=create&mode=git")
-                                    window.location.href = `${API_URL}/auth/${selectedGitProvider}?scope=repo&returnTo=${returnUrl}`
+                                    window.location.href = buildOAuthUrl(selectedGitProvider, {
+                                      scope: "repo",
+                                      returnTo: "/dashboard/applications?action=create&mode=git",
+                                    })
                                   }}
                                 >
                                   <Link2 className="mr-1.5 h-3.5 w-3.5" />
@@ -1023,52 +1064,41 @@ export default function ApplicationsPage() {
                           {/* Branch Selector */}
                           <div className="space-y-2">
                             <Label>Branch</Label>
-                            <div className="relative">
-                              <button
-                                type="button"
-                                className="w-full flex items-center justify-between px-3 py-2 border rounded-md text-sm hover:bg-accent transition-colors"
-                                onClick={() => setShowBranchDropdown(!showBranchDropdown)}
-                              >
-                                <span className="flex items-center gap-2">
+                            <Select 
+                              value={branch} 
+                              onValueChange={setBranch} 
+                              disabled={branchesQuery.isLoading || branchesQuery.isError}
+                            >
+                              <SelectTrigger className="w-full">
+                                <div className="flex items-center gap-2">
                                   <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
-                                  {branch}
-                                </span>
-                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                              </button>
-                              {showBranchDropdown && (
-                                <div className="absolute z-10 mt-1 w-full border rounded-md bg-popover shadow-md max-h-40 overflow-y-auto">
-                                  {branchesQuery.isLoading ? (
-                                    <div className="flex items-center justify-center py-3">
-                                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                                    </div>
-                                  ) : branchesQuery.isError ? (
-                                    <div className="px-3 py-3 text-sm text-muted-foreground">
-                                      <p>Could not load branches.</p>
-                                      <p className="text-xs mt-1">You may need to grant repo access in Settings.</p>
-                                    </div>
-                                  ) : (
-                                    (branchesQuery.data ?? []).map((branchName: string) => (
-                                      <button
-                                        key={branchName}
-                                        type="button"
-                                        className={`w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors ${
-                                          branchName === branch ? "bg-accent font-medium" : ""
-                                        }`}
-                                        onClick={() => {
-                                          setBranch(branchName)
-                                          setShowBranchDropdown(false)
-                                        }}
-                                      >
-                                        {branchName}
-                                        {branchName === selectedRepo.defaultBranch && (
-                                          <span className="ml-2 text-xs text-muted-foreground">(default)</span>
-                                        )}
-                                      </button>
-                                    ))
-                                  )}
+                                  <SelectValue placeholder="Select branch" />
                                 </div>
-                              )}
-                            </div>
+                              </SelectTrigger>
+                              <SelectContent>
+                                {branchesQuery.isLoading ? (
+                                  <div className="flex items-center justify-center py-3">
+                                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                  </div>
+                                ) : branchesQuery.isError ? (
+                                  <div className="px-3 py-3 text-sm text-muted-foreground">
+                                    <p>Could not load branches.</p>
+                                  </div>
+                                ) : (
+                                  (branchesQuery.data ?? []).map((branchName: string) => (
+                                    <SelectItem key={branchName} value={branchName}>
+                                      {branchName}
+                                      {branchName === selectedRepo?.defaultBranch && (
+                                        <span className="ml-2 text-xs text-muted-foreground">(default)</span>
+                                      )}
+                                    </SelectItem>
+                                  ))
+                                )}
+                              </SelectContent>
+                            </Select>
+                            {branchesQuery.isError && (
+                              <p className="text-xs text-muted-foreground mt-1">You may need to grant repo access in Settings.</p>
+                            )}
                           </div>
                         </div>
                       )}
@@ -1088,8 +1118,10 @@ export default function ApplicationsPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              const returnUrl = encodeURIComponent("/dashboard/applications?action=create&mode=git")
-                              window.location.href = `${API_URL}/auth/${selectedGitProvider}?scope=repo&returnTo=${returnUrl}`
+                              window.location.href = buildOAuthUrl(selectedGitProvider, {
+                                scope: "repo",
+                                returnTo: "/dashboard/applications?action=create&mode=git",
+                              })
                             }}
                           >
                             <Link2 className="mr-1.5 h-3.5 w-3.5" />
@@ -1238,29 +1270,6 @@ export default function ApplicationsPage() {
                 collapsible={true}
                 label="Environment Variables (optional)"
               />
-
-              {/* Actions */}
-              <div className="flex gap-3">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => { setShowCreateModal(false); resetForm() }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={handleCreate}
-                  disabled={createApp.isPending}
-                >
-                  {createApp.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plus className="mr-2 h-4 w-4" />
-                  )}
-                  Create Application
-                </Button>
-              </div>
         </div>
       </ResponsiveModal>
     </div>

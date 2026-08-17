@@ -14,8 +14,11 @@ GuildServer stores all critical state in PostgreSQL. This guide covers backup st
 Create a compressed backup of the PostgreSQL database:
 
 ```bash
-# From the host (using the exposed port)
-pg_dump -h localhost -p 5433 -U guildserver -d guildserver -Fc > backup_$(date +%Y%m%d_%H%M%S).dump
+# From the production host (PostgreSQL is bound to 127.0.0.1)
+pg_dump -h 127.0.0.1 -p 5432 -U guildserver -d guildserver -Fc > backup_$(date +%Y%m%d_%H%M%S).dump
+
+# From a development host using docker-compose.yml
+pg_dump -h localhost -p 5433 -U guildserver -d guildserver -Fc > backup_dev_$(date +%Y%m%d_%H%M%S).dump
 
 # Or via the Docker container
 docker compose exec postgres pg_dump -U guildserver -d guildserver -Fc > backup_$(date +%Y%m%d_%H%M%S).dump
@@ -202,13 +205,13 @@ The backup worker is available at `apps/api/src/queues/setup.ts` and can be exte
 
 3. **Clone the repository**
    ```bash
-   git clone https://github.com/your-org/guildserver-paas.git
-   cd guildserver-paas
+   git clone https://github.com/davidpius95/GuildServer.git
+   cd GuildServer/guildserver-paas
    ```
 
 4. **Restore environment configuration**
    ```bash
-   cp .env.backup .env  # or recreate from documentation
+   cp .env.production.backup .env.production  # or recreate from documentation
    ```
 
 5. **Create the Docker network**
@@ -218,17 +221,17 @@ The backup worker is available at `apps/api/src/queues/setup.ts` and can be exte
 
 6. **Start infrastructure services only**
    ```bash
-   docker compose up -d postgres redis traefik
+   docker compose --env-file .env.production -f docker-compose.prod.yml up -d postgres redis traefik
    ```
 
 7. **Wait for PostgreSQL to be ready**
    ```bash
-   docker compose exec postgres pg_isready -U guildserver
+   docker compose --env-file .env.production -f docker-compose.prod.yml exec postgres pg_isready -U guildserver
    ```
 
 8. **Restore the database**
    ```bash
-   docker compose exec -T postgres pg_restore \
+   docker compose --env-file .env.production -f docker-compose.prod.yml exec -T postgres pg_restore \
      -U guildserver -d guildserver --clean --if-exists \
      < /backups/guildserver_latest.dump
    ```
@@ -240,13 +243,13 @@ The backup worker is available at `apps/api/src/queues/setup.ts` and can be exte
 
 10. **Start application services**
     ```bash
-    docker compose up -d api web
+    docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
     ```
 
 11. **Verify health**
     ```bash
     curl http://localhost:4000/health
-    docker compose ps
+    docker compose --env-file .env.production -f docker-compose.prod.yml ps
     ```
 
 12. **Re-deploy applications** -- previously running containers will need to be redeployed from the dashboard since Docker container state is not backed up.
