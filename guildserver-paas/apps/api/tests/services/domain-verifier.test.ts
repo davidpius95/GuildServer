@@ -26,17 +26,17 @@ describe("Domain Verifier Service", () => {
     globalFetchMock.mockResolvedValueOnce({
       status: 301,
       headers: new Headers({
-        location: "https://my-app.guildserver.io"
+        location: "https://my-app.guild-technologies.com"
       })
     });
 
     const result = await verifyRedirect({
       domain: "custom.example.com",
-      expectedTarget: "my-app.guildserver.io"
+      expectedTarget: "my-app.guild-technologies.com"
     });
 
     expect(result.status).toBe("active");
-    expect(result.finalUrl).toBe("https://my-app.guildserver.io/");
+    expect(result.finalUrl).toBe("https://my-app.guild-technologies.com/");
     expect(result.httpStatus).toBe(301);
   });
 
@@ -45,7 +45,7 @@ describe("Domain Verifier Service", () => {
 
     const result = await verifyRedirect({
       domain: "internal.example.com",
-      expectedTarget: "my-app.guildserver.io"
+      expectedTarget: "my-app.guild-technologies.com"
     });
 
     expect(result.status).toBe("failed");
@@ -69,7 +69,7 @@ describe("Domain Verifier Service", () => {
 
     const result = await verifyRedirect({
       domain: "custom.example.com",
-      expectedTarget: "my-app.guildserver.io"
+      expectedTarget: "my-app.guild-technologies.com"
     });
 
     expect(result.status).toBe("failed");
@@ -85,7 +85,7 @@ describe("Domain Verifier Service", () => {
 
     const result = await verifyRedirect({
       domain: "custom.example.com",
-      expectedTarget: "my-app.guildserver.io"
+      expectedTarget: "my-app.guild-technologies.com"
     });
 
     expect(result.status).toBe("failed");
@@ -97,7 +97,7 @@ describe("Domain Verifier Service", () => {
 
     const result = await verifyRedirect({
       domain: "custom.example.com",
-      expectedTarget: "my-app.guildserver.io"
+      expectedTarget: "my-app.guild-technologies.com"
     });
 
     expect(result.status).toBe("failed");
@@ -116,13 +116,13 @@ describe("Domain Verifier Service", () => {
     globalFetchMock.mockResolvedValueOnce({
       status: 302,
       headers: new Headers({
-        location: "https://my-app.guildserver.io"
+        location: "https://my-app.guild-technologies.com"
       })
     });
 
     const result = await verifyRedirect({
       domain: "custom.example.com",
-      expectedTarget: "my-app.guildserver.io"
+      expectedTarget: "my-app.guild-technologies.com"
     });
 
     expect(result.status).toBe("active");

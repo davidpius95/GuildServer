@@ -265,10 +265,10 @@ export const applicationRouter = createTRPCRouter({
 
           if (account?.accessToken) {
             // Determine the API base URL from env
-            const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guildserver.io";
+            const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guild-technologies.com";
             // Check if it's the traefik setup where webhook route is on main domain under /api?
             // Actually, /webhooks is at the root of the api container. 
-            // The Traefik rule for webhooks should be under the BASE_DOMAIN, for example https://guildserver.io/webhooks/github
+            // The Traefik rule for webhooks should be under the BASE_DOMAIN, for example https://guild-technologies.com/webhooks/github
             const webhookUrl = `${baseUrl}/webhooks/github`;
             const secret = process.env.GITHUB_WEBHOOK_SECRET || "guildserver-webhook-secret-default";
             
@@ -340,7 +340,7 @@ export const applicationRouter = createTRPCRouter({
           });
 
           if (account?.accessToken) {
-            const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guildserver.io";
+            const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guild-technologies.com";
             const webhookUrl = `${baseUrl}/webhooks/github`;
             const secret = process.env.GITHUB_WEBHOOK_SECRET || "guildserver-webhook-secret-default";
             

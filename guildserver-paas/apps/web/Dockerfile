@@ -17,10 +17,10 @@ FROM base AS builder
 WORKDIR /app
 
 # NEXT_PUBLIC_* vars must be available at build time for Next.js to inline them
-ARG NEXT_PUBLIC_API_BASE_URL=https://guildserver.io
+ARG NEXT_PUBLIC_API_BASE_URL=https://guild-technologies.com
 ARG NEXT_PUBLIC_API_URL=/trpc
 ARG API_URL=http://api:4000
-ARG NEXTAUTH_URL=https://guildserver.io
+ARG NEXTAUTH_URL=https://guild-technologies.com
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV API_URL=$API_URL

@@ -38,7 +38,7 @@ function normalizeHostname(hostname: string): string {
 
 export interface VerifyDnsOptions {
   domain: string;
-  /** Canonical host the CNAME should point at, e.g. "myapp.guildserver.io". */
+  /** Canonical host the CNAME should point at, e.g. "myapp.guild-technologies.com". */
   cnameTarget: string;
   /** Known public IPs of our server (resolved from BASE_DOMAIN). */
   serverIps: string[];
