@@ -12,6 +12,7 @@ import {
   organizations,
   applications,
   databases as databasesTable,
+  paymentTransactions,
 } from "@guildserver/database";
 import { eq, and, desc, sql } from "drizzle-orm";
 import {
@@ -21,6 +22,26 @@ import {
   cancelSubscription as stripeCancelSubscription,
   resumeSubscription as stripeResumeSubscription,
 } from "../services/billing";
+import { isFlutterwaveV4Configured } from "../services/billing/flutterwave-v4-client";
+import {
+  createFlutterwaveCharge,
+  createVirtualAccount,
+  listVirtualAccounts,
+  listBanks,
+} from "../services/billing/flutterwave-v4";
+
+/**
+ * Every Flutterwave procedure moves money, so membership is enforced here
+ * rather than relying on each call site to remember.
+ */
+async function assertBillingMember(ctx: any, organizationId: string): Promise<void> {
+  const member = await ctx.db.query.members.findFirst({
+    where: and(eq(members.userId, ctx.user.id), eq(members.organizationId, organizationId)),
+  });
+  if (!member) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "You are not a member of this organization" });
+  }
+}
 
 export const billingRouter = createTRPCRouter({
   /**
@@ -622,5 +643,116 @@ export const billingRouter = createTRPCRouter({
       }
 
       return { success: true, trialEnd };
+    }),
+
+  // =====================
+  // Flutterwave v4
+  // =====================
+
+  /** Which providers the UI should offer. Drives the payment-method modal. */
+  getPaymentProviders: protectedProcedure.query(async () => {
+    return {
+      stripe: isStripeConfigured(),
+      flutterwave: isFlutterwaveV4Configured(),
+      // Crypto is intentionally reported false until the on-chain watcher runs.
+      crypto: false,
+    };
+  }),
+
+  /** Banks for a country, to populate bank-transfer pickers. */
+  getFlutterwaveBanks: protectedProcedure
+    .input(z.object({ country: z.string().length(2).default("NG") }))
+    .query(async ({ input }) => {
+      if (!isFlutterwaveV4Configured()) return [];
+      return listBanks(input.country.toUpperCase());
+    }),
+
+  /** Start a Flutterwave payment. Returns whatever the payer must do next. */
+  createFlutterwaveCharge: protectedProcedure
+    .input(
+      z.object({
+        organizationId: z.string().uuid(),
+        amountCents: z.number().int().positive(),
+        currency: z.string().min(3).max(5).default("NGN"),
+        purpose: z.enum(["subscription", "instance", "topup"]).default("topup"),
+        paymentMethod: z.enum(["card", "bank_transfer", "mobile_money", "ussd"]),
+        redirectUrl: z.string().url().optional(),
+        mobileMoney: z
+          .object({
+            network: z.string().min(2),
+            phoneNumber: z.string().min(6),
+            countryCode: z.string().length(2).optional(),
+          })
+          .optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertBillingMember(ctx, input.organizationId);
+
+      if (!isFlutterwaveV4Configured()) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Flutterwave is not configured" });
+      }
+      if (input.paymentMethod === "mobile_money" && !input.mobileMoney) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Mobile money requires a network and phone number",
+        });
+      }
+
+      try {
+        return await createFlutterwaveCharge({
+          organizationId: input.organizationId,
+          amountCents: input.amountCents,
+          currency: input.currency,
+          purpose: input.purpose,
+          paymentMethod: input.paymentMethod,
+          redirectUrl: input.redirectUrl,
+          mobileMoney: input.mobileMoney,
+        });
+      } catch (err: any) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: String(err?.message ?? "Payment could not be started"),
+        });
+      }
+    }),
+
+  /** Issue a bank account the org can transfer into. */
+  createVirtualAccount: protectedProcedure
+    .input(
+      z.object({
+        organizationId: z.string().uuid(),
+        currency: z.string().min(3).max(5).default("NGN"),
+        accountType: z.enum(["static", "dynamic"]).default("static"),
+        amountCents: z.number().int().positive().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertBillingMember(ctx, input.organizationId);
+      if (!isFlutterwaveV4Configured()) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Flutterwave is not configured" });
+      }
+      return createVirtualAccount(input);
+    }),
+
+  listVirtualAccounts: protectedProcedure
+    .input(z.object({ organizationId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await assertBillingMember(ctx, input.organizationId);
+      if (!isFlutterwaveV4Configured()) return [];
+      return listVirtualAccounts(input.organizationId);
+    }),
+
+  /** Payment history across every provider. */
+  listPaymentTransactions: protectedProcedure
+    .input(z.object({ organizationId: z.string().uuid(), limit: z.number().int().min(1).max(100).default(25) }))
+    .query(async ({ ctx, input }) => {
+      await assertBillingMember(ctx, input.organizationId);
+      return ctx.db
+        .select()
+        .from(paymentTransactions)
+        .where(eq(paymentTransactions.organizationId, input.organizationId))
+        .orderBy(desc(paymentTransactions.createdAt))
+        .limit(input.limit);
     }),
 });

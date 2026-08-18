@@ -772,6 +772,97 @@ export const invoices = pgTable("invoices", {
   createdAtIdx: index("invoices_created_at_idx").on(table.createdAt),
 }));
 
+// =====================
+// PAYMENTS (Flutterwave + crypto)
+// =====================
+//
+// These tables already exist in production — applied by hand from migration
+// 0004_condemned_mad_thinker.sql, which is deliberately absent from
+// migrations/meta/_journal.json. The definitions below mirror the live columns
+// exactly; do NOT regenerate a migration for them without checking prod first.
+
+export const paymentProviderEnum = pgEnum("payment_provider", [
+  "stripe",
+  "flutterwave",
+  "crypto",
+]);
+
+export const paymentTransactionStatusEnum = pgEnum("payment_transaction_status", [
+  "pending",
+  "processing",
+  "succeeded",
+  "failed",
+  "canceled",
+  "expired",
+]);
+
+export const cryptoPaymentStatusEnum = pgEnum("crypto_payment_status", [
+  "awaiting_payment",
+  "detected",
+  "confirming",
+  "confirmed",
+  "underpaid",
+  "expired",
+  "failed",
+]);
+
+// One row per payment attempt, across every provider.
+export const paymentTransactions = pgTable("payment_transactions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  invoiceId: uuid("invoice_id").references(() => invoices.id),
+  provider: paymentProviderEnum("provider").notNull(),
+  status: paymentTransactionStatusEnum("status").notNull().default("pending"),
+  // What the payment is for, e.g. "subscription" | "instance" | "topup".
+  purpose: varchar("purpose", { length: 64 }).notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  currency: varchar("currency", { length: 10 }).notNull().default("usd"),
+  // Our idempotency key sent to Flutterwave, and their id returned on capture.
+  flutterwaveTxRef: varchar("flutterwave_tx_ref", { length: 255 }),
+  flutterwaveTxId: varchar("flutterwave_tx_id", { length: 255 }),
+  // e.g. "card" | "bank_transfer" | "mobile_money" | "ussd".
+  paymentMethodDetail: varchar("payment_method_detail", { length: 255 }),
+  cryptoPaymentId: uuid("crypto_payment_id"),
+  metadata: jsonb("metadata").default({}),
+  failureReason: text("failure_reason"),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("payment_transactions_org_id_idx").on(table.organizationId),
+  txRefIdx: index("payment_transactions_tx_ref_idx").on(table.flutterwaveTxRef),
+  statusIdx: index("payment_transactions_status_idx").on(table.status),
+}));
+
+// On-chain leg of a crypto payment, linked back to a payment_transaction.
+export const cryptoPayments = pgTable("crypto_payments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  paymentTransactionId: uuid("payment_transaction_id"),
+  status: cryptoPaymentStatusEnum("status").notNull().default("awaiting_payment"),
+  chainId: integer("chain_id").notNull(),
+  tokenSymbol: varchar("token_symbol", { length: 32 }).notNull(),
+  // Null for the chain's native asset (ETH, MATIC, BNB…).
+  tokenContractAddress: varchar("token_contract_address", { length: 128 }),
+  tokenDecimals: integer("token_decimals").notNull(),
+  receivingAddress: varchar("receiving_address", { length: 128 }).notNull(),
+  payerAddress: varchar("payer_address", { length: 128 }),
+  // Token-denominated amount; numeric to avoid float rounding on 18 decimals.
+  expectedAmount: decimal("expected_amount").notNull(),
+  usdEquivalentCents: integer("usd_equivalent_cents").notNull(),
+  txHash: varchar("tx_hash", { length: 128 }),
+  confirmations: integer("confirmations").default(0),
+  requiredConfirmations: integer("required_confirmations").default(3),
+  expiresAt: timestamp("expires_at").notNull(),
+  confirmedAt: timestamp("confirmed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("crypto_payments_org_id_idx").on(table.organizationId),
+  statusIdx: index("crypto_payments_status_idx").on(table.status),
+  txHashIdx: index("crypto_payments_tx_hash_idx").on(table.txHash),
+}));
+
 // Usage Records (metered usage per org per billing period)
 export const usageRecords = pgTable("usage_records", {
   id: uuid("id").primaryKey().defaultRandom(),

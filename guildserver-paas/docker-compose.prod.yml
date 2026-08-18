@@ -105,6 +105,14 @@ services:
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
       CLOUDFLARE_TUNNEL: ${CLOUDFLARE_TUNNEL:-false}
+      # Flutterwave v4. Empty defaults keep the stack bootable without them —
+      # isFlutterwaveV4Configured() gates every call site.
+      FLW_V4_CLIENT_ID: ${FLW_V4_CLIENT_ID:-}
+      FLW_V4_CLIENT_SECRET: ${FLW_V4_CLIENT_SECRET:-}
+      FLW_V4_TOKEN_URL: ${FLW_V4_TOKEN_URL:-https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token}
+      FLW_V4_BASE_URL: ${FLW_V4_BASE_URL:-https://f4bexperience.flutterwave.com}
+      FLW_VA_BANK_CODE: ${FLW_VA_BANK_CODE:-035}
+      FLW_V4_WEBHOOK_SECRET_HASH: ${FLW_V4_WEBHOOK_SECRET_HASH:-}
     depends_on:
       postgres:
         condition: service_healthy
