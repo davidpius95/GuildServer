@@ -110,6 +110,15 @@ export function DeploymentActivity({ days = 7, className }: DeploymentActivityPr
             radius={[0, 0, 0, 0]}
             name="Failed"
           />
+          {/* Deployed but failing health checks — distinct from a build failure,
+              and amber rather than red because the deploy itself succeeded. */}
+          <Bar
+            dataKey="unhealthy"
+            stackId="a"
+            fill="hsl(38, 92%, 50%)"
+            radius={[0, 0, 0, 0]}
+            name="Unhealthy"
+          />
           <Bar
             dataKey="building"
             stackId="a"
