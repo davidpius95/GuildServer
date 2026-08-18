@@ -21,151 +21,20 @@ import {
   Eye,
   Clock,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  ShieldCheck
 } from "lucide-react"
 import { trpc } from "@/components/trpc-provider"
 import { useOrganization } from "@/hooks/use-auth"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { EmptyState } from "@/components/empty-state"
 
-const complianceFrameworks = [
-  {
-    id: "soc2",
-    name: "SOC 2 Type II",
-    description: "System and Organization Controls 2",
-    status: "compliant",
-    score: 94,
-    lastAssessed: "2024-01-15",
-    nextAssessment: "2024-07-15",
-    controls: {
-      total: 28,
-      compliant: 26,
-      nonCompliant: 1,
-      inProgress: 1,
-    },
-    criticalIssues: 0,
-  },
-  {
-    id: "hipaa",
-    name: "HIPAA",
-    description: "Health Insurance Portability and Accountability Act",
-    status: "partially_compliant",
-    score: 78,
-    lastAssessed: "2024-01-10",
-    nextAssessment: "2024-04-10",
-    controls: {
-      total: 18,
-      compliant: 14,
-      nonCompliant: 2,
-      inProgress: 2,
-    },
-    criticalIssues: 2,
-  },
-  {
-    id: "pci-dss",
-    name: "PCI DSS",
-    description: "Payment Card Industry Data Security Standard",
-    status: "non_compliant",
-    score: 62,
-    lastAssessed: "2024-01-08",
-    nextAssessment: "2024-04-08",
-    controls: {
-      total: 12,
-      compliant: 7,
-      nonCompliant: 4,
-      inProgress: 1,
-    },
-    criticalIssues: 4,
-  },
-]
-
-const securityIssues = [
-  {
-    id: "issue-1",
-    title: "Outdated SSL Certificate",
-    description: "SSL certificate for api.guildserver.com expires in 7 days",
-    severity: "high",
-    category: "Certificate Management",
-    affectedResources: ["api.guildserver.com"],
-    discoveredAt: "2024-01-18",
-    status: "open",
-  },
-  {
-    id: "issue-2",
-    title: "Weak Password Policy",
-    description: "Password policy allows passwords shorter than 12 characters",
-    severity: "medium",
-    category: "Access Control",
-    affectedResources: ["User Authentication"],
-    discoveredAt: "2024-01-17",
-    status: "in_progress",
-  },
-  {
-    id: "issue-3",
-    title: "Unencrypted Database Backup",
-    description: "Database backup found without encryption at rest",
-    severity: "critical",
-    category: "Data Protection",
-    affectedResources: ["production-db"],
-    discoveredAt: "2024-01-16",
-    status: "resolved",
-  },
-  {
-    id: "issue-4",
-    title: "Missing MFA for Admin Users",
-    description: "3 admin users without multi-factor authentication enabled",
-    severity: "high",
-    category: "Access Control",
-    affectedResources: ["Admin Accounts"],
-    discoveredAt: "2024-01-15",
-    status: "open",
-  },
-]
-
-const vulnerabilityScans = [
-  {
-    id: "scan-1",
-    type: "Container Security Scan",
-    target: "registry.guildserver.com/api-gateway:latest",
-    status: "completed",
-    startedAt: "2024-01-20 08:00:00",
-    completedAt: "2024-01-20 08:15:00",
-    findings: {
-      critical: 0,
-      high: 2,
-      medium: 5,
-      low: 12,
-    },
-  },
-  {
-    id: "scan-2",
-    type: "Dependency Scan",
-    target: "web-dashboard",
-    status: "completed",
-    startedAt: "2024-01-20 06:30:00",
-    completedAt: "2024-01-20 06:45:00",
-    findings: {
-      critical: 1,
-      high: 3,
-      medium: 8,
-      low: 15,
-    },
-  },
-  {
-    id: "scan-3",
-    type: "Infrastructure Scan",
-    target: "Production Environment",
-    status: "running",
-    startedAt: "2024-01-20 14:00:00",
-    completedAt: null,
-    findings: {
-      critical: 0,
-      high: 0,
-      medium: 0,
-      low: 0,
-    },
-  },
-]
+// Mock compliance frameworks, issues and scans previously lived here. They
+// rendered invented SOC 2 / HIPAA scores, fake findings and fake scan history.
+// Everything on this page is now sourced from security.getPosture and
+// security.listScans, which scan the org's real infrastructure.
 
 const getSeverityColor = (severity: string) => {
   switch (severity) {
@@ -278,14 +147,19 @@ export default function SecurityPage() {
   }
 
   const posture = postureQuery.data
-  const scanHistory = scansQuery.data || vulnerabilityScans
-  // Real findings from the live scan (falls back to empty before first load).
-  const issues = (posture?.issues as typeof securityIssues | undefined) || []
+  const scanHistory = scansQuery.data || []
+  // Real findings from the live scan (empty before the first load completes).
+  const issues = posture?.issues ?? []
+  // Real per-area scores the scanner derives from those findings.
+  const categories = posture?.categories ?? []
 
-  const totalIssues = posture ? posture.totalIssues : securityIssues.length
-  const criticalIssues = posture ? posture.criticalIssues : securityIssues.filter(i => i.severity === 'critical').length
-  const openIssues = posture ? posture.totalIssues - posture.lowIssues : securityIssues.filter(i => i.status === 'open').length
-  const score = posture ? posture.score : 82
+  // No mock fallbacks: before data arrives these read 0 rather than inventing
+  // numbers. A security dashboard showing fabricated counts is worse than one
+  // showing nothing.
+  const totalIssues = posture?.totalIssues ?? 0
+  const criticalIssues = posture?.criticalIssues ?? 0
+  const openIssues = posture ? posture.totalIssues - posture.lowIssues : 0
+  const score = posture?.score ?? 0
 
   return (
     <div className="space-y-6">
@@ -322,8 +196,11 @@ export default function SecurityPage() {
               <>
                 <div className="text-2xl font-semibold font-mono tabular-nums">{score}/100</div>
                 <Progress value={score} className="mt-2" />
+                {/* No trend shown: scan history isn't persisted, so there is no
+                    previous score to compare against. This previously displayed
+                    a hardcoded "+5 from last week". */}
                 <p className="text-xs text-muted-foreground mt-2">
-                  <span className="text-green-600">+5</span> from last week
+                  {totalIssues === 0 ? 'No issues detected' : `${totalIssues} issue${totalIssues === 1 ? '' : 's'} found`}
                 </p>
               </>
             )}
@@ -391,70 +268,92 @@ export default function SecurityPage() {
         </TabsList>
 
         <TabsContent value="compliance" className="space-y-4">
-          {/* Compliance Frameworks */}
-          <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
-            {complianceFrameworks.map((framework) => (
-              <Card key={framework.id}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">{framework.name}</CardTitle>
-                    {getStatusIcon(framework.status)}
-                  </div>
-                  <CardDescription>{framework.description}</CardDescription>
-                  <Badge variant="outline" className={getStatusColor(framework.status)}>
-                    {framework.status.replace('_', ' ')}
-                  </Badge>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Compliance Score</span>
-                      <span className="font-medium">{framework.score}%</span>
-                    </div>
-                    <Progress value={framework.score} className="h-2" />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Compliant</span>
-                      <div className="font-medium text-green-600">
-                        {framework.controls.compliant}/{framework.controls.total}
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Non-Compliant</span>
-                      <div className="font-medium text-red-600">
-                        {framework.controls.nonCompliant}
-                      </div>
-                    </div>
-                  </div>
-
-                  {framework.criticalIssues > 0 && (
-                    <div className="flex items-center gap-2 text-sm text-red-600">
-                      <AlertTriangle className="h-4 w-4" />
-                      <span>{framework.criticalIssues} critical issues</span>
-                    </div>
-                  )}
-
-                  <div className="space-y-1 text-xs text-muted-foreground">
-                    <div>Last assessed: {framework.lastAssessed}</div>
-                    <div>Next assessment: {framework.nextAssessment}</div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="flex-1">
-                      <Eye className="mr-2 h-3 w-3" />
-                      View Details
-                    </Button>
-                    <Button variant="outline" size="sm" className="flex-1" disabled title="Report export is coming soon (preview)">
-                      {exportReport.isLoading ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Download className="mr-2 h-3 w-3" />}
-                      Report
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+          {/*
+            This previously rendered invented SOC 2 / HIPAA / ISO 27001 scores
+            with fabricated assessment dates and control counts. Presenting
+            audit results that never happened is worse than showing nothing, so
+            it now reports the control areas the scanner actually evaluates,
+            scored from real findings.
+          */}
+          <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
+            Control areas scored from live checks against your own infrastructure.
+            This is an internal readiness signal, not a certification or a completed audit.
           </div>
+
+          {postureQuery.isLoading ? (
+            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+              {[0, 1, 2, 3].map((i) => (
+                <Card key={i}>
+                  <CardHeader><Skeleton className="h-5 w-32" /></CardHeader>
+                  <CardContent><Skeleton className="h-16 w-full" /></CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : categories.length === 0 ? (
+            <EmptyState
+              icon={ShieldCheck}
+              title="No control data yet"
+              description="Run a scan to evaluate your infrastructure."
+            />
+          ) : (
+            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+              {categories.map((cat) => {
+                const catIssues = issues.filter((i) => i.category === cat.name)
+                const critical = catIssues.filter((i) => i.severity === 'critical').length
+                const status = cat.score >= 90 ? 'compliant' : cat.score >= 70 ? 'partially compliant' : 'non compliant'
+                return (
+                  <Card key={cat.name}>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-lg">{cat.name}</CardTitle>
+                        {getStatusIcon(status)}
+                      </div>
+                      <Badge variant="outline" className={getStatusColor(status)}>
+                        {status}
+                      </Badge>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Control score</span>
+                          <span className="font-medium">{cat.score}%</span>
+                        </div>
+                        <Progress value={cat.score} className="h-2" />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Checks passing</span>
+                          <div className="font-medium text-green-600">
+                            {catIssues.length === 0 ? 'all' : `${catIssues.length} failing`}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Critical</span>
+                          <div className={`font-medium ${critical > 0 ? 'text-red-600' : 'text-muted-foreground'}`}>
+                            {critical}
+                          </div>
+                        </div>
+                      </div>
+
+                      {catIssues.length > 0 && (
+                        <ul className="space-y-1 text-xs text-muted-foreground">
+                          {catIssues.slice(0, 3).map((i) => (
+                            <li key={i.id} className="truncate">• {i.title}</li>
+                          ))}
+                          {catIssues.length > 3 && <li>• +{catIssues.length - 3} more</li>}
+                        </ul>
+                      )}
+
+                      <div className="text-xs text-muted-foreground">
+                        Last scanned: {posture?.lastScan ? new Date(posture.lastScan).toLocaleString() : '—'}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="vulnerabilities" className="space-y-4">
