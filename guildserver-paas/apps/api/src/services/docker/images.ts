@@ -139,3 +139,36 @@ export async function pullImage(
     throw error;
   }
 }
+
+/**
+ * Read the port an image actually EXPOSEs.
+ *
+ * detectDefaultPort() guesses from the image NAME and falls back to 80. That is
+ * fine for well-known public images, but every app we build ourselves is named
+ * `gs-<app>`, matches nothing in that map, and so was routed on port 80 while
+ * the app listened on 3000/8000/5000 — the container started, reported healthy,
+ * and the URL served nothing. Reading EXPOSE from the built image is
+ * authoritative and costs one local inspect.
+ *
+ * Returns null when the image declares no ports, so the caller can fall back.
+ */
+export async function getImageExposedPort(image: string): Promise<number | null> {
+  try {
+    const info = await docker.getImage(image).inspect();
+    const exposed = info?.Config?.ExposedPorts ?? {};
+    const ports = Object.keys(exposed)
+      .map((k) => parseInt(String(k).split("/")[0], 10))
+      .filter((p) => Number.isFinite(p) && p > 0);
+
+    if (ports.length === 0) return null;
+
+    // Prefer a conventional HTTP port when several are exposed; a database
+    // sidecar port must not win over the app's own listener.
+    const preferred = [3000, 8000, 8080, 5000, 4000, 80, 5173, 9000];
+    for (const p of preferred) if (ports.includes(p)) return p;
+    return Math.min(...ports);
+  } catch {
+    // Image not present locally or inspect failed — caller falls back.
+    return null;
+  }
+}
