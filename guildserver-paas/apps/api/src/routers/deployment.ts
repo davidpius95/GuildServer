@@ -650,6 +650,10 @@ export const deploymentRouter = createTRPCRouter({
         completed: number;
         failed: number;
         building: number;
+        // Deployed but failing health checks. A real status in this database
+        // (a quarter of all rows) that previously counted toward `total` while
+        // belonging to no bucket, so it was invisible on the chart.
+        unhealthy: number;
       }> = [];
 
       // Fill in all days (even zero-activity ones)
@@ -657,18 +661,34 @@ export const deploymentRouter = createTRPCRouter({
         const d = new Date();
         d.setDate(d.getDate() - (input.days - 1 - i));
         const dateStr = d.toISOString().slice(0, 10);
-        result.push({ date: dateStr, total: 0, completed: 0, failed: 0, building: 0 });
+        result.push({ date: dateStr, total: 0, completed: 0, failed: 0, building: 0, unhealthy: 0 });
       }
 
-      // Populate from query results
+      // Populate from query results.
+      //
+      // DATE() returns a Postgres `date`, which node-postgres parses into a JS
+      // Date. String(dateObj) yields "Mon Aug 11 2026 …", so slicing 10 chars
+      // gave "Mon Aug 11" — which never matched the "YYYY-MM-DD" keys built
+      // above, leaving every bucket at zero and the chart permanently empty.
+      // Normalise both shapes to an ISO day instead.
+      const toIsoDay = (value: unknown): string => {
+        if (value instanceof Date) return value.toISOString().slice(0, 10);
+        const s = String(value);
+        // Already ISO ("2026-08-11" or "2026-08-11T00:00:00Z").
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        const parsed = new Date(s);
+        return Number.isNaN(parsed.getTime()) ? s.slice(0, 10) : parsed.toISOString().slice(0, 10);
+      };
+
       for (const row of rows) {
-        const dateStr = typeof row.date === "string" ? row.date.slice(0, 10) : String(row.date).slice(0, 10);
+        const dateStr = toIsoDay(row.date);
         const entry = result.find((r) => r.date === dateStr);
         if (entry) {
           const cnt = Number(row.count);
           entry.total += cnt;
           if (row.status === "completed") entry.completed += cnt;
           else if (row.status === "failed") entry.failed += cnt;
+          else if (row.status === "unhealthy") entry.unhealthy += cnt;
           else if (row.status === "building" || row.status === "deploying" || row.status === "pending") entry.building += cnt;
         }
       }
