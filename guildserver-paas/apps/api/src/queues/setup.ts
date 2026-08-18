@@ -630,18 +630,35 @@ const deploymentWorker = new Worker(
         });
       }
 
-      broadcastToUser(userId, {
-        type: "deployment_log",
-        deploymentId,
-        log: `Verifying reachable URL: ${accessUrl}`,
-        phase: "health_check",
-      });
+      // waitForUrlReachable does a plain HTTP GET against the public URL. For a
+      // service the container check already confirmed is TCP-only (databases,
+      // caches, queues — nothing that speaks HTTP), that GET can never succeed:
+      // it is not a health problem, it is asking the wrong question of a
+      // service that was never meant to be browsed. Without this, every
+      // non-HTTP template spent the full 5-minute timeout here and still came
+      // out "failed" despite the container running correctly.
+      let urlHealth: Awaited<ReturnType<typeof waitForUrlReachable>>;
+      if (containerHealth.healthy && "protocol" in containerHealth && containerHealth.protocol === "tcp") {
+        urlHealth = {
+          healthy: true,
+          message: "Skipped — service confirmed non-HTTP at the container level",
+          checkedUrl: accessUrl,
+        };
+        allBuildLogs.push(`ℹ️ Skipping public URL check: ${urlHealth.message}`);
+      } else {
+        broadcastToUser(userId, {
+          type: "deployment_log",
+          deploymentId,
+          log: `Verifying reachable URL: ${accessUrl}`,
+          phase: "health_check",
+        });
 
-      const urlHealth = await waitForUrlReachable({
-        url: accessUrl,
-        maxWaitMs: 300000,
-        intervalMs: 3000,
-      });
+        urlHealth = await waitForUrlReachable({
+          url: accessUrl,
+          maxWaitMs: 300000,
+          intervalMs: 3000,
+        });
+      }
 
       // 7. Update deployment status to "completed"
       allBuildLogs.push(...result.logs);
