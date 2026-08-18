@@ -5,6 +5,7 @@ import { trpc } from "@/components/trpc-provider"
 import { useOrganization } from "@/hooks/use-auth"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { FlutterwaveCheckoutModal } from "@/components/billing/flutterwave-checkout-modal"
 import { cn } from "@/lib/utils"
 import {
   CreditCard,
@@ -546,6 +547,16 @@ function PaymentTab({
     onSuccess: (data) => { window.location.href = data.url },
   })
 
+  const [flwOpen, setFlwOpen] = useState(false)
+  const providers = trpc.billing.getPaymentProviders.useQuery()
+  const virtualAccounts = trpc.billing.listVirtualAccounts.useQuery(
+    { organizationId: orgId },
+    { enabled: !!orgId && !!providers.data?.flutterwave },
+  )
+  const createVa = trpc.billing.createVirtualAccount.useMutation({
+    onSuccess: () => virtualAccounts.refetch(),
+  })
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -556,6 +567,67 @@ function PaymentTab({
 
   return (
     <div className="space-y-6">
+      <FlutterwaveCheckoutModal
+        open={flwOpen}
+        onOpenChange={setFlwOpen}
+        organizationId={orgId}
+        purpose="topup"
+      />
+
+      {providers.data?.flutterwave && (
+        <div className="rounded-xl border bg-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold">Pay with Flutterwave</h3>
+              <p className="text-sm text-muted-foreground">
+                Card, bank transfer, mobile money, or USSD — in local currency.
+              </p>
+            </div>
+            <Button size="sm" onClick={() => setFlwOpen(true)}>Add funds</Button>
+          </div>
+
+          <div className="mt-2 border-t pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-medium">Bank accounts</p>
+                <p className="text-xs text-muted-foreground">
+                  Transfer to a dedicated account and funds are credited automatically.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => createVa.mutate({ organizationId: orgId, currency: "NGN", accountType: "static" })}
+                disabled={createVa.isPending}
+              >
+                {createVa.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                Issue account
+              </Button>
+            </div>
+
+            {createVa.error && <p className="text-xs text-red-500 mb-2">{createVa.error.message}</p>}
+
+            {virtualAccounts.data && virtualAccounts.data.length > 0 ? (
+              <div className="space-y-2">
+                {virtualAccounts.data.map((va: any) => (
+                  <div key={va.id} className="flex items-center justify-between rounded-lg border p-3">
+                    <div>
+                      <p className="text-sm font-medium font-mono">{va.accountNumber}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {va.bankName} · {va.currency}
+                      </p>
+                    </div>
+                    <Badge variant={va.status === "active" ? "secondary" : "outline"}>{va.status}</Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">No bank account issued yet.</p>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="rounded-xl border bg-card p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Payment Methods</h3>
