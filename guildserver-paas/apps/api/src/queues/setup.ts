@@ -535,8 +535,22 @@ const deploymentWorker = new Worker(
         mergedEnv["GUILDSERVER_URL"] = mergedEnv["GUILDSERVER_URL"] || primaryUrl;
       }
       
-      // Auto-inject PORT so frameworks know where to bind
-      const effectiveContainerPort = app.containerPort || detectedPort || undefined;
+      // Auto-inject PORT so frameworks know where to bind.
+      //
+      // detectedPort comes FIRST: found via the template sweep. For a
+      // freshly built git app, detectedPort is the port the Dockerfile
+      // ACTUALLY generated for this build just now — e.g. 80 for a static
+      // SPA served by nginx, deterministic and known with certainty. app.containerPort
+      // is a value guessed at template-authoring time, before the builder
+      // ever inspected this repo's package.json to decide which code path
+      // (plain Node vs static-SPA-via-nginx) applies. When those disagree,
+      // the stale guess was winning: qwik (and every static-SPA template)
+      // got health-checked and routed on port 3000 while nginx served on 80,
+      // so the container ran perfectly and the platform still reported it
+      // unreachable. detectedPort stays 0 for docker-image deployments (only
+      // set inside the git-build branch), so this is a no-op change for
+      // those — app.containerPort still wins there, correctly.
+      const effectiveContainerPort = detectedPort || app.containerPort || undefined;
       if (effectiveContainerPort) {
         mergedEnv["PORT"] = mergedEnv["PORT"] || effectiveContainerPort.toString();
       }
@@ -552,7 +566,7 @@ const deploymentWorker = new Worker(
         environment: mergedEnv,
         memoryLimit: app.memoryLimit,
         cpuLimit: app.cpuLimit,
-        containerPort: app.containerPort || detectedPort || undefined,
+        containerPort: detectedPort || app.containerPort || undefined,
         replicas: app.replicas || 1,
         sourceType: app.sourceType || "docker",
         domains: domainList.length > 0 ? domainList : undefined,
@@ -598,7 +612,7 @@ const deploymentWorker = new Worker(
       const directUrl = deploymentUrls.directUrl;
 
       // 6b. Run actual post-deploy health check
-      const expectedPort = app.containerPort || detectedPort || 80;
+      const expectedPort = detectedPort || app.containerPort || 80;
       const containerHealth = providerType === "proxmox"
         ? await computeProvider.healthCheck(applicationId)
         : await postDeployHealthCheck({
