@@ -346,11 +346,20 @@ CMD ["fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]
 
       const installCmd = getInstallCommand(projectDir, packageManager);
 
+      // node:20-alpine ships npm and npx only. corepack (bundled with Node 20 but
+      // disabled by default) is what shims pnpm/yarn onto PATH — without enabling
+      // it here, every pnpm- or yarn-based project failed immediately with
+      // "pnpm: command not found" (exit 127), regardless of whether the app
+      // itself was fine. This affected every template using a pnpm monorepo,
+      // which is most of the git-based catalogue.
+      const corepackSetup =
+        packageManager === "npm" ? "" : "RUN corepack enable\n";
+
       // For static SPAs (Vite, CRA), use multi-stage build: Node for building, nginx for serving
       if (isStaticSPA) {
         return { dockerfile: `FROM node:20-alpine AS builder
 WORKDIR /app
-COPY package*.json yarn.lock* pnpm-lock.yaml* ./
+${corepackSetup}COPY package*.json yarn.lock* pnpm-lock.yaml* ./
 ${installCmd}
 COPY . .
 RUN ${getBuildCommand(packageManager)}
@@ -371,7 +380,7 @@ CMD ["nginx", "-g", "daemon off;"]
 
       return { dockerfile: `FROM node:20-alpine
 WORKDIR /app
-COPY package*.json yarn.lock* pnpm-lock.yaml* ./
+${corepackSetup}COPY package*.json yarn.lock* pnpm-lock.yaml* ./
 ${installCmd}
 COPY . .
 ${buildCmd}
