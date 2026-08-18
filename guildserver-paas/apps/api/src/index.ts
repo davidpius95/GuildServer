@@ -17,6 +17,7 @@ import "./queues/backups"; // self-contained database backup queue/worker + sche
 import { setupSwagger } from "./swagger";
 import { webhookRouter } from "./handlers/webhooks";
 import { flutterwaveV4WebhookRouter } from "./handlers/flutterwave-v4-webhooks";
+import { flutterwaveDispatcherRouter } from "./handlers/flutterwave-dispatcher";
 import { oauthRouter } from "./handlers/oauth";
 import { downloadRouter } from "./handlers/downloads";
 import { stripeWebhookRouter } from "./handlers/stripe-webhooks";
@@ -106,6 +107,12 @@ app.get("/metrics", async (req, res) => {
 // Webhook routes (before tRPC, these are plain Express routes)
 // Flutterwave v4. Mounted before the generic /webhooks router so its own
 // signature check runs instead of the catch-all handler.
+//
+// Two entry points, deliberately:
+//   /webhooks/flutterwave     — direct, when this platform owns the account
+//   /webhooks/flutterwave-v4  — dispatcher, when one Flutterwave account is
+//                               shared by several apps and events must fan out
+app.use("/webhooks/flutterwave-v4", flutterwaveDispatcherRouter);
 app.use("/webhooks/flutterwave", flutterwaveV4WebhookRouter);
 
 app.use("/webhooks", webhookRouter);

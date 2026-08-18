@@ -259,6 +259,93 @@ export async function fetchCharge(chargeId: string): Promise<any> {
   return res?.data;
 }
 
+/** Reference prefix identifying charges this platform owns. */
+export const GUILDSERVER_REFERENCE_PREFIX = "GS-";
+
+export function ownsReference(reference: string | undefined | null): boolean {
+  return typeof reference === "string" && reference.startsWith(GUILDSERVER_REFERENCE_PREFIX);
+}
+
+export type SettleOutcome =
+  | { result: "settled"; paymentTransactionId: string; status: string }
+  | { result: "ignored"; reason: string };
+
+/**
+ * Bring a payment_transaction in line with Flutterwave's authoritative state.
+ *
+ * Shared by the direct webhook route and the multi-app dispatcher, so both
+ * paths get identical replay, underpayment and verification behaviour. Safe to
+ * call repeatedly — webhook deliveries repeat by design.
+ */
+export async function settleChargeFromProvider(args: {
+  chargeId?: string;
+  reference?: string;
+}): Promise<SettleOutcome> {
+  const { chargeId, reference } = args;
+  if (!chargeId && !reference) return { result: "ignored", reason: "no charge id or reference" };
+
+  const [tx] = reference
+    ? await db
+        .select()
+        .from(paymentTransactions)
+        .where(eq(paymentTransactions.flutterwaveTxRef, reference))
+        .limit(1)
+    : await db
+        .select()
+        .from(paymentTransactions)
+        .where(eq(paymentTransactions.flutterwaveTxId, chargeId!))
+        .limit(1);
+
+  if (!tx) return { result: "ignored", reason: "unknown transaction" };
+
+  // Terminal states are final; a replayed "succeeded" must not resurrect a
+  // canceled transaction.
+  if (tx.status === "succeeded" || tx.status === "canceled") {
+    return { result: "ignored", reason: `already ${tx.status}` };
+  }
+  if (!chargeId) return { result: "ignored", reason: "no charge id to verify against" };
+
+  // Never trust the webhook body for amounts — re-read from the API.
+  const charge = await fetchCharge(chargeId);
+  const status = mapChargeStatus(charge?.status);
+  const paidMinor = toMinorUnits(Number(charge?.amount ?? 0), charge?.currency ?? tx.currency);
+
+  if (status === "succeeded" && paidMinor < tx.amountCents) {
+    await db
+      .update(paymentTransactions)
+      .set({
+        status: "failed",
+        failureReason: `Underpaid: expected ${tx.amountCents}, received ${paidMinor}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(paymentTransactions.id, tx.id));
+    logger.error("Flutterwave charge underpaid", {
+      paymentTransactionId: tx.id,
+      expectedCents: tx.amountCents,
+      paidCents: paidMinor,
+    });
+    return { result: "settled", paymentTransactionId: tx.id, status: "failed" };
+  }
+
+  await db
+    .update(paymentTransactions)
+    .set({
+      status,
+      flutterwaveTxId: chargeId,
+      paymentMethodDetail: charge?.payment_method_details?.type ?? tx.paymentMethodDetail,
+      paidAt: status === "succeeded" ? new Date() : tx.paidAt,
+      failureReason:
+        status === "failed"
+          ? String(charge?.processor_response?.type ?? "charge failed").slice(0, 1000)
+          : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(paymentTransactions.id, tx.id));
+
+  logger.info("Settled Flutterwave transaction", { paymentTransactionId: tx.id, chargeId, status });
+  return { result: "settled", paymentTransactionId: tx.id, status };
+}
+
 // ---------------------------------------------------------------------------
 // Virtual accounts
 // ---------------------------------------------------------------------------

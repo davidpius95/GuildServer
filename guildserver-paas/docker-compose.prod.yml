@@ -113,6 +113,9 @@ services:
       FLW_V4_BASE_URL: ${FLW_V4_BASE_URL:-https://f4bexperience.flutterwave.com}
       FLW_VA_BANK_CODE: ${FLW_VA_BANK_CODE:-035}
       FLW_V4_WEBHOOK_SECRET_HASH: ${FLW_V4_WEBHOOK_SECRET_HASH:-}
+      # Where the dispatcher forwards events this platform does not own.
+      # Internal Docker network — never via the public edge.
+      GUILDPAY_WEBHOOK_URL: ${GUILDPAY_WEBHOOK_URL:-http://guildpay-api:3001/webhooks/flutterwave-v4}
     depends_on:
       postgres:
         condition: service_healthy
@@ -177,6 +180,21 @@ services:
       - "traefik.http.routers.api-webhooks-secure.entrypoints=websecure"
       - "traefik.http.routers.api-webhooks-secure.service=api"
       - "traefik.http.routers.api-webhooks-secure.tls.certresolver=letsencrypt"
+      # Flutterwave dispatcher. Flutterwave allows one webhook URL per account,
+      # so this single path receives every delivery and fans events out to the
+      # owning app. It lives on the guildpay host because that is the URL
+      # registered with Flutterwave; an exact Path() with an explicit high
+      # priority outranks guildpay-api's PathPrefix(`/webhooks`) rule, so ONLY
+      # this one path is diverted — every other guildpay webhook is untouched.
+      - "traefik.http.routers.flw-dispatcher.rule=Host(`guildpay.${BASE_DOMAIN:?BASE_DOMAIN is required}`) && Path(`/webhooks/flutterwave-v4`)"
+      - "traefik.http.routers.flw-dispatcher.entrypoints=web"
+      - "traefik.http.routers.flw-dispatcher.service=api"
+      - "traefik.http.routers.flw-dispatcher.priority=100"
+      - "traefik.http.routers.flw-dispatcher-secure.rule=Host(`guildpay.${BASE_DOMAIN:?BASE_DOMAIN is required}`) && Path(`/webhooks/flutterwave-v4`)"
+      - "traefik.http.routers.flw-dispatcher-secure.entrypoints=websecure"
+      - "traefik.http.routers.flw-dispatcher-secure.service=api"
+      - "traefik.http.routers.flw-dispatcher-secure.priority=100"
+      - "traefik.http.routers.flw-dispatcher-secure.tls.certresolver=letsencrypt"
     networks:
       - default
       - guildserver
