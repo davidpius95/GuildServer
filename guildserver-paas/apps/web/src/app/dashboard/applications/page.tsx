@@ -46,6 +46,7 @@ import {
 } from "lucide-react"
 import { AppListSkeleton } from "@/components/skeletons/app-list-skeleton"
 import { EmptyState } from "@/components/empty-state"
+import { ErrorState } from "@/components/error-state"
 import { AnimatedList, AnimatedItem } from "@/components/motion/animated-list"
 import { ResponsiveModal } from "@/components/ui/responsive-modal"
 import { CardLinkOverlay } from "@/components/ui/card-link-overlay"
@@ -182,7 +183,7 @@ export default function ApplicationsPage() {
       setShowCreateModal(false)
       resetForm()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const deployApp = trpc.application.deploy.useMutation({
@@ -200,7 +201,7 @@ export default function ApplicationsPage() {
     },
     onError: (err, _vars, ctx: any) => {
       if (ctx?.previous) utils.application.listByOrg.setData({ organizationId: orgId }, ctx.previous)
-      toast.error(err.message)
+      toast.error(getFriendlyMessage(err))
     },
     onSettled: () => utils.application.listByOrg.invalidate({ organizationId: orgId }),
   })
@@ -210,7 +211,7 @@ export default function ApplicationsPage() {
       toast.success("Application restarted!")
       utils.application.listByOrg.invalidate({ organizationId: orgId })
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const deleteApp = trpc.application.delete.useMutation({
@@ -228,7 +229,7 @@ export default function ApplicationsPage() {
     },
     onError: (err, _vars, ctx: any) => {
       if (ctx?.previous) utils.application.listByOrg.setData({ organizationId: orgId }, ctx.previous)
-      toast.error(err.message)
+      toast.error(getFriendlyMessage(err))
     },
     onSettled: () => utils.application.listByOrg.invalidate({ organizationId: orgId }),
   })
@@ -977,25 +978,17 @@ export default function ApplicationsPage() {
                                 <span className="ml-2 text-sm text-muted-foreground">Loading repos...</span>
                               </div>
                             ) : reposQuery.error ? (
-                              <div className="text-center py-6 px-4 space-y-3">
-                                <p className="text-sm text-destructive">
-                                  {reposQuery.error.message || "Failed to load repositories."}
-                                </p>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    window.location.href = buildOAuthUrl(selectedGitProvider, {
-                                      scope: "repo",
-                                      returnTo: "/dashboard/applications?action=create&mode=git",
-                                    })
-                                  }}
-                                >
-                                  <Link2 className="mr-1.5 h-3.5 w-3.5" />
-                                  Reconnect {selectedGitProvider === "github" ? "GitHub" : selectedGitProvider === "gitlab" ? "GitLab" : "Bitbucket"}
-                                </Button>
-                              </div>
+                              <ErrorState
+                                error={reposQuery.error}
+                                className="my-2"
+                                onRetry={() => reposQuery.refetch()}
+                                onReconnect={() => {
+                                  window.location.href = buildOAuthUrl(selectedGitProvider, {
+                                    scope: "repo",
+                                    returnTo: "/dashboard/applications?action=create&mode=git",
+                                  })
+                                }}
+                              />
                             ) : filteredRepos.length === 0 ? (
                               <div className="text-center py-6 text-sm text-muted-foreground">
                                 {repoSearch ? "No repositories match your search" : "No repositories found"}

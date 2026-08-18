@@ -44,22 +44,22 @@ export default function OnboardingPage() {
       setOrgId(data.id)
       toast.success("Organization created!")
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const createProject = trpc.project.create.useMutation({
     onSuccess: (data) => {
       setProjectId(data.id)
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const createApp = trpc.application.create.useMutation({
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const deployApp = trpc.application.deploy.useMutation({
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const handleCreateOrg = async () => {

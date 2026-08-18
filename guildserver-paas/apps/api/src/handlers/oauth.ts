@@ -107,15 +107,40 @@ oauthRouter.get("/github/callback", async (req: Request, res: Response) => {
     });
     const githubUser = (await userResponse.json()) as any;
 
-    // Fetch primary verified email if not public
+    // Fetch primary verified email if not public.
+    //
+    // /user/emails returns an ARRAY only when the token carries the user:email
+    // scope. Without it GitHub returns an error OBJECT, and calling .find() on
+    // that threw "emails.find is not a function" — which crashed the callback
+    // and bounced every GitHub sign-in back to /auth/login?error=oauth_failed.
     let email = githubUser.email;
     if (!email) {
-      const emailsResponse = await fetch("https://api.github.com/user/emails", {
-        headers: { Authorization: `token ${access_token}`, Accept: "application/vnd.github.v3+json" },
-      });
-      const emails = (await emailsResponse.json()) as any[];
-      const primary = emails.find((e: any) => e.primary && e.verified);
-      email = primary?.email || emails.find((e: any) => e.verified)?.email;
+      try {
+        const emailsResponse = await fetch("https://api.github.com/user/emails", {
+          headers: { Authorization: `token ${access_token}`, Accept: "application/vnd.github.v3+json" },
+        });
+        const payload = await emailsResponse.json();
+
+        if (Array.isArray(payload)) {
+          const primary = payload.find((e: any) => e.primary && e.verified);
+          email = primary?.email || payload.find((e: any) => e.verified)?.email;
+        } else {
+          logger.warn("GitHub /user/emails did not return a list", {
+            status: emailsResponse.status,
+            message: (payload as any)?.message,
+          });
+        }
+      } catch (emailErr: any) {
+        // A missing email must not take down the whole sign-in.
+        logger.warn("Could not read GitHub emails", { error: String(emailErr?.message ?? emailErr) });
+      }
+    }
+
+    // Last resort: GitHub always provides a noreply address derived from the
+    // account, so a user without a public or readable email can still sign in.
+    if (!email && githubUser.id && githubUser.login) {
+      email = `${githubUser.id}+${githubUser.login}@users.noreply.github.com`;
+      logger.info("Falling back to GitHub noreply email", { login: githubUser.login });
     }
 
     if (!email) {

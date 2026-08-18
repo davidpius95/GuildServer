@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { trpc } from "@/components/trpc-provider"
 import { toast } from "sonner"
+import { AlertCircle } from "lucide-react"
+import { getFriendlyMessage } from "@/lib/errors"
 
 const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || ""
 
@@ -31,10 +33,32 @@ function GoogleIcon({ className }: { className?: string }) {
   )
 }
 
+/** OAuth failures come back as ?error=<code>; show something the user can act on. */
+const OAUTH_ERRORS: Record<string, string> = {
+  oauth_failed: "We couldn't complete that sign-in. Please try again.",
+  no_email: "No verified email is available on that account. Add one, or sign in with email and password.",
+  state_mismatch: "That sign-in link expired. Please try again.",
+  access_denied: "Sign-in was cancelled.",
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+
+  // Previously the callback redirected here with ?error=... and the page
+  // rendered nothing, so a failed OAuth attempt looked like the button simply
+  // did nothing at all.
+  const [oauthError, setOauthError] = useState<string | null>(null)
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("error")
+    if (!code) return
+    setOauthError(OAUTH_ERRORS[code] ?? "Sign-in didn't complete. Please try again.")
+    // Clear it so a refresh doesn't keep showing a stale failure.
+    const url = new URL(window.location.href)
+    url.searchParams.delete("error")
+    window.history.replaceState({}, "", url.toString())
+  }, [])
   const router = useRouter()
 
   const loginMutation = trpc.auth.login.useMutation({
@@ -45,7 +69,7 @@ export default function LoginPage() {
       router.push("/dashboard")
     },
     onError: (error) => {
-      toast.error(error.message)
+      toast.error(getFriendlyMessage(error))
     },
     onSettled: () => {
       setIsLoading(false)
@@ -67,6 +91,16 @@ export default function LoginPage() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {oauthError && (
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden />
+            <span className="text-muted-foreground">{oauthError}</span>
+          </div>
+        )}
+
         {/* OAuth Buttons */}
         <div className="grid grid-cols-2 gap-3">
           <Button

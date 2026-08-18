@@ -90,7 +90,7 @@ export default function InstancesPage() {
       resetForm()
       utils.instance.list.invalidate()
     },
-    onError: (err: any) => toast.error(err.message),
+    onError: (err: any) => toast.error(getFriendlyMessage(err)),
   })
 
   const destroyInstance = trpc.instance.destroy.useMutation({
@@ -98,7 +98,7 @@ export default function InstancesPage() {
       toast.success("Instance termination queued")
       utils.instance.list.invalidate()
     },
-    onError: (err: any) => toast.error(err.message),
+    onError: (err: any) => toast.error(getFriendlyMessage(err)),
   })
 
   const resetForm = () => {

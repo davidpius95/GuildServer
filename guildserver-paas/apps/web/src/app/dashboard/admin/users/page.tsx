@@ -71,7 +71,7 @@ export default function UserManagementPage() {
       setUpdatingUserId(null)
     },
     onError: (err) => {
-      toast.error(err.message)
+      toast.error(getFriendlyMessage(err))
       setUpdatingUserId(null)
     },
   })
@@ -82,7 +82,7 @@ export default function UserManagementPage() {
       utils.user.list.invalidate()
       utils.user.getStats.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const handleRoleToggle = (userId: string, currentRole: string) => {

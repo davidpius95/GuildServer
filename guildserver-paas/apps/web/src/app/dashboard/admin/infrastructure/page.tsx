@@ -575,7 +575,7 @@ function ProxmoxDetailPanel({ providerId }: { providerId: string }) {
           {resourcesQuery.error && (
             <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3">
               <AlertCircle className="h-4 w-4 mt-0.5 text-red-400 flex-shrink-0" />
-              <p className="text-sm text-red-300">{resourcesQuery.error.message}</p>
+              <ErrorState error={resourcesQuery.error} compact />
             </div>
           )}
           {resourcesQuery.data && (
@@ -650,7 +650,7 @@ function ProxmoxDetailPanel({ providerId }: { providerId: string }) {
           {containersQuery.error && (
             <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3">
               <AlertCircle className="h-4 w-4 mt-0.5 text-red-400 flex-shrink-0" />
-              <p className="text-sm text-red-300">{containersQuery.error.message}</p>
+              <ErrorState error={containersQuery.error} compact />
             </div>
           )}
           {containersQuery.data && (
@@ -799,7 +799,7 @@ function ProxmoxDetailPanel({ providerId }: { providerId: string }) {
           {storageQuery.error && (
             <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3">
               <AlertCircle className="h-4 w-4 mt-0.5 text-red-400 flex-shrink-0" />
-              <p className="text-sm text-red-300">{storageQuery.error.message}</p>
+              <ErrorState error={storageQuery.error} compact />
             </div>
           )}
           {storageQuery.data && (

@@ -45,7 +45,7 @@ export default function RegisterPage() {
       router.push("/dashboard")
     },
     onError: (error) => {
-      toast.error(error.message)
+      toast.error(getFriendlyMessage(error))
     },
     onSettled: () => {
       setIsLoading(false)

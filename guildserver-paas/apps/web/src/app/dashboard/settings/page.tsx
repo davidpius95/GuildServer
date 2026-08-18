@@ -167,7 +167,7 @@ export default function SettingsPage() {
       refreshContext()
       router.push("/dashboard")
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   // Notification preferences
@@ -198,7 +198,7 @@ export default function SettingsPage() {
       slackConfigQuery.refetch()
     },
     onError: (err: any) => {
-      toast.error(err.message || "Failed to save Slack config")
+      toast.error(getFriendlyMessage(err))
     },
   })
 
@@ -207,7 +207,7 @@ export default function SettingsPage() {
       toast.success("Test notification sent to Slack!")
     },
     onError: (err: any) => {
-      toast.error(err.message || "Failed to send test notification")
+      toast.error(getFriendlyMessage(err))
     },
   })
 
@@ -220,7 +220,7 @@ export default function SettingsPage() {
       githubStatusQuery.refetch()
       connectedAccountsQuery.refetch()
     },
-    onError: (err: any) => toast.error(err.message),
+    onError: (err: any) => toast.error(getFriendlyMessage(err)),
   })
 
   const org = orgQuery.data

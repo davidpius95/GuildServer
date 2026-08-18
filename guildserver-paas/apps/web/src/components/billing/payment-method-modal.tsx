@@ -132,7 +132,7 @@ export function PaymentMethodModal({
               Continue to payment <ArrowRight className="h-4 w-4 ml-1" />
             </Button>
             {flutterwaveCheckout.error && (
-              <p className="text-xs text-red-500">{flutterwaveCheckout.error.message}</p>
+              <ErrorState error={flutterwaveCheckout.error} compact />
             )}
             <button onClick={() => setMethod(null)} className="text-xs text-muted-foreground hover:underline">
               ← Back
