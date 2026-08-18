@@ -447,7 +447,7 @@ export const TEMPLATES: Template[] = [
     category: "CMS",
     sourceKind: "docker",
     track: "production",
-    dockerImage: "strapi/strapi:latest",
+    dockerImage: "naskio/strapi:latest",
     containerPort: 1337,
     tags: ["headless cms", "api", "node"],
     useCase: ["CMS", "Backend"],

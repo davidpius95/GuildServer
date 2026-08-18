@@ -4,7 +4,7 @@ import { logger } from "../../utils/logger";
 import { broadcastToUser } from "../../websocket/server";
 import { docker, NETWORK_NAME, CONTAINER_PREFIX, GS_LABELS, isLocalhostDomain } from "./client";
 import { ensureNetwork } from "./networks";
-import { pullImage, detectDefaultPort } from "./images";
+import { pullImage, detectDefaultPort, getImageExposedPort } from "./images";
 
 export interface DeployOptions {
   deploymentId: string;
@@ -178,7 +178,27 @@ export async function deployContainer(
       [GS_LABELS.TYPE]: "application",
     };
 
-    const servicePort = opts.containerPort || detectDefaultPort(cleanImage);
+    // Port resolution, most authoritative first:
+    //   1. what the user/template explicitly configured
+    //   2. what the image actually EXPOSEs
+    //   3. a guess from the image name (only useful for known public images)
+    //
+    // Step 2 was missing, so any app we build ourselves — named `gs-<app>`, and
+    // therefore matching nothing in the name map — fell through to 80 while the
+    // app listened on 3000/8000. The container ran, health checks passed, and
+    // the deploy URL served nothing.
+    let servicePort = opts.containerPort;
+    if (!servicePort) {
+      const exposed = await getImageExposedPort(fullImage);
+      if (exposed) {
+        servicePort = exposed;
+        log(`Detected exposed port ${exposed} from image`);
+      }
+    }
+    if (!servicePort) {
+      servicePort = detectDefaultPort(cleanImage);
+      log(`No explicit or exposed port; falling back to ${servicePort} for ${cleanImage}`);
+    }
     log(`Using container port: ${servicePort}`);
 
     if (opts.domains && opts.domains.length > 0) {
