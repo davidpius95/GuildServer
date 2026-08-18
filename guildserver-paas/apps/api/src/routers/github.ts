@@ -4,6 +4,7 @@ import { createTRPCRouter, protectedProcedure } from "../trpc/trpc";
 import { oauthAccounts } from "@guildserver/database";
 import { eq, and } from "drizzle-orm";
 import { listGithubRepos, listGithubBranches, listGitlabRepos, listGitlabBranches, listBitbucketRepos, listBitbucketBranches } from "../services/git-provider";
+import { getValidAccessToken, isAuthFailure } from "../services/oauth-tokens";
 
 export const githubRouter = createTRPCRouter({
   // Check if the current user has GitHub/GitLab/Bitbucket connected
@@ -50,28 +51,36 @@ export const githubRouter = createTRPCRouter({
     .input(z.object({ provider: z.enum(["github", "gitlab", "bitbucket"]).optional() }).optional())
     .query(async ({ ctx, input }) => {
       const provider = input?.provider || "github";
-      const account = await ctx.db.query.oauthAccounts.findFirst({
-        where: and(
-          eq(oauthAccounts.userId, ctx.user.id),
-          eq(oauthAccounts.provider, provider)
-        ),
-      });
 
-      if (!account?.accessToken) {
+      // Refreshes transparently when the stored token has expired, instead of
+      // failing with the provider's raw 401 and forcing a manual reconnect.
+      let token: string;
+      try {
+        token = await getValidAccessToken(ctx.user.id, provider);
+      } catch {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
-          message: `${provider} account not connected.`,
+          message: `Your ${provider} connection has expired. Reconnect to continue.`,
         });
       }
 
       try {
-        if (provider === "gitlab") return await listGitlabRepos(account.accessToken);
-        if (provider === "bitbucket") return await listBitbucketRepos(account.accessToken);
-        return await listGithubRepos(account.accessToken);
+        if (provider === "gitlab") return await listGitlabRepos(token);
+        if (provider === "bitbucket") return await listBitbucketRepos(token);
+        return await listGithubRepos(token);
       } catch (error: any) {
+        // A 401 here means the grant was revoked provider-side, which no
+        // refresh can fix — tell the user to reconnect rather than dumping the
+        // provider's raw JSON error into the UI.
+        if (isAuthFailure(error)) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: `Your ${provider} connection is no longer valid. Reconnect to continue.`,
+          });
+        }
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to fetch ${provider} repos: ${error.message}`,
+          message: `Could not load ${provider} repositories. Please try again.`,
         });
       }
     }),
@@ -85,28 +94,31 @@ export const githubRouter = createTRPCRouter({
     }))
     .query(async ({ ctx, input }) => {
       const provider = input.provider || "github";
-      const account = await ctx.db.query.oauthAccounts.findFirst({
-        where: and(
-          eq(oauthAccounts.userId, ctx.user.id),
-          eq(oauthAccounts.provider, provider)
-        ),
-      });
 
-      if (!account?.accessToken) {
+      let token: string;
+      try {
+        token = await getValidAccessToken(ctx.user.id, provider);
+      } catch {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
-          message: `${provider} account not connected.`,
+          message: `Your ${provider} connection has expired. Reconnect to continue.`,
         });
       }
 
       try {
-        if (provider === "gitlab") return await listGitlabBranches(account.accessToken, input.owner, input.repo);
-        if (provider === "bitbucket") return await listBitbucketBranches(account.accessToken, input.owner, input.repo);
-        return await listGithubBranches(account.accessToken, input.owner, input.repo);
+        if (provider === "gitlab") return await listGitlabBranches(token, input.owner, input.repo);
+        if (provider === "bitbucket") return await listBitbucketBranches(token, input.owner, input.repo);
+        return await listGithubBranches(token, input.owner, input.repo);
       } catch (error: any) {
+        if (isAuthFailure(error)) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: `Your ${provider} connection is no longer valid. Reconnect to continue.`,
+          });
+        }
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to fetch branches: ${error.message}`,
+          message: "Could not load branches. Please try again.",
         });
       }
     }),
