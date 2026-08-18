@@ -9,6 +9,8 @@ export interface HealthCheckResult {
   healthy: boolean;
   message: string;
   portMismatch?: { expected: number; actual: number };
+  /** How the service was verified. Absent on failure — no protocol was confirmed. */
+  protocol?: "http" | "tcp";
 }
 
 function probeHttp(hostname: string, port: number, timeoutMs = 3000): Promise<boolean> {
@@ -125,7 +127,7 @@ export async function postDeployHealthCheck(opts: {
 
     if (httpReachable) {
       log(`✅ Service is responding on ${target} (attempt ${attempt}/${maxAttempts})`);
-      return { healthy: true, message: "Service is responding" };
+      return { healthy: true, message: "Service is responding", protocol: "http" };
     }
 
     const tcpReachable = await probeTcp(host, port);
@@ -139,6 +141,7 @@ export async function postDeployHealthCheck(opts: {
         return {
           healthy: true,
           message: "Port is open and accepting connections (non-HTTP service — no HTTP response expected)",
+          protocol: "tcp",
         };
       }
     } else {
