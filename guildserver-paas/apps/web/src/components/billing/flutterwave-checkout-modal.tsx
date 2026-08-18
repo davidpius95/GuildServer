@@ -1,4 +1,5 @@
 "use client"
+import { ErrorState } from "@/components/error-state"
 
 import { useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
