@@ -196,6 +196,25 @@ export function resolveNodeStartCommand(projectDir: string, packageManager: "npm
     return packageManager === "yarn" ? "yarn start" : `${packageManager} start`;
   }
 
+  // Nuxt 3 has no "start" script by convention — the official scaffolding
+  // doesn't ship one, unlike Next.js's universal "start": "next start". `nuxt
+  // build` compiles to Nitro's server preset at .output/server/index.mjs, a
+  // fixed path regardless of the app, but this function runs before the build
+  // step, so that file doesn't exist yet to detect. Confirmed via the template
+  // sweep: without this, the generated Dockerfile's CMD was the generic
+  // "no start command found, exit 1" fallback below — the container built
+  // clean, started, and exited immediately, so nothing ever listened on any
+  // port and the deployment timed out looking unreachable.
+  const allDepsForStartDetection = { ...pkg.dependencies, ...pkg.devDependencies };
+  const isNuxt =
+    !!allDepsForStartDetection["nuxt"] ||
+    ["nuxt.config.ts", "nuxt.config.js", "nuxt.config.mjs"].some((f) =>
+      fs.existsSync(path.join(projectDir, f)),
+    );
+  if (isNuxt) {
+    return "node .output/server/index.mjs";
+  }
+
   if (scripts.dev && !commandUsesDevServer(scripts.dev)) {
     return `${runScript} dev`;
   }
