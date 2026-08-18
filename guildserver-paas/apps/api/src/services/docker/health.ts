@@ -1,4 +1,5 @@
 import http from "http";
+import net from "net";
 import Docker from "dockerode";
 import { logger } from "../../utils/logger";
 import { broadcastToUser } from "../../websocket/server";
@@ -18,6 +19,37 @@ function probeHttp(hostname: string, port: number, timeoutMs = 3000): Promise<bo
     );
     req.on("error", () => resolve(false));
     req.on("timeout", () => { req.destroy(); resolve(false); });
+  });
+}
+
+/**
+ * Raw TCP connect, no protocol assumed.
+ *
+ * probeHttp alone marks non-HTTP services (Redis, Postgres, MySQL, RabbitMQ,
+ * any raw TCP protocol) permanently unhealthy: it sends an HTTP request over
+ * the connection, the peer doesn't speak HTTP, and the client errors out —
+ * indistinguishable from "nothing is listening yet". A container that was
+ * verified running via `docker logs` and accepting real client connections
+ * was still failing this check every time.
+ *
+ * Used as the confirming signal for non-HTTP services: if the TCP handshake
+ * itself succeeds, on this port specifically, something real is listening.
+ */
+function probeTcp(hostname: string, port: number, timeoutMs = 3000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let done = false;
+    const finish = (ok: boolean) => {
+      if (done) return;
+      done = true;
+      socket.destroy();
+      resolve(ok);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => finish(true));
+    socket.once("error", () => finish(false));
+    socket.once("timeout", () => finish(false));
+    socket.connect(port, hostname);
   });
 }
 
@@ -78,15 +110,39 @@ export async function postDeployHealthCheck(opts: {
 
   log(`Running health check on port ${hostPort} (expecting container port ${expectedContainerPort})...`);
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const reachable = containerIP
-      ? await probeHttp(containerIP, expectedContainerPort)
-      : await probeHttp("127.0.0.1", hostPort);
+  // Consecutive TCP-reachable attempts while HTTP never once responds — the
+  // confirming signal that this is a real, running non-HTTP service rather
+  // than a container that just hasn't started yet (which fails BOTH probes).
+  let consecutiveTcpOnly = 0;
+  const TCP_CONFIRM_THRESHOLD = 3; // ~6s of stable TCP reachability
 
-    if (reachable) {
-      const target = containerIP ? `${containerIP}:${expectedContainerPort}` : `127.0.0.1:${hostPort}`;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const host = containerIP || "127.0.0.1";
+    const port = containerIP ? expectedContainerPort : hostPort;
+    const target = `${host}:${port}`;
+
+    const httpReachable = await probeHttp(host, port);
+
+    if (httpReachable) {
       log(`✅ Service is responding on ${target} (attempt ${attempt}/${maxAttempts})`);
       return { healthy: true, message: "Service is responding" };
+    }
+
+    const tcpReachable = await probeTcp(host, port);
+    if (tcpReachable) {
+      consecutiveTcpOnly++;
+      if (consecutiveTcpOnly >= TCP_CONFIRM_THRESHOLD) {
+        log(
+          `✅ Port ${target} has accepted TCP connections for ${consecutiveTcpOnly} consecutive checks ` +
+          `without ever responding to HTTP — treating as a healthy non-HTTP service (attempt ${attempt}/${maxAttempts}).`,
+        );
+        return {
+          healthy: true,
+          message: "Port is open and accepting connections (non-HTTP service — no HTTP response expected)",
+        };
+      }
+    } else {
+      consecutiveTcpOnly = 0; // nothing listening yet; reset the streak
     }
 
     const actualPort = await detectActualListeningPort(containerId, dockerClient);
