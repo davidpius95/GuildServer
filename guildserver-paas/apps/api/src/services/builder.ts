@@ -352,8 +352,29 @@ CMD ["fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]
       // "pnpm: command not found" (exit 127), regardless of whether the app
       // itself was fine. This affected every template using a pnpm monorepo,
       // which is most of the git-based catalogue.
+      //
+      // A bare `corepack enable` is not enough by itself, though: found via the
+      // template sweep. When package.json does not declare a "packageManager"
+      // field, corepack falls back to its own bundled default — and that
+      // default resolved to pnpm 11.22, which throws ERR_UNKNOWN_BUILTIN_MODULE
+      // on Node 20 (pnpm 11 requires a newer Node than this base image ships).
+      // Every repo without an explicit pin failed the same way regardless of
+      // whether its own code was fine. A project that DOES declare
+      // "packageManager" is left alone — corepack already honours that pin
+      // correctly, and overriding it would be wrong for repos that need a
+      // specific version for a reason (e.g. the pnpm catalog: protocol).
+      // pkg above is scoped to the `if (fs.existsSync(pkgJsonPath))` block; re-read
+      // here rather than hoist it, to keep this change minimal and self-contained.
+      const rawPackageManagerField = readPackageJson(projectDir).packageManager;
+      const declaredPackageManager = typeof rawPackageManagerField === "string" ? rawPackageManagerField : "";
       const corepackSetup =
-        packageManager === "npm" ? "" : "RUN corepack enable\n";
+        packageManager === "npm"
+          ? ""
+          : declaredPackageManager
+            ? "RUN corepack enable\n"
+            : packageManager === "pnpm"
+              ? "RUN corepack enable && corepack prepare pnpm@9 --activate\n"
+              : "RUN corepack enable && corepack prepare yarn@1.22.22 --activate\n";
 
       // For static SPAs (Vite, CRA), use multi-stage build: Node for building, nginx for serving
       if (isStaticSPA) {
