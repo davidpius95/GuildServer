@@ -78,7 +78,7 @@ export default function TeamPage() {
       setInviteEmail("")
       setInviteRole("member")
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const removeMember = trpc.organization.removeMember.useMutation({
@@ -86,7 +86,7 @@ export default function TeamPage() {
       toast.success("Member removed successfully!")
       utils.organization.getMembers.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const handleInvite = () => {

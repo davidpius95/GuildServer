@@ -173,7 +173,7 @@ export function FlutterwaveCheckoutModal({
               </div>
             )}
 
-            {charge.error && <p className="text-xs text-red-500">{charge.error.message}</p>}
+            {charge.error && <ErrorState error={charge.error} compact />}
 
             <Button className="w-full" disabled={!canSubmit} onClick={submit}>
               {charge.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

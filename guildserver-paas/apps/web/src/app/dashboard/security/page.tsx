@@ -109,7 +109,7 @@ export default function SecurityPage() {
       toast.success("Security scan started successfully")
       utils.security.listScans.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const exportReport = trpc.security.exportReport.useMutation({
@@ -117,7 +117,7 @@ export default function SecurityPage() {
       toast.success("Report generated")
       window.open(data.url, "_blank")
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const remediate = trpc.security.remediate.useMutation({
@@ -125,7 +125,7 @@ export default function SecurityPage() {
       toast.success("Auto-remediation started")
       utils.security.getPosture.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const handleRefresh = () => {

@@ -436,7 +436,7 @@ export default function ApplicationDetailPage() {
       setActiveTab("build-logs")
       setFollowLogs(true)
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const restartApp = trpc.application.restart.useMutation({
@@ -444,7 +444,7 @@ export default function ApplicationDetailPage() {
       toast.success("Application restarted!")
       utils.application.getById.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const deleteApp = trpc.application.delete.useMutation({
@@ -452,7 +452,7 @@ export default function ApplicationDetailPage() {
       toast.success("Application deleted!")
       router.push("/dashboard/applications")
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const rollbackMutation = trpc.deployment.rollback.useMutation({
@@ -471,7 +471,7 @@ export default function ApplicationDetailPage() {
       toast.success("Preview settings updated!")
       utils.application.getById.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   // Webhooks
@@ -491,7 +491,7 @@ export default function ApplicationDetailPage() {
       utils.webhook.listDeliveries.invalidate()
       utils.application.getById.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const [expandedDeliveryId, setExpandedDeliveryId] = useState<string | null>(null)
@@ -518,7 +518,7 @@ export default function ApplicationDetailPage() {
       setNewEnvSecret(false)
       utils.environment.list.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const deleteEnvVar = trpc.environment.delete.useMutation({
@@ -526,7 +526,7 @@ export default function ApplicationDetailPage() {
       toast.success("Variable deleted")
       utils.environment.list.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   // Domains
@@ -541,7 +541,7 @@ export default function ApplicationDetailPage() {
       setNewDomain("")
       utils.domain.list.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const removeDomain = trpc.domain.remove.useMutation({
@@ -549,7 +549,7 @@ export default function ApplicationDetailPage() {
       toast.success("Domain removed")
       utils.domain.list.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const verifyDomain = trpc.domain.verify.useMutation({
@@ -571,7 +571,7 @@ export default function ApplicationDetailPage() {
         toast.success("Domain verified!")
       }
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const setPrimaryDomain = trpc.domain.setPrimary.useMutation({
@@ -579,7 +579,7 @@ export default function ApplicationDetailPage() {
       toast.success("Primary domain updated")
       utils.domain.list.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const generateAutoUrl = trpc.domain.generateAutoUrl.useMutation({
@@ -587,7 +587,7 @@ export default function ApplicationDetailPage() {
       toast.success("Auto URL generated!")
       utils.domain.list.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const envVars = envVarsQuery.data ?? []

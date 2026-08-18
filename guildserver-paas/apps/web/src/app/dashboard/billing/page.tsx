@@ -605,7 +605,7 @@ function PaymentTab({
               </Button>
             </div>
 
-            {createVa.error && <p className="text-xs text-red-500 mb-2">{createVa.error.message}</p>}
+            {createVa.error && <ErrorState error={createVa.error} compact className="mt-1" />}
 
             {virtualAccounts.data && virtualAccounts.data.length > 0 ? (
               <div className="space-y-2">
@@ -672,7 +672,7 @@ function PaymentTab({
           </div>
         )}
         {portalMutation.error && (
-          <p className="text-xs text-red-500 mt-2">{portalMutation.error.message}</p>
+          <ErrorState error={portalMutation.error} compact className="mt-1" />
         )}
       </div>
     </div>
@@ -797,7 +797,7 @@ function SpendTab({
               <p className="text-xs text-green-600">Spend limit updated successfully!</p>
             )}
             {spendMutation.error && (
-              <p className="text-xs text-red-500">{spendMutation.error.message}</p>
+              <ErrorState error={spendMutation.error} compact className="mt-1" />
             )}
           </div>
 

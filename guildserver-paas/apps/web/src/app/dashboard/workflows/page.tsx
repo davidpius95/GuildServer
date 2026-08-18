@@ -103,7 +103,7 @@ export default function WorkflowsPage() {
       setName("")
       setDescription("")
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const updateTemplate = trpc.workflow.updateTemplate.useMutation({
@@ -111,7 +111,7 @@ export default function WorkflowsPage() {
       toast.success("Workflow updated!")
       utils.workflow.listTemplates.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const deleteTemplate = trpc.workflow.deleteTemplate.useMutation({
@@ -119,7 +119,7 @@ export default function WorkflowsPage() {
       toast.success("Workflow template deleted!")
       utils.workflow.listTemplates.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const executeWorkflow = trpc.workflow.executeWorkflow.useMutation({
@@ -127,7 +127,7 @@ export default function WorkflowsPage() {
       toast.success("Workflow execution started!")
       utils.workflow.listExecutions.invalidate()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const handleCreate = () => {

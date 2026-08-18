@@ -100,7 +100,7 @@ export default function DatabasesPage() {
       setShowCreateModal(false)
       resetForm()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const restartDatabase = trpc.database.restart.useMutation({
@@ -108,7 +108,7 @@ export default function DatabasesPage() {
       toast.success("Database restart initiated!")
       utils.database.listByOrg.invalidate({ organizationId: orgId })
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const deleteDatabase = trpc.database.delete.useMutation({
@@ -116,7 +116,7 @@ export default function DatabasesPage() {
       toast.success("Database deleted!")
       utils.database.listByOrg.invalidate({ organizationId: orgId })
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const updateDatabase = trpc.database.update.useMutation({
@@ -125,7 +125,7 @@ export default function DatabasesPage() {
       utils.database.listByOrg.invalidate({ organizationId: orgId })
       setShowSettingsModal(false)
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const backupsQuery = trpc.database.listBackupsByOrg.useQuery(
@@ -138,7 +138,7 @@ export default function DatabasesPage() {
       toast.success("Backup started!")
       utils.database.listBackupsByOrg.invalidate({ organizationId: orgId })
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const restoreDatabase = trpc.database.restore.useMutation({
@@ -146,7 +146,7 @@ export default function DatabasesPage() {
       toast.success("Restore started!")
       utils.database.listBackupsByOrg.invalidate({ organizationId: orgId })
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const updateBackupSettings = trpc.database.updateBackupSettings.useMutation({
@@ -155,7 +155,7 @@ export default function DatabasesPage() {
       utils.database.listByOrg.invalidate({ organizationId: orgId })
       setShowSettingsModal(false)
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
   const resetForm = () => {
@@ -271,7 +271,7 @@ export default function DatabasesPage() {
         toast.success("Connection string copied!")
       }
     } catch (e: any) {
-      toast.error(e.message || "Failed to get connection string")
+      toast.error(getFriendlyMessage(e))
     }
   }
 
