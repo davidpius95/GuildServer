@@ -239,27 +239,27 @@ git commit -m "feat: settle billing payments idempotently"
 - Consumes: quote, invoice, settlement services
 - Produces tRPC procedures: `getPaymentProviders`, `listQuotes`, `createQuote`, `acceptQuote`, `getInvoice`, `payInvoiceWithFlutterwave`, `listReceipts`
 
-- [ ] **Step 1: Add router tests for procedures**
+- [x] **Step 1: Add router tests for procedures**
 
 Cover permission checks, provider availability, invoice payment transaction creation, and stale procedure compatibility.
 
-- [ ] **Step 2: Add `getPaymentProviders`**
+- [x] **Step 2: Add `getPaymentProviders`**
 
 Return Stripe and Flutterwave availability based on current env config. Do not expose secret values.
 
-- [ ] **Step 3: Add quote and receipt read APIs**
+- [x] **Step 3: Add quote and receipt read APIs**
 
 Expose quote/invoice/receipt lists with stable shape for the dashboard.
 
-- [ ] **Step 4: Add invoice payment mutation**
+- [x] **Step 4: Add invoice payment mutation**
 
 `payInvoiceWithFlutterwave` creates or reuses a pending `payment_transactions` row for the invoice and returns next action details.
 
-- [ ] **Step 5: Run router tests**
+- [x] **Step 5: Run router tests**
 
 Run: `pnpm --filter @guildserver/api test -- billing`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 

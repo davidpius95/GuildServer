@@ -13,6 +13,8 @@ import {
   applications,
   databases as databasesTable,
   paymentTransactions,
+  quotes,
+  receipts,
 } from "@guildserver/database";
 import { eq, and, desc, sql } from "drizzle-orm";
 import {
@@ -24,11 +26,16 @@ import {
 } from "../services/billing";
 import { isFlutterwaveV4Configured } from "../services/billing/flutterwave-v4-client";
 import {
-  createFlutterwaveCharge,
+  createFlutterwaveCharge as startFlutterwaveCharge,
   createVirtualAccount,
   listVirtualAccounts,
   listBanks,
 } from "../services/billing/flutterwave-v4";
+import {
+  acceptQuote as acceptBillingQuote,
+  createQuote as createBillingQuote,
+} from "../services/billing/quotes";
+import { getInvoiceWithLines } from "../services/billing/invoices";
 
 /**
  * Every Flutterwave procedure moves money, so membership is enforced here
@@ -42,6 +49,28 @@ async function assertBillingMember(ctx: any, organizationId: string): Promise<vo
     throw new TRPCError({ code: "FORBIDDEN", message: "You are not a member of this organization" });
   }
 }
+
+async function assertBillingAdmin(ctx: any, organizationId: string): Promise<void> {
+  const member = await ctx.db.query.members.findFirst({
+    where: and(eq(members.userId, ctx.user.id), eq(members.organizationId, organizationId)),
+  });
+  if (!member || !["owner", "admin"].includes(member.role)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Only organization owners or admins can manage billing" });
+  }
+}
+
+const quoteLineInputSchema = z.object({
+  productType: z.string().min(1).max(64),
+  productId: z.string().max(255).nullable().optional(),
+  description: z.string().min(1),
+  quantity: z.number().positive().default(1),
+  unitAmountCents: z.number().int().positive(),
+  taxCents: z.number().int().min(0).default(0),
+  discountCents: z.number().int().min(0).default(0),
+  periodStart: z.date().nullable().optional(),
+  periodEnd: z.date().nullable().optional(),
+  metadata: z.record(z.unknown()).default({}),
+});
 
 export const billingRouter = createTRPCRouter({
   /**
@@ -646,6 +675,155 @@ export const billingRouter = createTRPCRouter({
     }),
 
   // =====================
+  // Quotes, invoices, receipts
+  // =====================
+
+  listQuotes: protectedProcedure
+    .input(z.object({ organizationId: z.string().uuid(), limit: z.number().int().min(1).max(100).default(25) }))
+    .query(async ({ ctx, input }) => {
+      await assertBillingMember(ctx, input.organizationId);
+      return ctx.db.query.quotes.findMany({
+        where: eq(quotes.organizationId, input.organizationId),
+        with: { lineItems: true },
+        orderBy: (q: any, { desc }: any) => [desc(q.createdAt)],
+        limit: input.limit,
+      });
+    }),
+
+  createQuote: protectedProcedure
+    .input(
+      z.object({
+        organizationId: z.string().uuid(),
+        currency: z.string().length(3).default("USD"),
+        validUntil: z.date().nullable().optional(),
+        lineItems: z.array(quoteLineInputSchema).min(1),
+        metadata: z.record(z.unknown()).default({}),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertBillingAdmin(ctx, input.organizationId);
+      try {
+        return await createBillingQuote({
+          organizationId: input.organizationId,
+          currency: input.currency,
+          validUntil: input.validUntil ?? null,
+          lineItems: input.lineItems as any,
+          metadata: input.metadata,
+          database: ctx.db,
+        });
+      } catch (err: any) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: String(err?.message ?? "Quote could not be created") });
+      }
+    }),
+
+  acceptQuote: protectedProcedure
+    .input(z.object({ organizationId: z.string().uuid(), quoteId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertBillingAdmin(ctx, input.organizationId);
+      const quote = await ctx.db.query.quotes.findFirst({
+        where: and(eq(quotes.id, input.quoteId), eq(quotes.organizationId, input.organizationId)),
+      });
+      if (!quote) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Quote not found" });
+      }
+
+      try {
+        return await acceptBillingQuote({
+          quoteId: input.quoteId,
+          acceptedBy: ctx.user.id,
+          database: ctx.db,
+        });
+      } catch (err: any) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: String(err?.message ?? "Quote could not be accepted") });
+      }
+    }),
+
+  getInvoice: protectedProcedure
+    .input(z.object({ organizationId: z.string().uuid(), invoiceId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await assertBillingMember(ctx, input.organizationId);
+      const invoice = await getInvoiceWithLines(input.invoiceId, ctx.db);
+      if (!invoice || invoice.organizationId !== input.organizationId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Invoice not found" });
+      }
+      return invoice;
+    }),
+
+  payInvoiceWithFlutterwave: protectedProcedure
+    .input(
+      z.object({
+        organizationId: z.string().uuid(),
+        invoiceId: z.string().uuid(),
+        paymentMethod: z.enum(["card", "bank_transfer", "mobile_money", "ussd"]),
+        redirectUrl: z.string().url().optional(),
+        mobileMoney: z
+          .object({
+            network: z.string().min(2),
+            phoneNumber: z.string().min(6),
+            countryCode: z.string().length(2).optional(),
+          })
+          .optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertBillingAdmin(ctx, input.organizationId);
+      if (!isFlutterwaveV4Configured()) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Flutterwave is not configured" });
+      }
+      if (input.paymentMethod === "mobile_money" && !input.mobileMoney) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Mobile money requires a network and phone number" });
+      }
+
+      const invoice = await ctx.db.query.invoices.findFirst({
+        where: and(eq(invoices.id, input.invoiceId), eq(invoices.organizationId, input.organizationId)),
+      });
+      if (!invoice) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Invoice not found" });
+      }
+      if (["paid", "void", "uncollectible"].includes(invoice.status ?? "")) {
+        throw new TRPCError({ code: "CONFLICT", message: `Invoice cannot be paid from status ${invoice.status}` });
+      }
+
+      const remainingCents = Math.max(Number(invoice.amountDueCents ?? 0) - Number(invoice.amountPaidCents ?? 0), 0);
+      if (remainingCents <= 0) {
+        throw new TRPCError({ code: "CONFLICT", message: "Invoice has no remaining balance" });
+      }
+
+      try {
+        return await startFlutterwaveCharge({
+          organizationId: input.organizationId,
+          amountCents: remainingCents,
+          currency: invoice.currency ?? "ngn",
+          purpose: "invoice",
+          paymentMethod: input.paymentMethod,
+          redirectUrl: input.redirectUrl,
+          mobileMoney: input.mobileMoney as any,
+          invoiceId: invoice.id,
+          metadata: {
+            invoice_id: invoice.id,
+            invoice_number: invoice.number,
+          },
+        });
+      } catch (err: any) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: String(err?.message ?? "Invoice payment could not be started"),
+        });
+      }
+    }),
+
+  listReceipts: protectedProcedure
+    .input(z.object({ organizationId: z.string().uuid(), limit: z.number().int().min(1).max(100).default(25) }))
+    .query(async ({ ctx, input }) => {
+      await assertBillingMember(ctx, input.organizationId);
+      return ctx.db.query.receipts.findMany({
+        where: eq(receipts.organizationId, input.organizationId),
+        orderBy: (receipt: any, { desc }: any) => [desc(receipt.createdAt)],
+        limit: input.limit,
+      });
+    }),
+
+  // =====================
   // Flutterwave v4
   // =====================
 
@@ -700,14 +878,14 @@ export const billingRouter = createTRPCRouter({
       }
 
       try {
-        return await createFlutterwaveCharge({
+        return await startFlutterwaveCharge({
           organizationId: input.organizationId,
           amountCents: input.amountCents,
           currency: input.currency,
           purpose: input.purpose,
           paymentMethod: input.paymentMethod,
           redirectUrl: input.redirectUrl,
-          mobileMoney: input.mobileMoney,
+          mobileMoney: input.mobileMoney as any,
         });
       } catch (err: any) {
         throw new TRPCError({
@@ -732,7 +910,7 @@ export const billingRouter = createTRPCRouter({
       if (!isFlutterwaveV4Configured()) {
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Flutterwave is not configured" });
       }
-      return createVirtualAccount(input);
+      return createVirtualAccount(input as any);
     }),
 
   listVirtualAccounts: protectedProcedure
