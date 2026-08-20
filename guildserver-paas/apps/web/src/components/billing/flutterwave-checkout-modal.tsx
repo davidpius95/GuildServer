@@ -27,15 +27,21 @@ export function FlutterwaveCheckoutModal({
   onOpenChange,
   organizationId,
   purpose = "topup",
+  invoiceId,
+  fixedAmountCents,
+  fixedCurrency,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   organizationId: string
-  purpose?: "subscription" | "instance" | "topup"
+  purpose?: "subscription" | "instance" | "topup" | "invoice"
+  invoiceId?: string
+  fixedAmountCents?: number
+  fixedCurrency?: string
 }) {
   const [method, setMethod] = useState<Method | null>(null)
   const [amount, setAmount] = useState("")
-  const [currency, setCurrency] = useState("NGN")
+  const [currency, setCurrency] = useState(fixedCurrency || "NGN")
   const [network, setNetwork] = useState("MTN")
   const [phone, setPhone] = useState("")
   const [result, setResult] = useState<any>(null)
@@ -51,9 +57,18 @@ export function FlutterwaveCheckoutModal({
       if (redirect) window.location.href = redirect
     },
   })
+  const invoiceCharge = trpc.billing.payInvoiceWithFlutterwave.useMutation({
+    onSuccess: (data) => {
+      setResult(data)
+      const redirect =
+        (data?.nextAction as any)?.redirect_url ?? (data?.nextAction as any)?.url ?? null
+      if (redirect) window.location.href = redirect
+    },
+  })
 
   // Amount is entered in major units; the API contract is minor units.
   const amountCents = (() => {
+    if (fixedAmountCents) return fixedAmountCents
     const n = Number(amount)
     if (!Number.isFinite(n) || n <= 0) return 0
     return Math.round(n * 100)
@@ -63,20 +78,35 @@ export function FlutterwaveCheckoutModal({
     !!method &&
     amountCents > 0 &&
     (method !== "mobile_money" || (network.trim() !== "" && phone.trim() !== "")) &&
-    !charge.isPending
+    !charge.isPending &&
+    !invoiceCharge.isPending
 
   function submit() {
     if (!method) return
+    const redirectUrl = typeof window !== "undefined" ? `${window.location.origin}/dashboard/billing` : undefined
+    const mobileMoney = method === "mobile_money"
+      ? { mobileMoney: { network, phoneNumber: phone, countryCode: currency === "GHS" ? "GH" : "NG" } }
+      : {}
+
+    if (invoiceId) {
+      invoiceCharge.mutate({
+        organizationId,
+        invoiceId,
+        paymentMethod: method,
+        redirectUrl,
+        ...mobileMoney,
+      })
+      return
+    }
+
     charge.mutate({
       organizationId,
       amountCents,
       currency,
       purpose,
       paymentMethod: method,
-      redirectUrl: typeof window !== "undefined" ? `${window.location.origin}/dashboard/billing` : undefined,
-      ...(method === "mobile_money"
-        ? { mobileMoney: { network, phoneNumber: phone, countryCode: currency === "GHS" ? "GH" : "NG" } }
-        : {}),
+      redirectUrl,
+      ...mobileMoney,
     })
   }
 
@@ -86,7 +116,7 @@ export function FlutterwaveCheckoutModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add funds</DialogTitle>
+          <DialogTitle>{invoiceId ? "Pay invoice" : "Add funds"}</DialogTitle>
           <DialogDescription>Pay by card, bank transfer, mobile money, or USSD.</DialogDescription>
         </DialogHeader>
 
@@ -130,13 +160,19 @@ export function FlutterwaveCheckoutModal({
             <div className="grid grid-cols-3 gap-2">
               <div className="col-span-2">
                 <Label htmlFor="flw-amount">Amount</Label>
-                <Input
-                  id="flw-amount"
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                />
+                {fixedAmountCents ? (
+                  <div className="flex h-10 items-center rounded-md border bg-muted px-3 text-sm font-medium">
+                    {(fixedAmountCents / 100).toFixed(2)}
+                  </div>
+                ) : (
+                  <Input
+                    id="flw-amount"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                  />
+                )}
               </div>
               <div>
                 <Label htmlFor="flw-currency">Currency</Label>
@@ -145,6 +181,7 @@ export function FlutterwaveCheckoutModal({
                   className="h-10 w-full rounded-md border bg-background px-2 text-sm"
                   value={currency}
                   onChange={(e) => setCurrency(e.target.value)}
+                  disabled={!!fixedCurrency}
                 >
                   {CURRENCIES.map((c) => (
                     <option key={c} value={c}>
@@ -174,10 +211,10 @@ export function FlutterwaveCheckoutModal({
               </div>
             )}
 
-            {charge.error && <ErrorState error={charge.error} compact />}
+            {(charge.error || invoiceCharge.error) && <ErrorState error={charge.error || invoiceCharge.error} compact />}
 
             <Button className="w-full" disabled={!canSubmit} onClick={submit}>
-              {charge.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {(charge.isPending || invoiceCharge.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {amountCents > 0 ? `Pay ${currency} ${(amountCents / 100).toFixed(2)}` : "Continue"}
             </Button>
           </div>

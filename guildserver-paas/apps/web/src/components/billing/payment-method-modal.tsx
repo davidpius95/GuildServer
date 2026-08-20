@@ -40,16 +40,21 @@ export function PaymentMethodModal({
   const [chainId, setChainId] = useState<number | null>(null)
   const [tokenSymbol, setTokenSymbol] = useState<string | null>(null)
 
-  const providersQuery = trpc.billing.getAvailablePaymentProviders.useQuery(undefined, { enabled: open })
+  const providersQuery = trpc.billing.getPaymentProviders.useQuery(undefined, { enabled: open })
   const stripeCheckout = trpc.billing.createCheckoutSession.useMutation({
     onSuccess: (data) => { window.location.href = data.url },
   })
-  const flutterwaveCheckout = trpc.billing.createFlutterwaveSubscriptionCheckout.useMutation({
-    onSuccess: (data) => { window.location.href = data.checkoutUrl },
+  const flutterwaveCheckout = trpc.billing.createFlutterwaveCharge.useMutation({
+    onSuccess: (data) => {
+      const redirect = (data?.nextAction as any)?.redirect_url ?? (data?.nextAction as any)?.url
+      if (redirect) window.location.href = redirect
+    },
   })
 
   const providers = providersQuery.data
-  const cryptoOptions = providers?.crypto
+  const cryptoOptions: any[] = []
+  const flutterwaveAmountCents =
+    planSlug === "pro" ? (billingInterval === "yearly" ? 20000 : 2000) : 0
 
   const reset = () => {
     setMethod(null)
@@ -87,7 +92,7 @@ export function PaymentMethodModal({
                 onClick={() => setMethod("flutterwave")}
               />
             )}
-            {cryptoOptions && cryptoOptions.length > 0 && (
+            {cryptoOptions.length > 0 && (
               <MethodOption
                 icon={<Wallet className="h-5 w-5" />}
                 title="Crypto Wallet"
@@ -95,7 +100,7 @@ export function PaymentMethodModal({
                 onClick={() => setMethod("crypto")}
               />
             )}
-            {!providers?.stripe && !providers?.flutterwave && !cryptoOptions && (
+            {!providers?.stripe && !providers?.flutterwave && cryptoOptions.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-6">
                 No payment methods are configured yet. Contact your administrator.
               </p>
@@ -121,13 +126,14 @@ export function PaymentMethodModal({
               onClick={() =>
                 flutterwaveCheckout.mutate({
                   organizationId,
-                  planSlug,
-                  billingInterval,
+                  amountCents: flutterwaveAmountCents,
                   currency,
+                  purpose: "subscription",
+                  paymentMethod: "card",
                   redirectUrl: `${window.location.origin}/dashboard/billing?checkout=success`,
                 })
               }
-              disabled={flutterwaveCheckout.isPending}
+              disabled={flutterwaveCheckout.isPending || flutterwaveAmountCents <= 0}
             >
               {flutterwaveCheckout.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Continue to payment <ArrowRight className="h-4 w-4 ml-1" />

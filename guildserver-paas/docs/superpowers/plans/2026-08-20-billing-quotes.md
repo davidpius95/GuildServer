@@ -283,11 +283,11 @@ git commit -m "feat: expose billing quotes and invoice payments"
 
 Mock `getPaymentProviders`, quote list, invoice list, and receipts.
 
-- [ ] **Step 2: Replace stale procedure calls**
+- [x] **Step 2: Replace stale procedure calls**
 
 Remove calls to `getAvailablePaymentProviders` and `createFlutterwaveSubscriptionCheckout`. Use `getPaymentProviders` and `payInvoiceWithFlutterwave`.
 
-- [ ] **Step 3: Add invoice payment states**
+- [x] **Step 3: Add invoice payment states**
 
 Show `open`, `paid`, `void`, and `uncollectible` invoices. Disable pay actions for paid/void invoices.
 

@@ -19,7 +19,6 @@ import {
   Check,
   Crown,
   Sparkles,
-  HardDrive,
   Clock,
   Globe,
   Database,
@@ -42,6 +41,14 @@ export default function BillingPage() {
     { enabled: !!orgId }
   )
   const invoicesQuery = trpc.billing.getInvoices.useQuery(
+    { organizationId: orgId, limit: 20 },
+    { enabled: !!orgId && activeTab === "invoices" }
+  )
+  const quotesQuery = trpc.billing.listQuotes.useQuery(
+    { organizationId: orgId, limit: 20 },
+    { enabled: !!orgId && activeTab === "invoices" }
+  )
+  const receiptsQuery = trpc.billing.listReceipts.useQuery(
     { organizationId: orgId, limit: 20 },
     { enabled: !!orgId && activeTab === "invoices" }
   )
@@ -119,7 +126,13 @@ export default function BillingPage() {
         />
       )}
       {activeTab === "invoices" && (
-        <InvoicesTab invoices={invoicesQuery.data || []} isLoading={invoicesQuery.isLoading} />
+        <InvoicesTab
+          invoices={invoicesQuery.data || []}
+          quotes={quotesQuery.data || []}
+          receipts={receiptsQuery.data || []}
+          isLoading={invoicesQuery.isLoading || quotesQuery.isLoading || receiptsQuery.isLoading}
+          orgId={orgId}
+        />
       )}
       {activeTab === "payment" && (
         <PaymentTab
@@ -461,11 +474,19 @@ function PlansTab({ plans, currentSlug, orgId }: { plans: any[]; currentSlug: st
 
 function InvoicesTab({
   invoices,
+  quotes,
+  receipts,
   isLoading,
+  orgId,
 }: {
   invoices: any[]
+  quotes: any[]
+  receipts: any[]
   isLoading: boolean
+  orgId: string
 }) {
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null)
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -474,61 +495,179 @@ function InvoicesTab({
     )
   }
 
-  if (invoices.length === 0) {
+  if (invoices.length === 0 && quotes.length === 0 && receipts.length === 0) {
     return (
       <div className="rounded-xl border bg-card p-12 text-center">
         <FileText className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
         <h3 className="text-lg font-semibold mb-1">No invoices yet</h3>
         <p className="text-sm text-muted-foreground">
-          Invoices will appear here once you upgrade to a paid plan.
+          Quotes, invoices, and receipts will appear here once billing activity starts.
         </p>
       </div>
     )
   }
 
   return (
-    <div className="rounded-xl border bg-card overflow-hidden">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b bg-muted/50">
-            <th className="text-left text-sm font-medium px-4 py-3">Invoice</th>
-            <th className="text-left text-sm font-medium px-4 py-3">Date</th>
-            <th className="text-left text-sm font-medium px-4 py-3">Amount</th>
-            <th className="text-left text-sm font-medium px-4 py-3">Status</th>
-            <th className="text-right text-sm font-medium px-4 py-3">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {invoices.map((inv: any) => (
-            <tr key={inv.id} className="border-b last:border-0">
-              <td className="px-4 py-3 text-sm font-mono">{inv.number || "—"}</td>
-              <td className="px-4 py-3 text-sm text-muted-foreground">
-                {inv.createdAt ? new Date(inv.createdAt).toLocaleDateString() : "—"}
-              </td>
-              <td className="px-4 py-3 text-sm">
-                ${((inv.amountDueCents || 0) / 100).toFixed(2)}
-              </td>
-              <td className="px-4 py-3">
-                <InvoiceStatusBadge status={inv.status} />
-              </td>
-              <td className="px-4 py-3 text-right">
-                {inv.invoiceUrl && (
-                  <a
-                    href={inv.invoiceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-primary hover:underline"
-                  >
-                    View
-                  </a>
-                )}
-              </td>
+    <div className="space-y-6">
+      <FlutterwaveCheckoutModal
+        open={!!selectedInvoice}
+        onOpenChange={(open) => !open && setSelectedInvoice(null)}
+        organizationId={orgId}
+        purpose="invoice"
+        invoiceId={selectedInvoice?.id}
+        fixedAmountCents={
+          selectedInvoice
+            ? Math.max((selectedInvoice.amountDueCents || 0) - (selectedInvoice.amountPaidCents || 0), 0)
+            : undefined
+        }
+        fixedCurrency={selectedInvoice?.currency?.toUpperCase()}
+      />
+
+      {quotes.length > 0 && (
+        <div className="rounded-xl border bg-card overflow-hidden">
+          <div className="border-b px-4 py-3">
+            <h3 className="text-sm font-semibold">Quotes</h3>
+          </div>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="text-left text-sm font-medium px-4 py-3">Quote</th>
+                <th className="text-left text-sm font-medium px-4 py-3">Valid until</th>
+                <th className="text-left text-sm font-medium px-4 py-3">Amount</th>
+                <th className="text-left text-sm font-medium px-4 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {quotes.map((quote: any) => (
+                <tr key={quote.id} className="border-b last:border-0">
+                  <td className="px-4 py-3 text-sm font-mono">{quote.number || "—"}</td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
+                    {quote.validUntil ? new Date(quote.validUntil).toLocaleDateString() : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-sm">{formatMoney(quote.totalCents, quote.currency)}</td>
+                  <td className="px-4 py-3">
+                    <InvoiceStatusBadge status={quote.status} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="rounded-xl border bg-card overflow-hidden">
+        <div className="border-b px-4 py-3">
+          <h3 className="text-sm font-semibold">Invoices</h3>
+        </div>
+        <table className="w-full">
+          <thead>
+            <tr className="border-b bg-muted/50">
+              <th className="text-left text-sm font-medium px-4 py-3">Invoice</th>
+              <th className="text-left text-sm font-medium px-4 py-3">Date</th>
+              <th className="text-left text-sm font-medium px-4 py-3">Amount</th>
+              <th className="text-left text-sm font-medium px-4 py-3">Status</th>
+              <th className="text-right text-sm font-medium px-4 py-3">Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {invoices.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  No invoices yet.
+                </td>
+              </tr>
+            ) : invoices.map((inv: any) => {
+              const remainingCents = Math.max((inv.amountDueCents || 0) - (inv.amountPaidCents || 0), 0)
+              const canPay = remainingCents > 0 && !["paid", "void", "uncollectible"].includes(inv.status)
+
+              return (
+                <tr key={inv.id} className="border-b last:border-0">
+                  <td className="px-4 py-3 text-sm font-mono">{inv.number || "—"}</td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
+                    {inv.createdAt ? new Date(inv.createdAt).toLocaleDateString() : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {formatMoney(inv.amountDueCents || 0, inv.currency)}
+                    {remainingCents > 0 && remainingCents !== (inv.amountDueCents || 0) && (
+                      <span className="ml-1 text-xs text-muted-foreground">
+                        {formatMoney(remainingCents, inv.currency)} due
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <InvoiceStatusBadge status={inv.status} />
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex justify-end gap-3">
+                      {canPay && (
+                        <button onClick={() => setSelectedInvoice(inv)} className="text-sm text-primary hover:underline">
+                          Pay
+                        </button>
+                      )}
+                      {inv.invoiceUrl && (
+                        <a
+                          href={inv.invoiceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-primary hover:underline"
+                        >
+                          View
+                        </a>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {receipts.length > 0 && (
+        <div className="rounded-xl border bg-card overflow-hidden">
+          <div className="border-b px-4 py-3">
+            <h3 className="text-sm font-semibold">Receipts</h3>
+          </div>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="text-left text-sm font-medium px-4 py-3">Receipt</th>
+                <th className="text-left text-sm font-medium px-4 py-3">Issued</th>
+                <th className="text-left text-sm font-medium px-4 py-3">Amount</th>
+                <th className="text-left text-sm font-medium px-4 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {receipts.map((receipt: any) => (
+                <tr key={receipt.id} className="border-b last:border-0">
+                  <td className="px-4 py-3 text-sm font-mono">{receipt.number || "—"}</td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
+                    {receipt.issuedAt ? new Date(receipt.issuedAt).toLocaleDateString() : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-sm">{formatMoney(receipt.amountCents, receipt.currency)}</td>
+                  <td className="px-4 py-3">
+                    <InvoiceStatusBadge status={receipt.status} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
+}
+
+function formatMoney(amountCents: number, currency = "usd") {
+  const normalized = currency.toUpperCase()
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: normalized,
+    }).format((amountCents || 0) / 100)
+  } catch {
+    return `${normalized} ${((amountCents || 0) / 100).toFixed(2)}`
+  }
 }
 
 // =====================
