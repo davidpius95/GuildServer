@@ -488,7 +488,7 @@ function PlansTab({
                       Pay securely with Flutterwave by card, transfer, mobile money, or USSD.
                     </p>
                   )}
-                  {currentSlug === "hobby" && (
+                  {currentSlug === "hobby" && plan.slug === "pro" && (
                     <Button
                       variant="outline"
                       className="w-full"
