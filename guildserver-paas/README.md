@@ -393,7 +393,7 @@ The project includes a self-update script that automatically deploys when new co
 
 ```bash
 # Install the cron job (checks every 5 minutes)
-(crontab -l 2>/dev/null; echo "*/5 * * * * /opt/guildserver/guildserver-paas/scripts/self-update.sh >> /var/log/guildserver-update.log 2>&1") | crontab -
+(crontab -l 2>/dev/null; echo "*/5 * * * * /path/to/guildserver-paas/scripts/self-update.sh >> /var/log/guildserver-update.log 2>&1") | crontab -
 
 # View update logs
 tail -f /var/log/guildserver-update.log

@@ -91,6 +91,31 @@ function parseDockerLogs(buffer: Buffer | string): string[] {
   return lines;
 }
 
+async function getStartupFailure(
+  container: Docker.Container,
+  initialRestartCount: number,
+): Promise<string | null> {
+  // A newly-started container can look healthy before its entrypoint exits.
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  const inspection = await container.inspect();
+  const restartCount = inspection.RestartCount || 0;
+  if (inspection.State.Running && restartCount <= initialRestartCount) return null;
+
+  let recentLogs = "";
+  try {
+    const logBuffer = await container.logs({ stdout: true, stderr: true, tail: 20 });
+    recentLogs = parseDockerLogs(logBuffer).slice(-8).join("\n");
+  } catch {
+    // The exit status remains useful even if Docker cannot return logs.
+  }
+
+  const exitCode = inspection.State.ExitCode;
+  const state = inspection.State.Status || "exited";
+  const suffix = recentLogs ? ` Recent output:\n${recentLogs}` : "";
+  return `Container exited during startup (status: ${state}, exit code: ${exitCode}).${suffix}`;
+}
+
 export async function removeExistingContainers(
   applicationId: string,
   options?: { appNameFilter?: string },
@@ -278,6 +303,11 @@ export async function deployContainer(
     const inspection = await container.inspect();
     if (!inspection.State.Running) {
       throw new Error(`Container failed to start. Status: ${inspection.State.Status}`);
+    }
+
+    const startupFailure = await getStartupFailure(container, inspection.RestartCount || 0);
+    if (startupFailure) {
+      throw new Error(startupFailure);
     }
 
     log(`Container ${name} is running on port ${hostPort}`);
