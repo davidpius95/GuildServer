@@ -56,6 +56,7 @@ export default function BillingPage() {
     { organizationId: orgId },
     { enabled: !!orgId && activeTab === "payment" }
   )
+  const providersQuery = trpc.billing.getPaymentProviders.useQuery()
 
   if (orgLoading || currentPlanQuery.isLoading) {
     return (
@@ -116,6 +117,7 @@ export default function BillingPage() {
           usage={usage}
           orgId={orgId}
           onUpgrade={() => setActiveTab("plans")}
+          stripeConfigured={!!providersQuery.data?.stripe}
         />
       )}
       {activeTab === "plans" && (
@@ -123,6 +125,7 @@ export default function BillingPage() {
           plans={plansQuery.data || []}
           currentSlug={currentPlan?.slug || "hobby"}
           orgId={orgId}
+          stripeConfigured={!!providersQuery.data?.stripe}
         />
       )}
       {activeTab === "invoices" && (
@@ -139,6 +142,7 @@ export default function BillingPage() {
           methods={paymentMethodsQuery.data || []}
           isLoading={paymentMethodsQuery.isLoading}
           orgId={orgId}
+          providers={providersQuery.data}
         />
       )}
       {activeTab === "spend" && (
@@ -163,12 +167,14 @@ function OverviewTab({
   usage,
   orgId,
   onUpgrade,
+  stripeConfigured,
 }: {
   currentPlan: any
   subscription: any
   usage: any
   orgId: string
   onUpgrade: () => void
+  stripeConfigured: boolean
 }) {
   const cancelMutation = trpc.billing.cancelSubscription.useMutation({
     onSuccess: () => window.location.reload(),
@@ -229,7 +235,7 @@ function OverviewTab({
               Upgrade to Pro
             </Button>
           )}
-          {isPaid && !isCanceling && (
+          {isPaid && !isCanceling && stripeConfigured && (
             <>
               <Button
                 size="sm"
@@ -252,7 +258,7 @@ function OverviewTab({
               </Button>
             </>
           )}
-          {isPaid && isCanceling && (
+          {isPaid && isCanceling && stripeConfigured && (
             <Button
               size="sm"
               variant="outline"
@@ -262,6 +268,11 @@ function OverviewTab({
               {resumeMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
               Resume Subscription
             </Button>
+          )}
+          {isPaid && !stripeConfigured && (
+            <p className="text-xs text-amber-600">
+              Stripe billing actions are disabled in this environment. Use Flutterwave from the Payment tab.
+            </p>
           )}
         </div>
         {(cancelMutation.error || resumeMutation.error || portalMutation.error) && (
@@ -338,7 +349,17 @@ function OverviewTab({
 // PLANS TAB
 // =====================
 
-function PlansTab({ plans, currentSlug, orgId }: { plans: any[]; currentSlug: string; orgId: string }) {
+function PlansTab({
+  plans,
+  currentSlug,
+  orgId,
+  stripeConfigured,
+}: {
+  plans: any[]
+  currentSlug: string
+  orgId: string
+  stripeConfigured: boolean
+}) {
   const checkoutMutation = trpc.billing.createCheckoutSession.useMutation({
     onSuccess: (data) => {
       window.location.href = data.url
@@ -425,12 +446,12 @@ function PlansTab({ plans, currentSlug, orgId }: { plans: any[]; currentSlug: st
                         billingInterval: "monthly",
                       })
                     }
-                    disabled={checkoutMutation.isPending}
+                    disabled={checkoutMutation.isPending || !stripeConfigured}
                   >
                     {checkoutMutation.isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                     ) : null}
-                    Upgrade to Pro — $20/mo
+                    {stripeConfigured ? "Upgrade to Pro — $20/mo" : "Stripe checkout unavailable"}
                   </Button>
                   {currentSlug === "hobby" && (
                     <Button
@@ -678,24 +699,29 @@ function PaymentTab({
   methods,
   isLoading,
   orgId,
+  providers,
 }: {
   methods: any[]
   isLoading: boolean
   orgId: string
+  providers?: { stripe: boolean; flutterwave: boolean; crypto: boolean }
 }) {
   const portalMutation = trpc.billing.createPortalSession.useMutation({
     onSuccess: (data) => { window.location.href = data.url },
   })
 
   const [flwOpen, setFlwOpen] = useState(false)
-  const providers = trpc.billing.getPaymentProviders.useQuery()
   const virtualAccounts = trpc.billing.listVirtualAccounts.useQuery(
     { organizationId: orgId },
-    { enabled: !!orgId && !!providers.data?.flutterwave },
+    { enabled: !!orgId && !!providers?.flutterwave },
   )
   const createVa = trpc.billing.createVirtualAccount.useMutation({
     onSuccess: () => virtualAccounts.refetch(),
   })
+
+  const activeNgnVirtualAccount = virtualAccounts.data?.find(
+    (va: any) => va.currency?.toUpperCase() === "NGN" && va.status === "active",
+  )
 
   if (isLoading) {
     return (
@@ -714,7 +740,7 @@ function PaymentTab({
         purpose="topup"
       />
 
-      {providers.data?.flutterwave && (
+      {providers?.flutterwave && (
         <div className="rounded-xl border bg-card p-6">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -738,10 +764,10 @@ function PaymentTab({
                 size="sm"
                 variant="outline"
                 onClick={() => createVa.mutate({ organizationId: orgId, currency: "NGN", accountType: "static" })}
-                disabled={createVa.isPending}
+                disabled={createVa.isPending || !!activeNgnVirtualAccount}
               >
                 {createVa.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
-                Issue account
+                {activeNgnVirtualAccount ? "Account issued" : "Issue account"}
               </Button>
             </div>
 
@@ -775,10 +801,10 @@ function PaymentTab({
             size="sm"
             variant="outline"
             onClick={() => portalMutation.mutate({ organizationId: orgId })}
-            disabled={portalMutation.isPending}
+            disabled={portalMutation.isPending || !providers?.stripe}
           >
             {portalMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
-            Manage in Stripe
+            {providers?.stripe ? "Manage in Stripe" : "Stripe unavailable"}
           </Button>
         </div>
         {methods.length === 0 ? (
@@ -810,6 +836,11 @@ function PaymentTab({
               </div>
             ))}
           </div>
+        )}
+        {!providers?.stripe && (
+          <p className="text-xs text-amber-600 mt-2">
+            Stripe is not configured for this environment. Use Flutterwave for card, transfer, mobile money, or USSD payments.
+          </p>
         )}
         {portalMutation.error && (
           <ErrorState error={portalMutation.error} compact className="mt-1" />
