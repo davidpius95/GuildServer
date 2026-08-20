@@ -1,7 +1,7 @@
 "use client"
 import { ErrorState } from "@/components/error-state"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -51,6 +51,13 @@ export function FlutterwaveCheckoutModal({
   const [result, setResult] = useState<any>(null)
 
   const providers = trpc.billing.getPaymentProviders.useQuery(undefined, { enabled: open })
+
+  useEffect(() => {
+    if (!open) return
+    if (purpose === "subscription" && !method) {
+      setMethod("card")
+    }
+  }, [method, open, purpose])
 
   const charge = trpc.billing.createFlutterwaveCharge.useMutation({
     onSuccess: (data) => {
