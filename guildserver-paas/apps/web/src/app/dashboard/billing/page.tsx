@@ -217,12 +217,12 @@ function OverviewTab({
               {subscription.cancelAtPeriodEnd
                 ? "Cancels on "
                 : "Renews on "}
-              {new Date(subscription.currentPeriodEnd).toLocaleDateString()}
+              {formatDate(subscription.currentPeriodEnd)}
             </p>
           )}
           {subscription?.status === "trialing" && subscription.trialEnd && (
             <p className="text-sm text-amber-600">
-              Trial ends {new Date(subscription.trialEnd).toLocaleDateString()}
+              Trial ends {formatDate(subscription.trialEnd)}
             </p>
           )}
         </div>
@@ -563,7 +563,7 @@ function InvoicesTab({
                 <tr key={quote.id} className="border-b last:border-0">
                   <td className="px-4 py-3 text-sm font-mono">{quote.number || "—"}</td>
                   <td className="px-4 py-3 text-sm text-muted-foreground">
-                    {quote.validUntil ? new Date(quote.validUntil).toLocaleDateString() : "—"}
+                    {quote.validUntil ? formatDate(quote.validUntil) : "—"}
                   </td>
                   <td className="px-4 py-3 text-sm">{formatMoney(quote.totalCents, quote.currency)}</td>
                   <td className="px-4 py-3">
@@ -605,7 +605,7 @@ function InvoicesTab({
                 <tr key={inv.id} className="border-b last:border-0">
                   <td className="px-4 py-3 text-sm font-mono">{inv.number || "—"}</td>
                   <td className="px-4 py-3 text-sm text-muted-foreground">
-                    {inv.createdAt ? new Date(inv.createdAt).toLocaleDateString() : "—"}
+                    {inv.createdAt ? formatDate(inv.createdAt) : "—"}
                   </td>
                   <td className="px-4 py-3 text-sm">
                     {formatMoney(inv.amountDueCents || 0, inv.currency)}
@@ -663,7 +663,7 @@ function InvoicesTab({
                 <tr key={receipt.id} className="border-b last:border-0">
                   <td className="px-4 py-3 text-sm font-mono">{receipt.number || "—"}</td>
                   <td className="px-4 py-3 text-sm text-muted-foreground">
-                    {receipt.issuedAt ? new Date(receipt.issuedAt).toLocaleDateString() : "—"}
+                    {receipt.issuedAt ? formatDate(receipt.issuedAt) : "—"}
                   </td>
                   <td className="px-4 py-3 text-sm">{formatMoney(receipt.amountCents, receipt.currency)}</td>
                   <td className="px-4 py-3">
@@ -682,13 +682,22 @@ function InvoicesTab({
 function formatMoney(amountCents: number, currency = "usd") {
   const normalized = currency.toUpperCase()
   try {
-    return new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: normalized,
     }).format((amountCents || 0) / 100)
   } catch {
     return `${normalized} ${((amountCents || 0) / 100).toFixed(2)}`
   }
+}
+
+function formatDate(value: string | number | Date) {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(value))
 }
 
 // =====================
