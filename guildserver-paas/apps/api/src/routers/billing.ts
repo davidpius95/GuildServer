@@ -852,7 +852,7 @@ export const billingRouter = createTRPCRouter({
         organizationId: z.string().uuid(),
         amountCents: z.number().int().positive(),
         currency: z.string().min(3).max(5).default("NGN"),
-        purpose: z.enum(["subscription", "instance", "topup"]).default("topup"),
+        purpose: z.enum(["subscription", "instance", "topup", "invoice"]).default("topup"),
         paymentMethod: z.enum(["card", "bank_transfer", "mobile_money", "ussd"]),
         redirectUrl: z.string().url().optional(),
         mobileMoney: z

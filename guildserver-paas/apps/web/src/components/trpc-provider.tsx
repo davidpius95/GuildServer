@@ -6,7 +6,7 @@ import { createTRPCReact } from '@trpc/react-query'
 import { useState } from 'react'
 import superjson from 'superjson'
 
-import type { AppRouter } from '../../../api/src/index'
+import type { AppRouter } from '../../../api/src/trpc/router'
 
 export const trpc = createTRPCReact<AppRouter>()
 

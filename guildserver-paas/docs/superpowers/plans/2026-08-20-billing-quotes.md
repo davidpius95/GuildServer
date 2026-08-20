@@ -279,9 +279,9 @@ git commit -m "feat: expose billing quotes and invoice payments"
 - Consumes: tRPC procedures from Task 5
 - Produces: dashboard lists for plan, quote, invoice, receipt, and payment status
 
-- [ ] **Step 1: Add component tests or update existing billing mocks**
+- [x] **Step 1: Add component tests or update existing billing mocks**
 
-Mock `getPaymentProviders`, quote list, invoice list, and receipts.
+Mocked billing providers, quote acceptance, Flutterwave invoice payment, settlement, and receipts in focused API/service tests. Web component tests are still blocked by the existing web test harness dependency gaps (`@testing-library/react`, `@jest/globals`, `@playwright/test`, `msw`).
 
 - [x] **Step 2: Replace stale procedure calls**
 
@@ -291,11 +291,13 @@ Remove calls to the old provider-list and Flutterwave subscription checkout proc
 
 Show `open`, `paid`, `void`, and `uncollectible` invoices. Disable pay actions for paid/void invoices.
 
-- [ ] **Step 4: Run web checks**
+- [x] **Step 4: Run web checks**
 
-Run: `pnpm --filter @guildserver/web typecheck`
+Passed: `pnpm --filter @guildserver/web build`
+Passed with warnings only: `pnpm exec next lint --file src/app/dashboard/billing/page.tsx --file src/components/billing/flutterwave-checkout-modal.tsx --file src/components/billing/payment-method-modal.tsx --file src/components/trpc-provider.tsx`
+Repo-wide blocked: `pnpm --filter @guildserver/web typecheck` still fails on unrelated existing template icon imports, workflow helper typing, crypto dependencies/procedures, and missing test/e2e packages. The billing invoice/Flutterwave modal and tRPC provider type errors are cleared.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
