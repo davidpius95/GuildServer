@@ -9,9 +9,10 @@ import {
   syncPaymentMethodFromStripe,
   handleSubscriptionDeleted,
 } from "../services/billing";
+import { settlePaymentAttempt } from "../services/billing/settlement";
 import { notify } from "../services/notification";
 import { resetSpendNotifications } from "../services/spend-manager";
-import { db, subscriptions, members, instances } from "@guildserver/database";
+import { db, subscriptions, members, instances, invoices as invoicesTable, paymentTransactions } from "@guildserver/database";
 import { eq, and } from "drizzle-orm";
 import { addInstanceProvisionJob, addInstanceDestroyJob } from "../queues/instances";
 
@@ -138,6 +139,32 @@ stripeWebhookRouter.post("/", async (req: Request, res: Response) => {
       case "invoice.payment_failed": {
         const invoice = event.data.object as Stripe.Invoice;
         await syncInvoiceFromStripe(invoice);
+
+        if (event.type === "invoice.paid") {
+          const localInvoice = await db.query.invoices.findFirst({
+            where: eq(invoicesTable.stripeInvoiceId, invoice.id),
+          });
+          const localPayment = localInvoice
+            ? await db.query.paymentTransactions.findFirst({
+                where: and(
+                  eq(paymentTransactions.invoiceId, localInvoice.id),
+                  eq(paymentTransactions.provider, "stripe"),
+                ),
+              })
+            : null;
+
+          if (localPayment) {
+            await settlePaymentAttempt({
+              provider: "stripe",
+              providerReference: (invoice as any).payment_intent?.toString() ?? invoice.id,
+              paymentTransactionId: localPayment.id,
+              verifiedStatus: "succeeded",
+              verifiedAmountCents: invoice.amount_paid,
+              verifiedCurrency: invoice.currency,
+              rawProviderPayload: invoice,
+            });
+          }
+        }
 
         if (event.type === "invoice.payment_failed") {
           const customerId = invoice.customer as string;

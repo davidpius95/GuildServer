@@ -12,9 +12,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { timingSafeEqual } from "node:crypto";
-import { db, paymentTransactions } from "@guildserver/database";
-import { eq } from "drizzle-orm";
-import { fetchCharge, mapChargeStatus, toMinorUnits } from "../services/billing/flutterwave-v4";
+import { settleChargeFromProvider } from "../services/billing/flutterwave-v4";
 import { logger } from "../utils/logger";
 
 export const flutterwaveV4WebhookRouter = Router();
@@ -60,81 +58,8 @@ flutterwaveV4WebhookRouter.post("/", async (req: Request, res: Response) => {
       return;
     }
 
-    const [tx] = reference
-      ? await db
-          .select()
-          .from(paymentTransactions)
-          .where(eq(paymentTransactions.flutterwaveTxRef, reference))
-          .limit(1)
-      : await db
-          .select()
-          .from(paymentTransactions)
-          .where(eq(paymentTransactions.flutterwaveTxId, chargeId!))
-          .limit(1);
-
-    if (!tx) {
-      logger.warn("Flutterwave webhook for unknown transaction", { chargeId, reference });
-      return;
-    }
-
-    // Terminal states are final — a replayed "succeeded" must not resurrect a
-    // refunded or canceled transaction.
-    if (tx.status === "succeeded" || tx.status === "canceled") {
-      logger.info("Ignoring webhook for already-settled transaction", {
-        paymentTransactionId: tx.id,
-        status: tx.status,
-      });
-      return;
-    }
-
-    if (!chargeId) {
-      logger.warn("Webhook had a reference but no charge id; cannot verify", { reference });
-      return;
-    }
-
-    // Authoritative read — never trust amounts from the webhook body.
-    const charge = await fetchCharge(chargeId);
-    const status = mapChargeStatus(charge?.status);
-
-    // Guard against underpayment: only settle if the verified amount covers it.
-    const paidMinor = toMinorUnits(Number(charge?.amount ?? 0), charge?.currency ?? tx.currency);
-    if (status === "succeeded" && paidMinor < tx.amountCents) {
-      logger.error("Flutterwave charge underpaid; not marking succeeded", {
-        paymentTransactionId: tx.id,
-        expectedCents: tx.amountCents,
-        paidCents: paidMinor,
-      });
-      await db
-        .update(paymentTransactions)
-        .set({
-          status: "failed",
-          failureReason: `Underpaid: expected ${tx.amountCents}, received ${paidMinor}`,
-          updatedAt: new Date(),
-        })
-        .where(eq(paymentTransactions.id, tx.id));
-      return;
-    }
-
-    await db
-      .update(paymentTransactions)
-      .set({
-        status,
-        flutterwaveTxId: chargeId,
-        paymentMethodDetail: charge?.payment_method_details?.type ?? tx.paymentMethodDetail,
-        paidAt: status === "succeeded" ? new Date() : tx.paidAt,
-        failureReason:
-          status === "failed"
-            ? String(charge?.processor_response?.type ?? "charge failed").slice(0, 1000)
-            : null,
-        updatedAt: new Date(),
-      })
-      .where(eq(paymentTransactions.id, tx.id));
-
-    logger.info("Flutterwave webhook settled transaction", {
-      paymentTransactionId: tx.id,
-      chargeId,
-      status,
-    });
+    const outcome = await settleChargeFromProvider({ chargeId, reference });
+    logger.info("Flutterwave webhook settlement result", { chargeId, reference, outcome });
   } catch (err: any) {
     // Already acked; log loudly so reconciliation can pick it up.
     logger.error("Failed processing Flutterwave webhook", {

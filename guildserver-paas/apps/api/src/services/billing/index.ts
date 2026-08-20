@@ -6,3 +6,4 @@ export * from "./invoices";
 export * from "./ledger";
 export * from "./money";
 export * from "./quotes";
+export * from "./settlement";

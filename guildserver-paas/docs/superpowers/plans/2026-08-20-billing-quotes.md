@@ -200,27 +200,27 @@ type SettlePaymentAttemptArgs = {
 };
 ```
 
-- [ ] **Step 1: Write settlement tests**
+- [x] **Step 1: Write settlement tests**
 
 Cover successful invoice payment, replayed successful webhook, underpayment rejected, wrong currency rejected, failed provider status preserved, receipt created once.
 
-- [ ] **Step 2: Implement settlement transaction**
+- [x] **Step 2: Implement settlement transaction**
 
 Inside one DB transaction, lock or re-read the payment transaction, validate amount/currency, update transaction, update invoice paid amount/status, append ledger payment entry, create receipt if invoice is fully paid.
 
-- [ ] **Step 3: Wire Flutterwave v4 webhook**
+- [x] **Step 3: Wire Flutterwave v4 webhook**
 
 After `fetchCharge(chargeId)` and validation, call `settlePaymentAttempt` instead of directly updating invoice/payment side effects.
 
-- [ ] **Step 4: Wire Stripe webhook**
+- [x] **Step 4: Wire Stripe webhook**
 
 For `invoice.paid`, `checkout.session.completed`, and `payment_intent.succeeded`, resolve the local payment transaction or invoice and call settlement/sync helpers.
 
-- [ ] **Step 5: Run focused tests**
+- [x] **Step 5: Run focused tests**
 
 Run: `pnpm --filter @guildserver/api test -- billing-settlement.test.ts flutterwave-v4-webhooks.test.ts`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 

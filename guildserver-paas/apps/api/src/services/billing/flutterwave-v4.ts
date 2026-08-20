@@ -20,6 +20,7 @@ import { db, paymentTransactions, organizations } from "@guildserver/database";
 import { eq } from "drizzle-orm";
 import { flwV4Request, isFlutterwaveV4Configured } from "./flutterwave-v4-client";
 import { assertPositiveMinorAmount, normalizeCurrency, toMajorUnits, toMinorUnits } from "./money";
+import { settlePaymentAttempt } from "./settlement";
 import { logger } from "../../utils/logger";
 
 export type FlutterwavePaymentMethod =
@@ -284,11 +285,6 @@ export async function settleChargeFromProvider(args: {
 
   if (!tx) return { result: "ignored", reason: "unknown transaction" };
 
-  // Terminal states are final; a replayed "succeeded" must not resurrect a
-  // canceled transaction.
-  if (tx.status === "succeeded" || tx.status === "canceled") {
-    return { result: "ignored", reason: `already ${tx.status}` };
-  }
   if (!chargeId) return { result: "ignored", reason: "no charge id to verify against" };
 
   // Never trust the webhook body for amounts — re-read from the API.
@@ -296,40 +292,31 @@ export async function settleChargeFromProvider(args: {
   const status = mapChargeStatus(charge?.status);
   const paidMinor = toMinorUnits(Number(charge?.amount ?? 0), charge?.currency ?? tx.currency);
 
-  if (status === "succeeded" && paidMinor < tx.amountCents) {
-    await db
-      .update(paymentTransactions)
-      .set({
-        status: "failed",
-        failureReason: `Underpaid: expected ${tx.amountCents}, received ${paidMinor}`,
-        updatedAt: new Date(),
-      })
-      .where(eq(paymentTransactions.id, tx.id));
-    logger.error("Flutterwave charge underpaid", {
-      paymentTransactionId: tx.id,
-      expectedCents: tx.amountCents,
-      paidCents: paidMinor,
-    });
-    return { result: "settled", paymentTransactionId: tx.id, status: "failed" };
-  }
+  const settled = await settlePaymentAttempt({
+    provider: "flutterwave",
+    providerReference: chargeId,
+    paymentTransactionId: tx.id,
+    verifiedStatus: status,
+    verifiedAmountCents: paidMinor,
+    verifiedCurrency: charge?.currency ?? tx.currency,
+    providerPaymentMethodDetail: charge?.payment_method_details?.type ?? tx.paymentMethodDetail,
+    failureReason:
+      status === "failed"
+        ? String(charge?.processor_response?.type ?? "charge failed").slice(0, 1000)
+        : null,
+    rawProviderPayload: charge,
+  });
 
-  await db
-    .update(paymentTransactions)
-    .set({
-      status,
-      flutterwaveTxId: chargeId,
-      paymentMethodDetail: charge?.payment_method_details?.type ?? tx.paymentMethodDetail,
-      paidAt: status === "succeeded" ? new Date() : tx.paidAt,
-      failureReason:
-        status === "failed"
-          ? String(charge?.processor_response?.type ?? "charge failed").slice(0, 1000)
-          : null,
-      updatedAt: new Date(),
-    })
-    .where(eq(paymentTransactions.id, tx.id));
+  logger.info("Settled Flutterwave transaction", {
+    paymentTransactionId: tx.id,
+    chargeId,
+    status: settled.status,
+    result: settled.result,
+  });
 
-  logger.info("Settled Flutterwave transaction", { paymentTransactionId: tx.id, chargeId, status });
-  return { result: "settled", paymentTransactionId: tx.id, status };
+  return settled.result === "settled"
+    ? { result: "settled", paymentTransactionId: tx.id, status: settled.status ?? status }
+    : { result: "ignored", reason: settled.reason ?? "ignored" };
 }
 
 // ---------------------------------------------------------------------------
