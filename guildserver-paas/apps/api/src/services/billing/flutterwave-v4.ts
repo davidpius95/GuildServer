@@ -19,6 +19,7 @@ import { randomUUID } from "node:crypto";
 import { db, paymentTransactions, organizations } from "@guildserver/database";
 import { eq } from "drizzle-orm";
 import { flwV4Request, isFlutterwaveV4Configured } from "./flutterwave-v4-client";
+import { assertPositiveMinorAmount, normalizeCurrency, toMajorUnits, toMinorUnits } from "./money";
 import { logger } from "../../utils/logger";
 
 export type FlutterwavePaymentMethod =
@@ -28,21 +29,8 @@ export type FlutterwavePaymentMethod =
   | "ussd"
   | "virtual_account";
 
-/**
- * Currencies with sub-units that are NOT 1/100. Flutterwave settles these in
- * whole units, so treating them as cents would inflate the charge 100x.
- */
-const ZERO_DECIMAL_CURRENCIES = new Set(["JPY", "KRW", "VND", "CLP", "XOF", "XAF", "RWF", "UGX"]);
+export { toMajorUnits, toMinorUnits } from "./money";
 
-export function toMajorUnits(amountCents: number, currency: string): number {
-  if (ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase())) return amountCents;
-  return Number((amountCents / 100).toFixed(2));
-}
-
-export function toMinorUnits(amount: number, currency: string): number {
-  if (ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase())) return Math.round(amount);
-  return Math.round(amount * 100);
-}
 
 /** Flutterwave charge status -> our payment_transaction_status enum. */
 export function mapChargeStatus(
@@ -152,11 +140,9 @@ export async function createFlutterwaveCharge(args: CreateChargeArgs): Promise<C
   if (!isFlutterwaveV4Configured()) {
     throw new Error("Flutterwave is not configured");
   }
-  if (!Number.isInteger(args.amountCents) || args.amountCents <= 0) {
-    throw new Error("amountCents must be a positive integer");
-  }
+  assertPositiveMinorAmount(args.amountCents);
 
-  const currency = args.currency.toUpperCase();
+  const currency = normalizeCurrency(args.currency).toUpperCase();
   const reference = `GS-${args.purpose.toUpperCase().slice(0, 8)}-${randomUUID().slice(0, 12)}`;
 
   // Persist BEFORE calling Flutterwave. If the call times out we still have a
@@ -171,7 +157,7 @@ export async function createFlutterwaveCharge(args: CreateChargeArgs): Promise<C
       status: "pending",
       purpose: args.purpose,
       amountCents: args.amountCents,
-      currency: currency.toLowerCase(),
+      currency: normalizeCurrency(currency),
       flutterwaveTxRef: reference,
       paymentMethodDetail: args.paymentMethod,
       metadata: (args.metadata ?? {}) as any,

@@ -109,23 +109,23 @@ git commit -m "feat: add billing quotes core schema"
 - Produces: `assertPositiveMinorAmount(amountMinor: number): void`
 - Produces: `appendLedgerEntry(args): Promise<BillingLedgerEntry>`
 
-- [ ] **Step 1: Write money tests**
+- [x] **Step 1: Write money tests**
 
 Test USD/NGN conversion, zero-decimal conversion, lowercase storage normalization, and rejection of non-integer/negative amounts.
 
-- [ ] **Step 2: Implement money helpers**
+- [x] **Step 2: Implement money helpers**
 
 Move the conversion rules currently duplicated in Flutterwave v4 into `money.ts`, then import them from Flutterwave.
 
-- [ ] **Step 3: Implement ledger append helper**
+- [x] **Step 3: Implement ledger append helper**
 
 `appendLedgerEntry` inserts by `idempotencyKey`; if a duplicate key exists, it returns the existing row instead of throwing.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Run: `pnpm --filter @guildserver/api test -- billing-money.test.ts`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
