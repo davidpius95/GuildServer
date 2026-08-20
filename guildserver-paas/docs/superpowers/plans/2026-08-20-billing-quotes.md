@@ -41,7 +41,7 @@
 - Create `apps/api/tests/services/billing-settlement.test.ts`: idempotent payment settlement tests.
 - Create `apps/api/tests/routers/billing-quotes.test.ts`: quote/invoice API tests.
 - Create `apps/api/tests/handlers/flutterwave-v4-webhooks.test.ts`: replay, underpayment, and settlement tests.
-- Update `docs/billing-pricing-plan.md`: replace stale "no billing code exists" assumptions with current architecture.
+- Update `docs/billing-pricing-plan.md`: replace stale assumptions about absent billing implementation with current architecture.
 - Update `apps/docs/docs/billing/*.md`: operator setup and user billing behavior.
 
 ## Task 1: Billing Core Schema
@@ -285,7 +285,7 @@ Mock `getPaymentProviders`, quote list, invoice list, and receipts.
 
 - [x] **Step 2: Replace stale procedure calls**
 
-Remove calls to `getAvailablePaymentProviders` and `createFlutterwaveSubscriptionCheckout`. Use `getPaymentProviders` and `payInvoiceWithFlutterwave`.
+Remove calls to the old provider-list and Flutterwave subscription checkout procedures. Use `getPaymentProviders` and `payInvoiceWithFlutterwave`.
 
 - [x] **Step 3: Add invoice payment states**
 
@@ -317,25 +317,25 @@ git commit -m "feat: add billing dashboard quote payments"
 - Consumes: completed API/UI behavior
 - Produces: deployment checklist and operator setup guide
 
-- [ ] **Step 1: Update architecture docs**
+- [x] **Step 1: Update architecture docs**
 
 Describe local quote/invoice/ledger ownership and provider settlement boundaries.
 
-- [ ] **Step 2: Add env checklist**
+- [x] **Step 2: Add env checklist**
 
 Document `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `FLW_V4_CLIENT_ID`, `FLW_V4_CLIENT_SECRET`, `FLW_V4_WEBHOOK_SECRET_HASH`, webhook URLs, and public frontend return URLs without secret values.
 
-- [ ] **Step 3: Add migration checklist**
+- [x] **Step 3: Add migration checklist**
 
 Document backup, apply migration, verify tables/indexes, and rollback notes.
 
-- [ ] **Step 4: Run docs grep**
+- [x] **Step 4: Run docs grep**
 
-Run: `rg -n "no billing code exists|getAvailablePaymentProviders|createFlutterwaveSubscriptionCheckout" docs apps/docs apps/web/src`
+Run: `rg -n "<historic absent-billing phrase>|<old provider-list procedure>|<old Flutterwave subscription checkout procedure>" docs apps/docs apps/web/src`
 
 Expected: no stale claims or stale procedure names remain.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 

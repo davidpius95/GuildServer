@@ -9,9 +9,9 @@ GuildServer offers three billing tiers designed for different team sizes and wor
 
 ## Plan Comparison
 
-| Feature | Hobby (Free) | Pro ($29/mo) | Enterprise (Custom) |
+| Feature | Hobby (Free) | Pro ($20/seat/mo) | Enterprise (Custom) |
 |---------|-------------|-------------|-------------------|
-| **Monthly price** | $0 | $29/month or $290/year | Custom |
+| **Monthly price** | $0 | $20/seat/month or $200/seat/year | Custom |
 | **Applications** | 3 | 10 | Unlimited |
 | **Databases** | 1 | 5 | Unlimited |
 | **Deployments/month** | 50 | Unlimited | Unlimited |
@@ -56,7 +56,7 @@ Key characteristics:
 - **Overage billing** -- Usage beyond included limits is allowed and charged at overage rates (see [Usage Tracking](./usage-tracking.md)).
 - **Spend management** -- Set a monthly spending cap to control costs (see [Spend Limits](./spend-limits.md)).
 - **14-day free trial** -- Each organization can start one Pro trial via the `billing.startTrial` mutation.
-- **Annual billing** -- Save by paying $290/year instead of $29/month ($348/year).
+- **Annual billing** -- Save by paying $200/year instead of $20/month ($240/year).
 
 ### Enterprise Plan
 

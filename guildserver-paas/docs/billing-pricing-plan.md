@@ -2,11 +2,11 @@
 
 ## Context
 
-**Problem**: GuildServer has no monetization layer. Users can deploy unlimited apps/databases with no billing, usage tracking, or plan enforcement. There's no way to charge customers or gate features by tier.
+**Problem**: GuildServer has partial billing and plan enforcement, but the finance layer was incomplete. Users could start provider payments, but quotes, invoice line items, receipts, credits, refunds, and provider-neutral settlement were missing.
 
-**Goal**: Build a complete billing system modeled after Vercel — 3 pricing tiers (Free/Pro/Enterprise), per-seat pricing + usage-based metering, Stripe payment integration, spend management, and feature gating. This turns GuildServer from an open tool into a revenue-generating SaaS platform.
+**Goal**: Build a complete billing system modeled after Vercel with quotes, invoices, receipts, usage-based metering, Stripe, Flutterwave, spend management, and feature gating. This turns GuildServer from an open tool into a revenue-generating SaaS platform.
 
-**Current state**: No billing code exists. However, the codebase has strong foundations — multi-tenant organizations, member roles (owner/admin/member), resource limits on apps/databases, audit logging, and a tRPC middleware pattern ready for billing guards.
+**Current state**: Billing code exists in `apps/api/src/routers/billing.ts`, `apps/api/src/services/billing/`, `apps/api/src/handlers/*webhooks.ts`, and `packages/database/src/schema/index.ts`. The current implementation includes plans, subscriptions, invoices, usage records, payment methods, payment transactions, quote records, invoice line items, receipts, ledger entries, Stripe checkout/portal, and Flutterwave v4 charges. Production migration remains an operator-controlled step.
 
 ---
 
@@ -158,13 +158,25 @@ Cached payment method info (card details from Stripe):
 
 Run `pnpm --filter @guildserver/database db:push` to sync.
 
+### Additive quote and settlement tables
+
+The billing core now also includes:
+
+- `quotes` and `quote_line_items` for immutable commercial offers.
+- `invoice_line_items` for invoice snapshots copied from accepted quotes.
+- `billing_ledger_entries` for append-only charge, payment, credit, refund, and adjustment records.
+- `receipts` for issued receipts after verified settlement.
+- `credit_notes` and `refunds` for reversing financial movements without rewriting history.
+
+Do not run these migrations from the production cron updater. Take a database backup, apply `packages/database/migrations/0010_billing_quotes_core.sql` manually, then verify the new tables and indexes.
+
 ---
 
 ## Phase 2: Stripe Integration Service
 
-**New file**: `apps/api/src/services/stripe.ts`
+**Implemented under**: `apps/api/src/services/billing/`
 
-Install Stripe SDK: `pnpm --filter @guildserver/api add stripe`
+Stripe SDK is already installed in `apps/api/package.json`.
 
 ### Core Functions
 
@@ -199,18 +211,18 @@ Create in Stripe Dashboard (or via seed script):
 
 ## Phase 3: Stripe Webhook Handler
 
-**New file**: `apps/api/src/routes/stripe-webhooks.ts`
+**Implemented file**: `apps/api/src/handlers/stripe-webhooks.ts`
 
 Express route mounted at `POST /webhooks/stripe`. Verifies Stripe signature, processes events:
 
 | Event | Action |
 |-------|--------|
-| `checkout.session.completed` | Create subscription, activate plan |
+| `checkout.session.completed` | Log checkout completion and handle paid instance checkout |
 | `customer.subscription.created` | Sync subscription to DB |
 | `customer.subscription.updated` | Update plan/status in DB |
 | `customer.subscription.deleted` | Mark subscription canceled, downgrade to Hobby |
 | `invoice.created` | Create local invoice record |
-| `invoice.paid` | Update invoice status, clear past_due |
+| `invoice.paid` | Sync invoice and settle a linked local Stripe payment transaction when present |
 | `invoice.payment_failed` | Mark subscription past_due, notify user |
 | `payment_method.attached` | Save payment method locally |
 | `payment_method.detached` | Remove from local DB |
@@ -431,21 +443,21 @@ This ensures every organization has a subscription from day 1 — simplifies all
 
 | File | Action |
 |------|--------|
-| `packages/database/src/schema/index.ts` | Add `plans`, `subscriptions`, `invoices`, `usageRecords`, `paymentMethods` tables + relations. Add `stripeCustomerId` to organizations. |
-| `packages/database/src/seed-plans.ts` | **NEW** — Seed the 3 pricing tiers |
-| `apps/api/src/services/stripe.ts` | **NEW** — Stripe SDK wrapper (customers, subscriptions, checkout, portal, usage reporting) |
-| `apps/api/src/services/usage-meter.ts` | **NEW** — Usage tracking + limit enforcement |
-| `apps/api/src/services/trial.ts` | **NEW** — Trial start/end logic |
-| `apps/api/src/routes/stripe-webhooks.ts` | **NEW** — Stripe webhook handler (raw body) |
-| `apps/api/src/routers/billing.ts` | **NEW** — tRPC billing router (plans, subscriptions, invoices, spend management) |
+| `packages/database/src/schema/index.ts` | Billing schema: plans, subscriptions, invoices, usage records, payment methods, quotes, invoice line items, ledger entries, receipts, credit notes, and refunds. |
+| `packages/database/src/seed-plans.ts` | Seed the 3 pricing tiers |
+| `apps/api/src/services/billing/` | Stripe, Flutterwave, quote, invoice, ledger, money, and settlement services |
+| `apps/api/src/services/usage-meter.ts` | Usage tracking + limit enforcement |
+| `apps/api/src/handlers/stripe-webhooks.ts` | Stripe webhook handler (raw body) |
+| `apps/api/src/handlers/flutterwave-v4-webhooks.ts` | Flutterwave v4 webhook handler |
+| `apps/api/src/routers/billing.ts` | tRPC billing router (plans, quotes, invoices, receipts, payment methods, spend management) |
 | `apps/api/src/trpc/trpc.ts` | Add `subscribedProcedure`, `featureGuard`, `limitGuard` middleware |
 | `apps/api/src/trpc/router.ts` | Register `billing` router |
 | `apps/api/src/index.ts` | Mount Stripe webhook route (with raw body parser) |
 | `apps/api/src/routers/auth.ts` | Auto-assign Hobby plan on registration |
 | `apps/api/src/routes/oauth.ts` | Auto-assign Hobby plan on OAuth registration |
 | `apps/api/src/queues/setup.ts` | Add `trackDeployment()` + `trackBuildMinutes()` + `enforceLimit()` calls |
-| `apps/web/src/app/pricing/page.tsx` | **NEW** — Public pricing page |
-| `apps/web/src/app/dashboard/billing/page.tsx` | **NEW** — Billing dashboard (overview, plans, invoices, payment, spend mgmt) |
+| `apps/web/src/app/pricing/page.tsx` | Public pricing page |
+| `apps/web/src/app/dashboard/billing/page.tsx` | Billing dashboard (overview, plans, quotes, invoices, receipts, payment, spend management) |
 | `apps/web/src/app/dashboard/layout.tsx` | Add "Billing" to sidebar |
 
 ---

@@ -5,7 +5,7 @@ sidebar_position: 4
 
 # Stripe Integration
 
-GuildServer uses **Stripe** for all payment processing, subscription management, and invoice generation. The integration is implemented in `apps/api/src/services/stripe.ts` (service layer) and `apps/api/src/routes/stripe-webhooks.ts` (webhook handler). Stripe is optional -- if not configured, the platform operates without billing enforcement.
+GuildServer uses **Stripe** for USD card payments, subscription Checkout, customer portal sessions, Stripe invoice sync, and payment method sync. The integration is implemented under `apps/api/src/services/billing/` and `apps/api/src/handlers/stripe-webhooks.ts`. Stripe is optional; if not configured, the platform can still expose Flutterwave where Flutterwave v4 credentials are configured.
 
 ## Required Environment Variables
 
@@ -14,6 +14,23 @@ GuildServer uses **Stripe** for all payment processing, subscription management,
 | `STRIPE_SECRET_KEY` | Yes (for billing) | Stripe API secret key (starts with `sk_`) |
 | `STRIPE_PUBLISHABLE_KEY` | For frontend | Stripe publishable key for client-side Stripe.js |
 | `STRIPE_WEBHOOK_SECRET` | Recommended | Webhook signing secret for signature verification |
+
+## Flutterwave v4 Environment Variables
+
+Flutterwave is configured separately from Stripe and is used for NGN and supported local payment methods.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `FLW_V4_CLIENT_ID` | Yes (for Flutterwave) | Flutterwave v4 OAuth client ID |
+| `FLW_V4_CLIENT_SECRET` | Yes (for Flutterwave) | Flutterwave v4 OAuth client secret |
+| `FLW_V4_TOKEN_URL` | Yes | Flutterwave token endpoint |
+| `FLW_V4_BASE_URL` | Yes | Flutterwave API base URL |
+| `FLW_V4_WEBHOOK_SECRET_HASH` | Yes | Value expected in the `verif-hash` webhook header |
+| `GUILDPAY_WEBHOOK_URL` | Optional | External webhook target used by GuildPay integrations |
+
+Webhook URL: `POST /webhooks/flutterwave-v4`.
+
+Flutterwave webhooks must pass signature verification, then GuildServer fetches the charge from Flutterwave before settlement. Webhook body amounts are not trusted.
 
 :::tip
 If `STRIPE_SECRET_KEY` is not set, the Stripe client is initialized as `null` and all billing operations gracefully return errors. The platform continues to function without payment processing.
@@ -30,15 +47,20 @@ GuildServer mirrors Stripe data locally for fast queries and offline resilience:
 | `invoices` | Invoices | Webhook -> DB | Invoice history and payment status |
 | `payment_methods` | Payment Methods | Webhook -> DB | Stored card details (last 4, brand, expiry) |
 | `usage_records` | Usage Records | DB -> Stripe | Metered usage reported to Stripe |
+| `payment_transactions` | Payment attempts | GuildServer -> Provider -> GuildServer | Provider-neutral payment settlement |
+| `billing_ledger_entries` | Internal ledger | GuildServer only | Append-only financial movement history |
+| `receipts` | Receipts | GuildServer only | Local receipt records after verified settlement |
 
 ### Data Flow
 
 ```
 Plan Changes:     Dashboard -> API -> Stripe Checkout -> Stripe -> Webhook -> API -> DB
-Invoice Events:   Stripe -> Webhook -> API -> DB
+Invoice Events:   Stripe -> Webhook -> API -> DB -> settlement service
 Payment Methods:  Stripe Portal -> Stripe -> Webhook -> API -> DB
 Usage Reporting:  API -> DB (local) and API -> Stripe (metered billing)
 ```
+
+Stripe webhooks do not directly grant entitlements. They sync provider state and, when a local `payment_transactions` row exists, call the provider-neutral settlement service to update the payment transaction, invoice, ledger, and receipt records idempotently.
 
 ## Checkout Sessions
 
@@ -194,7 +216,7 @@ GuildServer handles Stripe webhook events at the `/webhooks/stripe` endpoint. Th
 | `customer.subscription.deleted` | Downgrade organization to Hobby plan |
 | `customer.subscription.trial_will_end` | Send trial ending notification to org owner |
 | `invoice.created` | Create local invoice record; reset spend notifications for new period |
-| `invoice.paid` | Mark invoice as paid |
+| `invoice.paid` | Sync invoice and settle a linked local Stripe payment transaction when present |
 | `invoice.payment_failed` | Send payment failure notification to org owner |
 | `payment_method.attached` | Save payment method details (brand, last4, expiry) |
 | `payment_method.detached` | Remove payment method from local DB |
