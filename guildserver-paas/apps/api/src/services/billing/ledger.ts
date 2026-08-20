@@ -17,12 +17,12 @@ export interface AppendLedgerEntryArgs {
   metadata?: Record<string, unknown>;
 }
 
-export async function appendLedgerEntry(args: AppendLedgerEntryArgs): Promise<BillingLedgerEntry> {
+export async function appendLedgerEntry(args: AppendLedgerEntryArgs, database: any = db): Promise<BillingLedgerEntry> {
   assertPositiveMinorAmount(args.amountCents);
   const currency = normalizeCurrency(args.currency);
 
   try {
-    const [entry] = await db
+    const [entry] = await database
       .insert(billingLedgerEntries)
       .values({
         organizationId: args.organizationId,
@@ -42,7 +42,7 @@ export async function appendLedgerEntry(args: AppendLedgerEntryArgs): Promise<Bi
   } catch (err: any) {
     if (err?.code !== "23505") throw err;
 
-    const [existing] = await db
+    const [existing] = await database
       .select()
       .from(billingLedgerEntries)
       .where(eq(billingLedgerEntries.idempotencyKey, args.idempotencyKey))

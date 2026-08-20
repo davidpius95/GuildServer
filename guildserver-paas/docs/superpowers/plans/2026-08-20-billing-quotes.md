@@ -148,23 +148,23 @@ git commit -m "feat: add billing money and ledger services"
 - Produces: `createInvoiceFromQuote(args): Promise<InvoiceWithLines>`
 - Produces: `recalculateInvoiceTotals(invoiceId: string): Promise<void>`
 
-- [ ] **Step 1: Write quote router tests**
+- [x] **Step 1: Write quote router tests**
 
-Cover owner/admin can create quote, non-member cannot, expired quote cannot be accepted, accepted quote creates one invoice.
+Cover immutable quote totals, quote creation, expired quote rejection, replayed acceptance, and accepted quote creates one invoice. Router-level membership tests move to Task 5 where the tRPC procedures are introduced.
 
-- [ ] **Step 2: Implement quote totals**
+- [x] **Step 2: Implement quote totals**
 
 Compute totals from line items and persist snapshots. Never calculate from mutable plan/instance price after quote creation.
 
-- [ ] **Step 3: Implement quote acceptance**
+- [x] **Step 3: Implement quote acceptance**
 
 Use a database transaction. Update quote status to `accepted`, create invoice and invoice line items, link `quotes.invoiceId`.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Run: `pnpm --filter @guildserver/api test -- billing-quotes.test.ts`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
