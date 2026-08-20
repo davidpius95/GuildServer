@@ -20,6 +20,16 @@ const FLUTTERWAVE_CURRENCIES = [
 
 type Method = "stripe" | "flutterwave" | "crypto" | null
 
+function getRedirectUrl(nextAction: unknown): string | null {
+  const action = nextAction as any
+  const redirect = action?.redirect_url
+  if (typeof redirect === "string") return redirect
+  if (typeof redirect?.url === "string") return redirect.url
+  if (typeof action?.url === "string") return action.url
+  if (typeof action?.checkout_url === "string") return action.checkout_url
+  return null
+}
+
 export function PaymentMethodModal({
   open,
   onOpenChange,
@@ -46,7 +56,7 @@ export function PaymentMethodModal({
   })
   const flutterwaveCheckout = trpc.billing.createFlutterwaveCharge.useMutation({
     onSuccess: (data) => {
-      const redirect = (data?.nextAction as any)?.redirect_url ?? (data?.nextAction as any)?.url
+      const redirect = getRedirectUrl(data?.nextAction)
       if (redirect) window.location.href = redirect
     },
   })

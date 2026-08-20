@@ -1,8 +1,10 @@
 import {
   db,
   invoices,
+  plans,
   paymentTransactions,
   receipts,
+  subscriptions,
   type Database,
 } from "@guildserver/database";
 import { eq } from "drizzle-orm";
@@ -172,6 +174,49 @@ export async function settlePaymentAttempt(args: SettlePaymentAttemptArgs): Prom
     await tx.update(paymentTransactions).set(paymentUpdate).where(eq(paymentTransactions.id, paymentTx.id));
 
     let receiptId: string | null = null;
+    if (paymentTx.purpose === "subscription") {
+      const metadata = (paymentTx.metadata ?? {}) as Record<string, unknown>;
+      const planSlug =
+        metadata.planSlug === "starter" || metadata.planSlug === "pro" ? metadata.planSlug : null;
+
+      if (planSlug) {
+        const plan = await tx.query.plans.findFirst({
+          where: eq(plans.slug, planSlug),
+        });
+
+        if (plan) {
+          const now = new Date();
+          const periodEnd = new Date(now);
+          periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+          const existingSub = await tx.query.subscriptions.findFirst({
+            where: eq(subscriptions.organizationId, paymentTx.organizationId),
+          });
+
+          if (existingSub) {
+            await tx
+              .update(subscriptions)
+              .set({
+                planId: plan.id,
+                status: "active",
+                currentPeriodStart: now,
+                currentPeriodEnd: periodEnd,
+                updatedAt: now,
+              })
+              .where(eq(subscriptions.id, existingSub.id));
+          } else {
+            await tx.insert(subscriptions).values({
+              organizationId: paymentTx.organizationId,
+              planId: plan.id,
+              status: "active",
+              currentPeriodStart: now,
+              currentPeriodEnd: periodEnd,
+            });
+          }
+        }
+      }
+    }
+
     if (paymentTx.invoiceId) {
       const invoice = await tx.query.invoices.findFirst({
         where: eq(invoices.id, paymentTx.invoiceId),

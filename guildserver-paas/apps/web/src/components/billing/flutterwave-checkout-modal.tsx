@@ -22,6 +22,16 @@ const METHODS: Array<{ id: Method; label: string; hint: string; Icon: typeof Cre
 // purely for display. The server is the authority on conversion.
 const CURRENCIES = ["NGN", "USD", "GHS", "KES", "ZAR", "UGX", "TZS", "EUR", "GBP"]
 
+function getRedirectUrl(nextAction: unknown): string | null {
+  const action = nextAction as any
+  const redirect = action?.redirect_url
+  if (typeof redirect === "string") return redirect
+  if (typeof redirect?.url === "string") return redirect.url
+  if (typeof action?.url === "string") return action.url
+  if (typeof action?.checkout_url === "string") return action.checkout_url
+  return null
+}
+
 export function FlutterwaveCheckoutModal({
   open,
   onOpenChange,
@@ -63,16 +73,14 @@ export function FlutterwaveCheckoutModal({
     onSuccess: (data) => {
       setResult(data)
       // Card and USSD flows hand back a redirect the payer must complete.
-      const redirect =
-        (data?.nextAction as any)?.redirect_url ?? (data?.nextAction as any)?.url ?? null
+      const redirect = getRedirectUrl(data?.nextAction)
       if (redirect) window.location.href = redirect
     },
   })
   const invoiceCharge = trpc.billing.payInvoiceWithFlutterwave.useMutation({
     onSuccess: (data) => {
       setResult(data)
-      const redirect =
-        (data?.nextAction as any)?.redirect_url ?? (data?.nextAction as any)?.url ?? null
+      const redirect = getRedirectUrl(data?.nextAction)
       if (redirect) window.location.href = redirect
     },
   })

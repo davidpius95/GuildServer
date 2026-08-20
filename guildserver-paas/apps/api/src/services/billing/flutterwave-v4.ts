@@ -137,6 +137,102 @@ export interface ChargeResult {
   nextAction: unknown;
 }
 
+export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): Promise<ChargeResult> {
+  if (!isFlutterwaveV4Configured()) {
+    throw new Error("Flutterwave is not configured");
+  }
+  assertPositiveMinorAmount(args.amountCents);
+
+  const currency = normalizeCurrency(args.currency).toUpperCase();
+  const reference = `GS-${args.purpose.toUpperCase().slice(0, 8)}-${randomUUID().slice(0, 12)}`;
+
+  const [tx] = await db
+    .insert(paymentTransactions)
+    .values({
+      organizationId: args.organizationId,
+      invoiceId: args.invoiceId ?? null,
+      provider: "flutterwave",
+      status: "pending",
+      purpose: args.purpose,
+      amountCents: args.amountCents,
+      currency: normalizeCurrency(currency),
+      flutterwaveTxRef: reference,
+      paymentMethodDetail: args.paymentMethod,
+      metadata: (args.metadata ?? {}) as any,
+    })
+    .returning();
+
+  try {
+    const customerId = await ensureFlutterwaveCustomer(args.organizationId);
+    const session = await flwV4Request<{ data: any }>("/checkout/sessions", {
+      method: "POST",
+      idempotencyKey: reference,
+      body: {
+        currency,
+        amount: toMajorUnits(args.amountCents, currency),
+        customer_id: customerId,
+        reference,
+        redirect_url: args.redirectUrl,
+        max_retry_attempts: 3,
+        session_duration: 30,
+        meta: {
+          organization_id: args.organizationId,
+          payment_transaction_id: tx.id,
+          purpose: args.purpose,
+          ...(args.metadata ?? {}),
+        },
+      },
+    });
+
+    const data = session?.data ?? {};
+    const checkoutUrl =
+      data.checkout_url ??
+      data.checkoutUrl ??
+      (data.id ? `https://flutterwave.com/pay/${data.id}` : null);
+
+    await db
+      .update(paymentTransactions)
+      .set({
+        flutterwaveTxId: data.id ?? null,
+        status: "pending",
+        updatedAt: new Date(),
+      })
+      .where(eq(paymentTransactions.id, tx.id));
+
+    if (!checkoutUrl) {
+      throw new Error("Flutterwave checkout session did not return a checkout URL");
+    }
+
+    return {
+      paymentTransactionId: tx.id,
+      reference,
+      chargeId: data.id ?? null,
+      status: "pending",
+      nextAction: {
+        type: "redirect_url",
+        redirect_url: { url: checkoutUrl },
+        checkoutSessionId: data.id ?? null,
+      },
+    };
+  } catch (err: any) {
+    await db
+      .update(paymentTransactions)
+      .set({
+        status: "failed",
+        failureReason: String(err?.message ?? err).slice(0, 1000),
+        updatedAt: new Date(),
+      })
+      .where(eq(paymentTransactions.id, tx.id));
+
+    logger.error("Flutterwave checkout session failed", {
+      organizationId: args.organizationId,
+      reference,
+      error: String(err?.message ?? err),
+    });
+    throw err;
+  }
+}
+
 export async function createFlutterwaveCharge(args: CreateChargeArgs): Promise<ChargeResult> {
   if (!isFlutterwaveV4Configured()) {
     throw new Error("Flutterwave is not configured");

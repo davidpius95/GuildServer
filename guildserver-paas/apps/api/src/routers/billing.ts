@@ -27,6 +27,7 @@ import {
 import { isFlutterwaveV4Configured } from "../services/billing/flutterwave-v4-client";
 import {
   createFlutterwaveCharge as startFlutterwaveCharge,
+  createFlutterwaveCheckoutSession as startFlutterwaveCheckoutSession,
   createVirtualAccount,
   listVirtualAccounts,
   listBanks,
@@ -790,7 +791,10 @@ export const billingRouter = createTRPCRouter({
       }
 
       try {
-        return await startFlutterwaveCharge({
+        const startPayment =
+          input.paymentMethod === "card" ? startFlutterwaveCheckoutSession : startFlutterwaveCharge;
+
+        return await startPayment({
           organizationId: input.organizationId,
           amountCents: remainingCents,
           currency: invoice.currency ?? "ngn",
@@ -879,7 +883,12 @@ export const billingRouter = createTRPCRouter({
       }
 
       try {
-        return await startFlutterwaveCharge({
+        const startPayment =
+          input.purpose === "subscription" || input.paymentMethod === "card"
+            ? startFlutterwaveCheckoutSession
+            : startFlutterwaveCharge;
+
+        return await startPayment({
           organizationId: input.organizationId,
           amountCents: input.amountCents,
           currency: input.currency,
