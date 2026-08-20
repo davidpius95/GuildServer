@@ -5,8 +5,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-COMPOSE_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
-REPO_DIR="$(cd -- "$COMPOSE_DIR/.." && pwd)"
+# A repo-installed script derives its location. A durable system copy, such as
+# /usr/local/bin/guildserver-self-update.sh, must be given GUILDSERVER_REPO_DIR.
+if [ -n "${GUILDSERVER_REPO_DIR:-}" ]; then
+  REPO_DIR="$(cd -- "$GUILDSERVER_REPO_DIR" && pwd)"
+  COMPOSE_DIR="${GUILDSERVER_COMPOSE_DIR:-$REPO_DIR/guildserver-paas}"
+else
+  COMPOSE_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+  REPO_DIR="$(cd -- "$COMPOSE_DIR/.." && pwd)"
+fi
 COMPOSE_FILE="docker-compose.prod.yml"
 ENV_FILE=".env.production"
 LOCK_FILE="/tmp/guildserver-self-update.lock"
@@ -20,6 +27,10 @@ if ! flock -n 9; then
 fi
 
 cd "$REPO_DIR"
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
+  log "ERROR: $REPO_DIR is not a Git checkout; set GUILDSERVER_REPO_DIR for a system-installed updater."
+  exit 1
+fi
 
 # Bound network failures so a stalled GitHub connection cannot hold the cron lock.
 if ! git -c http.connectTimeout=15 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=30 fetch --quiet origin main; then

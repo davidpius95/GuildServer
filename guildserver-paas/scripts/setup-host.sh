@@ -442,7 +442,7 @@ CRON_SCRIPT="${COMPOSE_DIR}/scripts/self-update.sh"
 if [ -f "${CRON_SCRIPT}" ]; then
     chmod +x "${CRON_SCRIPT}"
     # Run every 5 minutes, log output
-    CRON_LINE="*/5 * * * * ${CRON_SCRIPT} >> /var/log/guildserver-update.log 2>&1"
+    CRON_LINE="*/5 * * * * GUILDSERVER_REPO_DIR=${REPO_DIR} ${CRON_SCRIPT} >> /var/log/guildserver-update.log 2>&1"
     (crontab -l 2>/dev/null | grep -v "self-update.sh"; echo "${CRON_LINE}") | crontab -
     ok "Auto-update cron job installed (every 5 min)"
 else
