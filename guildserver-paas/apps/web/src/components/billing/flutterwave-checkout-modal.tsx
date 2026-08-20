@@ -28,6 +28,8 @@ export function FlutterwaveCheckoutModal({
   organizationId,
   purpose = "topup",
   invoiceId,
+  planSlug,
+  planName,
   fixedAmountCents,
   fixedCurrency,
 }: {
@@ -36,6 +38,8 @@ export function FlutterwaveCheckoutModal({
   organizationId: string
   purpose?: "subscription" | "instance" | "topup" | "invoice"
   invoiceId?: string
+  planSlug?: "starter" | "pro"
+  planName?: string
   fixedAmountCents?: number
   fixedCurrency?: string
 }) {
@@ -104,6 +108,7 @@ export function FlutterwaveCheckoutModal({
       amountCents,
       currency,
       purpose,
+      planSlug,
       paymentMethod: method,
       redirectUrl,
       ...mobileMoney,
@@ -116,8 +121,12 @@ export function FlutterwaveCheckoutModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{invoiceId ? "Pay invoice" : "Add funds"}</DialogTitle>
-          <DialogDescription>Pay by card, bank transfer, mobile money, or USSD.</DialogDescription>
+          <DialogTitle>
+            {invoiceId ? "Pay invoice" : purpose === "subscription" ? `Upgrade to ${planName || "plan"}` : "Add funds"}
+          </DialogTitle>
+          <DialogDescription>
+            Pay by card, bank transfer, mobile money, or USSD.
+          </DialogDescription>
         </DialogHeader>
 
         {unavailable ? (

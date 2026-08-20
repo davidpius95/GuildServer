@@ -126,6 +126,7 @@ export default function BillingPage() {
           currentSlug={currentPlan?.slug || "hobby"}
           orgId={orgId}
           stripeConfigured={!!providersQuery.data?.stripe}
+          flutterwaveConfigured={!!providersQuery.data?.flutterwave}
         />
       )}
       {activeTab === "invoices" && (
@@ -354,12 +355,15 @@ function PlansTab({
   currentSlug,
   orgId,
   stripeConfigured,
+  flutterwaveConfigured,
 }: {
   plans: any[]
   currentSlug: string
   orgId: string
   stripeConfigured: boolean
+  flutterwaveConfigured: boolean
 }) {
+  const [selectedFlutterwavePlan, setSelectedFlutterwavePlan] = useState<any>(null)
   const checkoutMutation = trpc.billing.createCheckoutSession.useMutation({
     onSuccess: (data) => {
       window.location.href = data.url
@@ -371,11 +375,29 @@ function PlansTab({
     },
   })
 
+  const currentPlan = plans.find((plan: any) => plan.slug === currentSlug)
+  const currentPrice = currentPlan?.priceMonthly ?? 0
+
   return (
-    <div className="grid gap-6 md:grid-cols-3">
+    <>
+      <FlutterwaveCheckoutModal
+        open={!!selectedFlutterwavePlan}
+        onOpenChange={(open) => !open && setSelectedFlutterwavePlan(null)}
+        organizationId={orgId}
+        purpose="subscription"
+        planSlug={selectedFlutterwavePlan?.slug}
+        planName={selectedFlutterwavePlan?.name}
+        fixedAmountCents={selectedFlutterwavePlan?.priceMonthly}
+        fixedCurrency="USD"
+      />
+
+      <div className="grid gap-6 md:grid-cols-3">
       {plans.map((plan: any) => {
         const isCurrent = plan.slug === currentSlug
-        const isUpgrade = plan.priceMonthly > 0 && (currentSlug === "hobby" || !currentSlug)
+        const planPrice = plan.priceMonthly ?? 0
+        const isPaidUpgrade = planPrice > currentPrice && plan.slug !== "enterprise"
+        const canUseStripeCheckout = stripeConfigured && plan.slug === "pro"
+        const canUseFlutterwaveCheckout = flutterwaveConfigured && (plan.slug === "starter" || plan.slug === "pro")
 
         return (
           <div
@@ -435,24 +457,37 @@ function PlansTab({
                 <Button variant="outline" className="w-full">
                   Contact Sales
                 </Button>
-              ) : plan.slug === "pro" && isUpgrade ? (
+              ) : isPaidUpgrade ? (
                 <>
                   <Button
                     className="w-full"
-                    onClick={() =>
-                      checkoutMutation.mutate({
-                        organizationId: orgId,
-                        planSlug: "pro",
-                        billingInterval: "monthly",
-                      })
-                    }
-                    disabled={checkoutMutation.isPending || !stripeConfigured}
+                    onClick={() => {
+                      if (canUseStripeCheckout) {
+                        checkoutMutation.mutate({
+                          organizationId: orgId,
+                          planSlug: "pro",
+                          billingInterval: "monthly",
+                        })
+                        return
+                      }
+                      if (canUseFlutterwaveCheckout) {
+                        setSelectedFlutterwavePlan(plan)
+                      }
+                    }}
+                    disabled={checkoutMutation.isPending || (!canUseStripeCheckout && !canUseFlutterwaveCheckout)}
                   >
                     {checkoutMutation.isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                     ) : null}
-                    {stripeConfigured ? "Upgrade to Pro — $20/mo" : "Stripe checkout unavailable"}
+                    {canUseStripeCheckout || canUseFlutterwaveCheckout
+                      ? `Upgrade to ${plan.name} — $${(planPrice / 100).toFixed(0)}/mo`
+                      : "Payment unavailable"}
                   </Button>
+                  {!stripeConfigured && canUseFlutterwaveCheckout && (
+                    <p className="text-xs text-muted-foreground text-center">
+                      Pay securely with Flutterwave by card, transfer, mobile money, or USSD.
+                    </p>
+                  )}
                   {currentSlug === "hobby" && (
                     <Button
                       variant="outline"
@@ -485,7 +520,8 @@ function PlansTab({
           </div>
         )
       })}
-    </div>
+      </div>
+    </>
   )
 }
 

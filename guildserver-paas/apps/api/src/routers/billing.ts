@@ -853,6 +853,7 @@ export const billingRouter = createTRPCRouter({
         amountCents: z.number().int().positive(),
         currency: z.string().min(3).max(5).default("NGN"),
         purpose: z.enum(["subscription", "instance", "topup", "invoice"]).default("topup"),
+        planSlug: z.enum(["starter", "pro"]).optional(),
         paymentMethod: z.enum(["card", "bank_transfer", "mobile_money", "ussd"]),
         redirectUrl: z.string().url().optional(),
         mobileMoney: z
@@ -885,6 +886,7 @@ export const billingRouter = createTRPCRouter({
           purpose: input.purpose,
           paymentMethod: input.paymentMethod,
           redirectUrl: input.redirectUrl,
+          metadata: input.planSlug ? { planSlug: input.planSlug } : undefined,
           mobileMoney: input.mobileMoney as any,
         });
       } catch (err: any) {
