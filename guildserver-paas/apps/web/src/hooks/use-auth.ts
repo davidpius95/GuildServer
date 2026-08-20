@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useMemo, useCallback } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { trpc } from "@/components/trpc-provider"
 
@@ -17,18 +17,17 @@ function getToken() {
 export function useAuth(options?: { redirect?: boolean }) {
   const router = useRouter()
   const redirect = options?.redirect ?? true
-  // Initialize token synchronously from localStorage — no useEffect delay
-  const [token, setToken] = useState<string | null>(getToken)
-  const isReady = typeof window !== "undefined"
+  const [token, setToken] = useState<string | null>(null)
+  const [isReady, setIsReady] = useState(false)
 
   useEffect(() => {
-    // Re-check on mount in case token changed between SSR and hydration
     const t = getToken()
-    if (t !== token) setToken(t)
+    setToken(t)
+    setIsReady(true)
     if (!t && redirect) {
       router.replace("/auth/login")
     }
-  }, [redirect, router, token])
+  }, [redirect, router])
 
   const logout = useCallback(() => {
     localStorage.removeItem("guildserver-token")
