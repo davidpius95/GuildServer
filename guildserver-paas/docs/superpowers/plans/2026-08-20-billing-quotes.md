@@ -54,7 +54,7 @@
 - Produces: `quotes`, `quoteLineItems`, `invoiceLineItems`, `billingLedgerEntries`, `receipts`, `creditNotes`, `refunds`
 - Produces enums: `quote_status`, `billing_ledger_entry_type`, `receipt_status`, `refund_status`
 
-- [ ] **Step 1: Add schema enums and tables**
+- [x] **Step 1: Add schema enums and tables**
 
 Add additive tables only. Required columns:
 
@@ -75,17 +75,17 @@ export const refundStatusEnum = pgEnum("refund_status", ["pending", "succeeded",
 
 `credit_notes` and `refunds` must be additive and nullable where provider state is not known yet.
 
-- [ ] **Step 2: Add SQL migration**
+- [x] **Step 2: Add SQL migration**
 
 Create `0010_billing_quotes_core.sql` with `CREATE TYPE` guarded by `DO $$ BEGIN ... EXCEPTION WHEN duplicate_object THEN NULL; END $$;`, `CREATE TABLE IF NOT EXISTS`, and `CREATE INDEX IF NOT EXISTS`.
 
-- [ ] **Step 3: Run typecheck**
+- [x] **Step 3: Run typecheck**
 
 Run: `pnpm --filter @guildserver/database build`
 
 Expected: TypeScript schema compiles.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run:
 

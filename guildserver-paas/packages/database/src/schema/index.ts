@@ -17,6 +17,7 @@ import {
   interval,
   date,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 // =====================
@@ -132,6 +133,27 @@ export const invoiceStatusEnum = pgEnum("invoice_status", [
   "paid",
   "void",
   "uncollectible"
+]);
+export const quoteStatusEnum = pgEnum("quote_status", [
+  "draft",
+  "sent",
+  "accepted",
+  "expired",
+  "canceled",
+]);
+export const billingLedgerEntryTypeEnum = pgEnum("billing_ledger_entry_type", [
+  "charge",
+  "payment",
+  "credit",
+  "refund",
+  "adjustment",
+]);
+export const receiptStatusEnum = pgEnum("receipt_status", ["issued", "void"]);
+export const refundStatusEnum = pgEnum("refund_status", [
+  "pending",
+  "succeeded",
+  "failed",
+  "canceled",
 ]);
 
 // =====================
@@ -772,6 +794,75 @@ export const invoices = pgTable("invoices", {
   createdAtIdx: index("invoices_created_at_idx").on(table.createdAt),
 }));
 
+// Quotes snapshot commercial terms before they become invoices.
+export const quotes = pgTable("quotes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  number: varchar("number", { length: 100 }).notNull(),
+  status: quoteStatusEnum("status").notNull().default("draft"),
+  currency: varchar("currency", { length: 10 }).notNull().default("usd"),
+  subtotalCents: integer("subtotal_cents").notNull().default(0),
+  taxCents: integer("tax_cents").notNull().default(0),
+  discountCents: integer("discount_cents").notNull().default(0),
+  totalCents: integer("total_cents").notNull().default(0),
+  validUntil: timestamp("valid_until"),
+  acceptedAt: timestamp("accepted_at"),
+  acceptedBy: uuid("accepted_by").references(() => users.id, { onDelete: "set null" }),
+  invoiceId: uuid("invoice_id").references(() => invoices.id, { onDelete: "set null" }),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("quotes_org_id_idx").on(table.organizationId),
+  statusIdx: index("quotes_status_idx").on(table.status),
+  numberIdx: uniqueIndex("quotes_number_idx").on(table.number),
+}));
+
+export const quoteLineItems = pgTable("quote_line_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  quoteId: uuid("quote_id").notNull().references(() => quotes.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  productType: varchar("product_type", { length: 64 }).notNull(),
+  productId: varchar("product_id", { length: 255 }),
+  description: text("description").notNull(),
+  quantity: decimal("quantity").notNull().default("1"),
+  unitAmountCents: integer("unit_amount_cents").notNull(),
+  subtotalCents: integer("subtotal_cents").notNull(),
+  taxCents: integer("tax_cents").notNull().default(0),
+  discountCents: integer("discount_cents").notNull().default(0),
+  totalCents: integer("total_cents").notNull(),
+  periodStart: timestamp("period_start"),
+  periodEnd: timestamp("period_end"),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  quoteIdIdx: index("quote_line_items_quote_id_idx").on(table.quoteId),
+  orgIdIdx: index("quote_line_items_org_id_idx").on(table.organizationId),
+}));
+
+export const invoiceLineItems = pgTable("invoice_line_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  invoiceId: uuid("invoice_id").notNull().references(() => invoices.id, { onDelete: "cascade" }),
+  quoteLineItemId: uuid("quote_line_item_id").references(() => quoteLineItems.id, { onDelete: "set null" }),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  productType: varchar("product_type", { length: 64 }).notNull(),
+  productId: varchar("product_id", { length: 255 }),
+  description: text("description").notNull(),
+  quantity: decimal("quantity").notNull().default("1"),
+  unitAmountCents: integer("unit_amount_cents").notNull(),
+  subtotalCents: integer("subtotal_cents").notNull(),
+  taxCents: integer("tax_cents").notNull().default(0),
+  discountCents: integer("discount_cents").notNull().default(0),
+  totalCents: integer("total_cents").notNull(),
+  periodStart: timestamp("period_start"),
+  periodEnd: timestamp("period_end"),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  invoiceIdIdx: index("invoice_line_items_invoice_id_idx").on(table.invoiceId),
+  orgIdIdx: index("invoice_line_items_org_id_idx").on(table.organizationId),
+}));
+
 // =====================
 // PAYMENTS (Flutterwave + crypto)
 // =====================
@@ -832,6 +923,85 @@ export const paymentTransactions = pgTable("payment_transactions", {
   orgIdIdx: index("payment_transactions_org_id_idx").on(table.organizationId),
   txRefIdx: index("payment_transactions_tx_ref_idx").on(table.flutterwaveTxRef),
   statusIdx: index("payment_transactions_status_idx").on(table.status),
+}));
+
+export const receipts = pgTable("receipts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  invoiceId: uuid("invoice_id").notNull().references(() => invoices.id, { onDelete: "cascade" }),
+  paymentTransactionId: uuid("payment_transaction_id").notNull().references(() => paymentTransactions.id, { onDelete: "restrict" }),
+  number: varchar("number", { length: 100 }).notNull(),
+  status: receiptStatusEnum("status").notNull().default("issued"),
+  amountCents: integer("amount_cents").notNull(),
+  currency: varchar("currency", { length: 10 }).notNull().default("usd"),
+  issuedAt: timestamp("issued_at").defaultNow(),
+  receiptUrl: text("receipt_url"),
+  pdfUrl: text("pdf_url"),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("receipts_org_id_idx").on(table.organizationId),
+  invoiceIdIdx: index("receipts_invoice_id_idx").on(table.invoiceId),
+  paymentTxIdx: uniqueIndex("receipts_payment_tx_idx").on(table.paymentTransactionId),
+  numberIdx: uniqueIndex("receipts_number_idx").on(table.number),
+}));
+
+export const billingLedgerEntries = pgTable("billing_ledger_entries", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  invoiceId: uuid("invoice_id").references(() => invoices.id, { onDelete: "set null" }),
+  paymentTransactionId: uuid("payment_transaction_id").references(() => paymentTransactions.id, { onDelete: "set null" }),
+  receiptId: uuid("receipt_id").references(() => receipts.id, { onDelete: "set null" }),
+  type: billingLedgerEntryTypeEnum("type").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  currency: varchar("currency", { length: 10 }).notNull().default("usd"),
+  description: text("description").notNull(),
+  idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull(),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("billing_ledger_entries_org_id_idx").on(table.organizationId),
+  invoiceIdIdx: index("billing_ledger_entries_invoice_id_idx").on(table.invoiceId),
+  paymentTxIdx: index("billing_ledger_entries_payment_tx_idx").on(table.paymentTransactionId),
+  idempotencyKeyIdx: uniqueIndex("billing_ledger_entries_idempotency_key_idx").on(table.idempotencyKey),
+}));
+
+export const creditNotes = pgTable("credit_notes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  invoiceId: uuid("invoice_id").references(() => invoices.id, { onDelete: "set null" }),
+  number: varchar("number", { length: 100 }).notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  currency: varchar("currency", { length: 10 }).notNull().default("usd"),
+  reason: text("reason"),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("credit_notes_org_id_idx").on(table.organizationId),
+  invoiceIdIdx: index("credit_notes_invoice_id_idx").on(table.invoiceId),
+  numberIdx: uniqueIndex("credit_notes_number_idx").on(table.number),
+}));
+
+export const refunds = pgTable("refunds", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  paymentTransactionId: uuid("payment_transaction_id").notNull().references(() => paymentTransactions.id, { onDelete: "restrict" }),
+  creditNoteId: uuid("credit_note_id").references(() => creditNotes.id, { onDelete: "set null" }),
+  provider: paymentProviderEnum("provider").notNull(),
+  status: refundStatusEnum("status").notNull().default("pending"),
+  providerRefundId: varchar("provider_refund_id", { length: 255 }),
+  amountCents: integer("amount_cents").notNull(),
+  currency: varchar("currency", { length: 10 }).notNull().default("usd"),
+  reason: text("reason"),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("refunds_org_id_idx").on(table.organizationId),
+  paymentTxIdx: index("refunds_payment_tx_idx").on(table.paymentTransactionId),
+  providerRefundIdx: index("refunds_provider_refund_idx").on(table.providerRefundId),
 }));
 
 // On-chain leg of a crypto payment, linked back to a payment_transaction.
@@ -1241,6 +1411,110 @@ export const invoicesRelations = relations(invoices, ({ one }) => ({
   subscription: one(subscriptions, {
     fields: [invoices.subscriptionId],
     references: [subscriptions.id],
+  }),
+}));
+
+export const quotesRelations = relations(quotes, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [quotes.organizationId],
+    references: [organizations.id],
+  }),
+  acceptedByUser: one(users, {
+    fields: [quotes.acceptedBy],
+    references: [users.id],
+  }),
+  invoice: one(invoices, {
+    fields: [quotes.invoiceId],
+    references: [invoices.id],
+  }),
+  lineItems: many(quoteLineItems),
+}));
+
+export const quoteLineItemsRelations = relations(quoteLineItems, ({ one }) => ({
+  quote: one(quotes, {
+    fields: [quoteLineItems.quoteId],
+    references: [quotes.id],
+  }),
+  organization: one(organizations, {
+    fields: [quoteLineItems.organizationId],
+    references: [organizations.id],
+  }),
+}));
+
+export const invoiceLineItemsRelations = relations(invoiceLineItems, ({ one }) => ({
+  invoice: one(invoices, {
+    fields: [invoiceLineItems.invoiceId],
+    references: [invoices.id],
+  }),
+  quoteLineItem: one(quoteLineItems, {
+    fields: [invoiceLineItems.quoteLineItemId],
+    references: [quoteLineItems.id],
+  }),
+  organization: one(organizations, {
+    fields: [invoiceLineItems.organizationId],
+    references: [organizations.id],
+  }),
+}));
+
+export const receiptsRelations = relations(receipts, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [receipts.organizationId],
+    references: [organizations.id],
+  }),
+  invoice: one(invoices, {
+    fields: [receipts.invoiceId],
+    references: [invoices.id],
+  }),
+  paymentTransaction: one(paymentTransactions, {
+    fields: [receipts.paymentTransactionId],
+    references: [paymentTransactions.id],
+  }),
+  ledgerEntries: many(billingLedgerEntries),
+}));
+
+export const billingLedgerEntriesRelations = relations(billingLedgerEntries, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [billingLedgerEntries.organizationId],
+    references: [organizations.id],
+  }),
+  invoice: one(invoices, {
+    fields: [billingLedgerEntries.invoiceId],
+    references: [invoices.id],
+  }),
+  paymentTransaction: one(paymentTransactions, {
+    fields: [billingLedgerEntries.paymentTransactionId],
+    references: [paymentTransactions.id],
+  }),
+  receipt: one(receipts, {
+    fields: [billingLedgerEntries.receiptId],
+    references: [receipts.id],
+  }),
+}));
+
+export const creditNotesRelations = relations(creditNotes, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [creditNotes.organizationId],
+    references: [organizations.id],
+  }),
+  invoice: one(invoices, {
+    fields: [creditNotes.invoiceId],
+    references: [invoices.id],
+  }),
+  refunds: many(refunds),
+}));
+
+export const refundsRelations = relations(refunds, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [refunds.organizationId],
+    references: [organizations.id],
+  }),
+  paymentTransaction: one(paymentTransactions, {
+    fields: [refunds.paymentTransactionId],
+    references: [paymentTransactions.id],
+  }),
+  creditNote: one(creditNotes, {
+    fields: [refunds.creditNoteId],
+    references: [creditNotes.id],
   }),
 }));
 
