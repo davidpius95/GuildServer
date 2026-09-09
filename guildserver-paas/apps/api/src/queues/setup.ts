@@ -567,6 +567,7 @@ const deploymentWorker = new Worker(
         memoryLimit: app.memoryLimit,
         cpuLimit: app.cpuLimit,
         containerPort: detectedPort || app.containerPort || undefined,
+        persistentStoragePath: app.persistentStoragePath,
         replicas: app.replicas || 1,
         sourceType: app.sourceType || "docker",
         domains: domainList.length > 0 ? domainList : undefined,

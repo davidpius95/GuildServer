@@ -97,6 +97,7 @@ export interface DeployConfig {
   sourceType: string;
   domains?: string[];
   containerPort?: number;
+  persistentStoragePath?: string | null;
   registryAuth?: { username: string; password: string; serveraddress?: string };
 }
 

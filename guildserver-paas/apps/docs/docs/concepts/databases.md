@@ -66,3 +66,14 @@ External database ports should only be used in development. In production, use V
 - [Environment Variables](./environment-variables) — Store connection strings
 - [Resource Limits](/infrastructure/resource-limits) — Container resource management
 - [Databases API](/api/databases) — API reference
+
+
+## Connecting an application
+
+Open **Databases** and use the **Internal connection** address for apps on the same GuildServer host. PostgreSQL uses `gs-db-<first 12 characters of database ID>:5432`, not the published host port. Do not use a Cloudflare-proxied website hostname for a direct PostgreSQL connection.
+
+Choose **Connect to app**, select an app in the same project, and save. GuildServer stores the internal URL as an encrypted production `DATABASE_URL` (`REDIS_URL` for Redis). Existing values require explicitly selecting **Replace existing connection**. Redeploy the app to apply the variable. Linking does not migrate data from Neon or any other database.
+
+The copy button copies a URL template: replace `***` with the database password. The published host port is informational and requires a separately configured direct TCP route for external clients. Restarting does not change that port.
+
+Apps on other servers need a separately configured private network route; the local connection action does not support them.

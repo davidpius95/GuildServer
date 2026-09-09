@@ -13,6 +13,7 @@ import { trpc } from "@/components/trpc-provider"
 import { useOrganization, useProjects, useCurrentUser } from "@/hooks/use-auth"
 import { formatDateTime } from "@/lib/utils"
 import { toast } from "sonner"
+import { getFriendlyMessage } from "@/lib/errors"
 import { EnvVarEditor, type EnvVarEntry } from "@/components/env-var-editor"
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog"
 import {

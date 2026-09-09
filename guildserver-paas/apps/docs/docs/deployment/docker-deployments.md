@@ -52,3 +52,14 @@ For private registries that require authentication, configure Docker credentials
 - [Git Deployments](./git-deployments) -- Deploy from source code
 - [Rollbacks](./rollbacks) -- Revert to a previous image
 - [Applications](/concepts/applications) -- Application configuration
+
+
+## Runtime port and persistent storage
+
+In an application's **Settings & Storage** tab, set **Container port** to the port your Dockerfile listens on, or leave it blank to detect `PORT` or `EXPOSE` from the image. Generated builds use their generated port. Save, then redeploy.
+
+For apps on the local server, enable a **Persistent data directory**, such as `/app/data` for SQLite. Supported roots are `/data`, `/app/data`, `/app/storage`, and `/app/uploads`; subdirectories are allowed. A named Docker volume retains data across redeploys and rollbacks. Back up existing container files before enabling a mount; this action does not migrate existing files. Preview deployments use separate storage. Removing the path detaches the volume without deleting its data. Volumes are local to the host and require separate backups; they do not provide replicated storage.
+
+Environment changes take effect after a redeploy. Container logs update automatically every two seconds while their tab is open. The **Git auto-deploy** tab contains webhook setup and delivery history.
+
+Docker builds reuse cached layers on the build host. Put dependency manifests and the installation step before copying frequently changing source files to keep dependency layers reusable. Build logs include elapsed time for classic Docker build steps and total build time; an uncached package download can still vary with registry/network performance.

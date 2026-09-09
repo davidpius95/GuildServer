@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { trpc } from "@/components/trpc-provider"
 import { formatDateTime } from "@/lib/utils"
 import { toast } from "sonner"
+import { getFriendlyMessage } from "@/lib/errors"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -249,9 +250,9 @@ function DomainRow({ domain, appId, isPrimary, removeDomain, setPrimaryDomain, v
               variant="outline"
               size="sm"
               onClick={() => verifyDomain.mutate({ id: domain.id, applicationId: appId })}
-              disabled={verifyDomain.isPending}
+              disabled={verifyDomain.isLoading}
             >
-              {verifyDomain.isPending && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+              {verifyDomain.isLoading && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
               Verify
             </Button>
           )}
@@ -414,7 +415,7 @@ export default function ApplicationDetailPage() {
 
   const logsQuery = trpc.application.getLogs.useQuery(
     { id: appId, lines: 50 },
-    { enabled: validAppId, refetchInterval: 30000 }  // 30s (was 10s)
+    { enabled: validAppId && activeTab === "logs", refetchInterval: activeTab === "logs" ? 2000 : false }
   )
 
   const metricsQuery = trpc.application.getMetrics.useQuery(
@@ -423,6 +424,11 @@ export default function ApplicationDetailPage() {
   )
 
   const utils = trpc.useUtils()
+
+  const updateRuntime = trpc.application.update.useMutation({
+    onSuccess: () => { toast.success("Settings saved. Redeploy to apply them."); utils.application.getById.invalidate({id:appId}) },
+    onError: (err) => toast.error(getFriendlyMessage(err)),
+  })
 
   // Mutations
   const deployApp = trpc.application.deploy.useMutation({
@@ -512,7 +518,7 @@ export default function ApplicationDetailPage() {
 
   const setEnvVar = trpc.environment.set.useMutation({
     onSuccess: () => {
-      toast.success("Environment variable saved!")
+      toast.success("Environment variable saved. Redeploy to apply it.")
       setNewEnvKey("")
       setNewEnvValue("")
       setNewEnvSecret(false)
@@ -635,7 +641,7 @@ export default function ApplicationDetailPage() {
     }
   }, [deploymentStream.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (appQuery.isPending) {
+  if (appQuery.isLoading) {
     return <AppDetailSkeleton />
   }
 
@@ -717,19 +723,19 @@ export default function ApplicationDetailPage() {
         <div className="flex gap-2">
           <Button
             onClick={() => deployApp.mutate({ id: appId })}
-            disabled={deployApp.isPending}
+            disabled={deployApp.isLoading}
           >
-            {deployApp.isPending ? (
+            {deployApp.isLoading ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <Rocket className="mr-2 h-4 w-4" />
             )}
-            Deploy
+            {deployApp.isLoading ? "Starting deployment…" : "Deploy"}
           </Button>
           <Button
             variant="outline"
             onClick={() => restartApp.mutate({ id: appId })}
-            disabled={restartApp.isPending}
+            disabled={restartApp.isLoading}
           >
             <RefreshCw className="mr-2 h-4 w-4" />
             Restart
@@ -831,8 +837,35 @@ export default function ApplicationDetailPage() {
           <TabsTrigger value="domains">Domains</TabsTrigger>
           <TabsTrigger value="logs">Container Logs</TabsTrigger>
           <TabsTrigger value="build-logs">Build Logs</TabsTrigger>
-          <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
+          <TabsTrigger value="webhooks">Git auto-deploy</TabsTrigger>
+          <TabsTrigger value="settings">Settings & Storage</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="settings">
+          <Card>
+            <CardHeader><CardTitle>Runtime settings</CardTitle><CardDescription>Save changes, then redeploy to apply them.</CardDescription></CardHeader>
+            <CardContent>
+              <form key={`${app.id}-${app.updatedAt}`} className="space-y-4" onSubmit={event => {
+                event.preventDefault()
+                const data = new FormData(event.currentTarget)
+                const port = String(data.get("containerPort") || "")
+                updateRuntime.mutate({id:appId, containerPort:port ? Number(port) : null,
+                  ...((app.deploymentTarget || "docker-local") === "docker-local" && !app.providerId ? {persistentStoragePath:String(data.get("storage") || "") || null} : {})})
+              }}>
+                <div className="space-y-2"><Label htmlFor="container-port">Container port</Label>
+                  <Input id="container-port" name="containerPort" type="number" min="1" max="65535" defaultValue={app.containerPort ?? ""} placeholder="Auto-detect, e.g. 3000" />
+                  <p className="text-sm text-muted-foreground">For your Dockerfile, use the port your app listens on. Leave blank to detect PORT or EXPOSE from the image. Generated builds use their generated port.</p>
+                </div>
+                {(app.deploymentTarget || "docker-local") === "docker-local" && !app.providerId && <div className="space-y-2">
+                  <Label htmlFor="storage-path">Persistent data directory</Label>
+                  <Input id="storage-path" name="storage" defaultValue={app.persistentStoragePath ?? ""} placeholder="/app/data" />
+                  <p className="text-sm text-muted-foreground">Use /data, /app/data, /app/storage or /app/uploads. Files in this directory survive redeploys. Back up existing container files before first enabling storage. Preview deployments use separate volumes. Clearing this field detaches storage and retains its data.</p>
+                </div>}
+                <Button type="submit" disabled={updateRuntime.isLoading}>{updateRuntime.isLoading ? "Saving…" : "Save settings"}</Button>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* Deployments Tab */}
         <TabsContent value="deployments" className="space-y-4">
@@ -883,7 +916,7 @@ export default function ApplicationDetailPage() {
                             variant="ghost"
                             size="sm"
                             className="h-7 text-xs gap-1"
-                            disabled={rollbackMutation.isPending}
+                            disabled={rollbackMutation.isLoading}
                             onClick={(e) => {
                               e.stopPropagation()
                               showConfirm({
@@ -935,7 +968,7 @@ export default function ApplicationDetailPage() {
                       previewDeployments: !app.previewDeployments,
                     })
                   }}
-                  disabled={updatePreviewSettings.isPending}
+                  disabled={updatePreviewSettings.isLoading}
                 >
                   {app?.previewDeployments ? "Enabled" : "Disabled"}
                 </Button>
@@ -1049,7 +1082,7 @@ export default function ApplicationDetailPage() {
                     Environment Variables
                   </CardTitle>
                   <CardDescription>
-                    Manage environment variables injected into your application at deploy time
+                    Changes take effect only after a redeploy. Saving a variable does not update the running container.
                   </CardDescription>
                 </div>
                 <div className="flex gap-2">
@@ -1172,9 +1205,9 @@ export default function ApplicationDetailPage() {
                         isSecret: newEnvSecret,
                       })
                     }}
-                    disabled={setEnvVar.isPending}
+                    disabled={setEnvVar.isLoading}
                   >
-                    {setEnvVar.isPending ? (
+                    {setEnvVar.isLoading ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
                       <Plus className="mr-2 h-4 w-4" />
@@ -1211,9 +1244,9 @@ export default function ApplicationDetailPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => generateAutoUrl.mutate({ applicationId: appId })}
-                  disabled={generateAutoUrl.isPending}
+                  disabled={generateAutoUrl.isLoading}
                 >
-                  {generateAutoUrl.isPending ? (
+                  {generateAutoUrl.isLoading ? (
                     <Loader2 className="mr-2 h-3 w-3 animate-spin" />
                   ) : (
                     <Link2 className="mr-2 h-3 w-3" />
@@ -1298,9 +1331,9 @@ export default function ApplicationDetailPage() {
                         method: domainMethod,
                       })
                     }}
-                    disabled={addDomain.isPending}
+                    disabled={addDomain.isLoading}
                   >
-                    {addDomain.isPending ? (
+                    {addDomain.isLoading ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
                       <Plus className="mr-2 h-4 w-4" />
@@ -1320,7 +1353,7 @@ export default function ApplicationDetailPage() {
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
                   <Terminal className="h-4 w-4" />
-                  Container Logs
+                  Container Logs <span className="text-xs font-normal text-muted-foreground">Updates every 2 seconds</span>
                 </CardTitle>
                 <Button
                   variant="outline"
@@ -1607,9 +1640,9 @@ export default function ApplicationDetailPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => sendTestWebhook.mutate({ applicationId: appId })}
-                  disabled={sendTestWebhook.isPending}
+                  disabled={sendTestWebhook.isLoading}
                 >
-                  {sendTestWebhook.isPending ? (
+                  {sendTestWebhook.isLoading ? (
                     <Loader2 className="mr-2 h-3 w-3 animate-spin" />
                   ) : (
                     <Send className="mr-2 h-3 w-3" />
@@ -1619,7 +1652,7 @@ export default function ApplicationDetailPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {webhookUrlQuery.isPending ? (
+              {webhookUrlQuery.isLoading ? (
                 <div className="flex items-center justify-center py-4">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
@@ -1746,7 +1779,7 @@ export default function ApplicationDetailPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {webhookDeliveriesQuery.isPending ? (
+              {webhookDeliveriesQuery.isLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>

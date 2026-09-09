@@ -15,6 +15,7 @@ import {
 import { trpc } from "@/components/trpc-provider"
 import { useOrganization, useProjects } from "@/hooks/use-auth"
 import { toast } from "sonner"
+import { getFriendlyMessage } from "@/lib/errors"
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog"
 import { ResponsiveModal } from "@/components/ui/responsive-modal"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -55,6 +56,9 @@ const getTypeIcon = (type: string) => {
 }
 
 export default function DatabasesPage() {
+  const [connectDatabase, setConnectDatabase] = useState<any>(null)
+  const [connectAppId, setConnectAppId] = useState("")
+  const [replaceConnection, setReplaceConnection] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
@@ -92,6 +96,14 @@ export default function DatabasesPage() {
     { organizationId: orgId },
     { enabled: isValidUUID(orgId), refetchInterval: 30000 }
   )
+
+  const connectApps = trpc.application.list.useQuery(
+    { projectId: connectDatabase?.projectId || "" }, { enabled: !!connectDatabase?.projectId }
+  )
+  const connectApp = trpc.database.connectToApp.useMutation({
+    onSuccess: (data) => { toast.success(`${data.key} saved. Redeploy the app to connect.`); setConnectDatabase(null) },
+    onError: (err) => toast.error(getFriendlyMessage(err)),
+  })
 
   const createDatabase = trpc.database.create.useMutation({
     onSuccess: () => {
@@ -232,7 +244,7 @@ export default function DatabasesPage() {
     setSelectedDatabase(db)
     setSettingsMemory(db.memoryLimit?.toString() || "")
     setSettingsCpu(db.cpuLimit?.toString() || "")
-    setSettingsPort(db.externalPort?.toString() || "")
+    setSettingsPort((db.hostPort || db.externalPort)?.toString() || "")
     setBackupEnabled(!!db.backupEnabled)
     setBackupFrequency(db.backupFrequency || "daily")
     setBackupHour(db.backupHour?.toString() || "3")
@@ -247,7 +259,7 @@ export default function DatabasesPage() {
       id: selectedDatabase.id,
       memoryLimit: settingsMemory ? parseInt(settingsMemory) : undefined,
       cpuLimit: settingsCpu ? parseInt(settingsCpu) : undefined,
-      externalPort: settingsPort ? parseInt(settingsPort) : undefined,
+
     })
   }
 
@@ -268,7 +280,7 @@ export default function DatabasesPage() {
       const info = await utils.database.getConnectionInfo.fetch({ id: dbId })
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(info.connectionString)
-        toast.success("Connection string copied!")
+        toast.success("Internal connection copied. Replace *** with your database password.")
       }
     } catch (e: any) {
       toast.error(getFriendlyMessage(e))
@@ -443,15 +455,17 @@ export default function DatabasesPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <span className="text-sm font-medium">Connection</span>
+                      <span className="text-sm font-medium">Internal connection</span>
                       <div className="flex gap-2">
-                        <Input value="••••••••••••••••••••" readOnly className="text-xs text-muted-foreground" />
-                        <Button variant="outline" size="sm" onClick={() => copyConnectionString(db.id)}>
+                        <Input value={`gs-db-${db.id.slice(0, 12)}:${({postgresql:5432,mysql:3306,mariadb:3306,mongodb:27017,redis:6379} as Record<string,number>)[db.type]}`} readOnly className="text-xs text-muted-foreground" />
+                        <Button aria-label="Copy internal connection string" variant="outline" size="sm" onClick={() => copyConnectionString(db.id)}>
                           <Copy className="h-3 w-3" />
                         </Button>
                       </div>
                     </div>
 
+                    <p className="text-xs text-muted-foreground">Use this address from apps on this server. The copied URL needs your database password.</p>
+                    <Button variant="outline" className="w-full" onClick={() => { setConnectDatabase(db); setConnectAppId(""); setReplaceConnection(false) }}>Connect to app</Button>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" className="flex-1" onClick={() => handleRestart(db.id)} disabled={restartDatabase.isLoading}>
                         <RefreshCw className="mr-2 h-3 w-3" />
@@ -606,6 +620,21 @@ export default function DatabasesPage() {
         </div>
       </ResponsiveModal>
 
+      <ResponsiveModal open={!!connectDatabase} onClose={() => setConnectDatabase(null)} title="Connect database to app">
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">Save the internal connection as an encrypted production environment variable. Redeploy the app afterward. This does not move data from another database.</p>
+          <Label htmlFor="database-app">Application</Label>
+          <select id="database-app" className="w-full rounded-md border bg-background p-2" value={connectAppId} onChange={e => setConnectAppId(e.target.value)}>
+            <option value="">Select an app</option>
+            {(connectApps.data || []).filter((app: any) => (!app.deploymentTarget || app.deploymentTarget === "docker-local") && !app.providerId).map((app: any) => <option key={app.id} value={app.id}>{app.name}</option>)}
+          </select>
+          <label className="flex gap-2 text-sm"><input type="checkbox" checked={replaceConnection} onChange={e => setReplaceConnection(e.target.checked)} />Replace existing connection, if present</label>
+          <Button disabled={!connectAppId || connectApp.isLoading} onClick={() => connectApp.mutate({id:connectDatabase.id, applicationId:connectAppId, replaceExisting:replaceConnection})}>
+            {connectApp.isLoading ? "Connecting…" : "Save connection"}
+          </Button>
+        </div>
+      </ResponsiveModal>
+
       {/* Settings Modal */}
       <ResponsiveModal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} title="Database Settings">
         <div className="space-y-4">
@@ -618,8 +647,9 @@ export default function DatabasesPage() {
             <Input type="number" step="0.1" value={settingsCpu} onChange={e => setSettingsCpu(e.target.value)} placeholder="e.g. 1.0" />
           </div>
           <div className="space-y-2">
-            <Label>External Port (Optional)</Label>
-            <Input type="number" value={settingsPort} onChange={e => setSettingsPort(e.target.value)} placeholder="e.g. 5432" />
+            <Label>Published host port</Label>
+            <Input value={settingsPort} readOnly />
+            <p className="text-xs text-muted-foreground">Assigned when the database is created. Apps should use the internal address; public access requires a direct TCP route to this server.</p>
           </div>
           <div className="pt-2 flex justify-end">
             <Button variant="outline" size="sm" onClick={handleUpdateSettings} disabled={updateDatabase.isLoading}>

@@ -1,4 +1,5 @@
 import Docker from "dockerode";
+import { appStorageMount, resolveRuntimePort } from "../app-runtime";
 import { Writable } from "stream";
 import { logger } from "../../utils/logger";
 import { broadcastToUser } from "../../websocket/server";
@@ -21,6 +22,7 @@ export interface DeployOptions {
   sourceType: string;
   domains?: string[];
   containerPort?: number;
+  persistentStoragePath?: string | null;
   registryAuth?: { username: string; password: string; serveraddress?: string };
 }
 
@@ -212,9 +214,9 @@ export async function deployContainer(
     // therefore matching nothing in the name map — fell through to 80 while the
     // app listened on 3000/8000. The container ran, health checks passed, and
     // the deploy URL served nothing.
-    let servicePort = opts.containerPort;
+    let servicePort = resolveRuntimePort(opts.containerPort, opts.environment?.PORT);
     if (!servicePort) {
-      const exposed = await getImageExposedPort(fullImage);
+      const exposed = await getImageExposedPort(fullImage, d);
       if (exposed) {
         servicePort = exposed;
         log(`Detected exposed port ${exposed} from image`);
@@ -285,6 +287,13 @@ export async function deployContainer(
         NetworkMode: NETWORK_NAME,
       },
     };
+
+    if (opts.persistentStoragePath) {
+      const mount = appStorageMount(opts.applicationId, opts.persistentStoragePath, isPreviewContainer ? opts.appName : undefined);
+      await d.createVolume({ Name: mount.Source, Labels: { [GS_LABELS.MANAGED]: "true", [GS_LABELS.APP_ID]: opts.applicationId, [GS_LABELS.TYPE]: "application-storage" } });
+      containerConfig.HostConfig!.Mounts = [mount];
+      log(`Persistent storage mounted at ${mount.Target}`);
+    }
 
     if (opts.memoryLimit) {
       containerConfig.HostConfig!.Memory = opts.memoryLimit * 1024 * 1024;

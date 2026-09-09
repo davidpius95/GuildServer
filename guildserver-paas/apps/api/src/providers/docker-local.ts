@@ -51,6 +51,7 @@ export class DockerLocalProvider implements ComputeProvider {
       sourceType: config.sourceType,
       domains: config.domains,
       containerPort: config.containerPort,
+      persistentStoragePath: config.persistentStoragePath,
       registryAuth: config.registryAuth,
     };
 

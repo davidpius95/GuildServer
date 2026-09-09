@@ -606,6 +606,10 @@ __pycache__
       }
     }
 
+    const buildStartedAt = Date.now();
+    let stepStartedAt = buildStartedAt;
+    let currentStep: string | undefined;
+    log("Docker layer cache enabled; unchanged dependency layers can be reused.");
     const stream = await d.buildImage(
       {
         context: buildContextDir,
@@ -633,13 +637,19 @@ __pycache__
             log(`ERROR: Build failed: ${buildError}`);
             reject(new Error(`Docker build failed: ${buildError}`));
           } else {
-            log("Docker build completed successfully");
+            if (currentStep) log(`${currentStep} duration: ${((Date.now() - stepStartedAt) / 1000).toFixed(1)}s`);
+            log(`Docker build completed successfully in ${((Date.now() - buildStartedAt) / 1000).toFixed(1)}s`);
             resolve();
           }
         },
         (event: any) => {
           if (event.stream) {
             const line = event.stream.trim();
+            if (/^Step \d+\/\d+/.test(line)) {
+              if (currentStep) log(`${currentStep} duration: ${((Date.now() - stepStartedAt) / 1000).toFixed(1)}s`);
+              currentStep = line.match(/^Step \d+\/\d+/)?.[0];
+              stepStartedAt = Date.now();
+            }
             if (line) log(line);
           }
           if (event.error) {

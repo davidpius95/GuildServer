@@ -276,6 +276,7 @@ export const applications = pgTable("applications", {
   dockerImage: text("docker_image"),
   dockerTag: varchar("docker_tag", { length: 255 }).default("latest"),
   containerPort: integer("container_port"),
+  persistentStoragePath: text("persistent_storage_path"),
 
   // Private registry credentials (used at pull time for non-public images)
   registryUrl: text("registry_url"),

@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc/trpc";
-import { databases, projects, members, databaseBackups } from "@guildserver/database";
+import { databases, projects, members, databaseBackups, applications, environmentVariables } from "@guildserver/database";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { DatabaseBackupService } from "../services/db-backup";
 import { provisionDatabaseContainer, removeDatabaseVolume } from "../services/database-provision";
 import { restartContainer, removeExistingContainers } from "../services/docker/container";
 import { addBackupJob, addRestoreJob, syncBackupSchedule } from "../queues/backups";
+import { encryptSecret } from "../utils/crypto";
 import { logger } from "../utils/logger";
 
 const databasePublicHost =
@@ -275,6 +276,10 @@ export const databaseRouter = createTRPCRouter({
         });
       }
 
+      if (updates.externalPort !== undefined && updates.externalPort !== (database.hostPort || database.externalPort)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "The published port is assigned when the database is created. Use the internal connection for apps; restarting cannot change port mappings." });
+      }
+
       const [updatedDatabase] = await ctx.db
         .update(databases)
         .set({
@@ -411,8 +416,41 @@ export const databaseRouter = createTRPCRouter({
       return { success: true, message: "Database restarted successfully" };
     }),
 
+  connectToApp: protectedProcedure
+    .input(z.object({ id: z.string().uuid(), applicationId: z.string().uuid(), replaceExisting: z.boolean().default(false) }))
+    .mutation(async ({ ctx, input }) => {
+      const database = await ctx.db.query.databases.findFirst({
+        where: eq(databases.id, input.id),
+        with: { project: { with: { organization: { with: { members: { where: eq(members.userId, ctx.user.id) } } } } } },
+      });
+      const app = await ctx.db.query.applications.findFirst({
+        where: eq(applications.id, input.applicationId),
+        with: { project: { with: { organization: { with: { members: { where: eq(members.userId, ctx.user.id) } } } } } },
+      });
+      if (!database?.project?.organization?.members.length || !app?.project?.organization?.members.length) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Database or application not found or access denied" });
+      }
+      if (app.projectId !== database.projectId || (app.deploymentTarget && app.deploymentTarget !== "docker-local") || app.providerId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Select an app in the same project running on this server." });
+      }
+      const key = database.type === "redis" ? "REDIS_URL" : "DATABASE_URL";
+      const existing = await ctx.db.query.environmentVariables.findFirst({
+        where: and(eq(environmentVariables.applicationId, app.id), eq(environmentVariables.key, key), eq(environmentVariables.scope, "production")),
+      });
+      if ((existing || (app.environment as Record<string, string> | null)?.[key]) && !input.replaceExisting) {
+        throw new TRPCError({ code: "CONFLICT", message: `${key} already exists. Choose Replace existing connection to change it.` });
+      }
+      const value = encryptSecret(generateConnectionString(database.type, `gs-db-${database.id.slice(0, 12)}`, getDefaultPort(database.type), database.databaseName, database.username, database.password))!;
+      if (existing) {
+        await ctx.db.update(environmentVariables).set({ value, isSecret: true, updatedAt: new Date() }).where(eq(environmentVariables.id, existing.id));
+      } else {
+        await ctx.db.insert(environmentVariables).values({ applicationId: app.id, key, value, isSecret: true, scope: "production" });
+      }
+      return { success: true, key, redeployRequired: true };
+    }),
+
   getConnectionInfo: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.string().uuid(), target: z.enum(["internal", "external"]).default("internal") }))
     .query(async ({ ctx, input }) => {
       const database = await ctx.db.query.databases.findFirst({
         where: eq(databases.id, input.id),
@@ -440,12 +478,13 @@ export const databaseRouter = createTRPCRouter({
 
       // Generate connection strings based on database type.
       // In production this must be the reachable host, not the API container.
-      const host = databasePublicHost;
-      const port = database.externalPort || getDefaultPort(database.type);
+      const host = input.target === "internal" ? `gs-db-${database.id.slice(0, 12)}` : databasePublicHost;
+      const port = input.target === "internal" ? getDefaultPort(database.type) : (database.hostPort || database.externalPort || getDefaultPort(database.type));
       
       const connectionInfo = {
         host,
         port,
+        target: input.target,
         database: database.databaseName,
         username: database.username,
         // Don't return password in plain text
@@ -679,18 +718,21 @@ function getDefaultPort(type: string): number {
   return defaultPorts[type as keyof typeof defaultPorts] || 5432;
 }
 
-function generateConnectionString(type: string, host: string, port: number, database: string, username: string): string {
+function generateConnectionString(type: string, host: string, port: number, database: string, username: string, password = "***"): string {
+  username = encodeURIComponent(username);
+  database = encodeURIComponent(database);
+  const secret = password === "***" ? password : encodeURIComponent(password);
   switch (type) {
     case "postgresql":
-      return `postgresql://${username}:***@${host}:${port}/${database}`;
+      return `postgresql://${username}:${secret}@${host}:${port}/${database}`;
     case "mysql":
     case "mariadb":
-      return `mysql://${username}:***@${host}:${port}/${database}`;
+      return `mysql://${username}:${secret}@${host}:${port}/${database}`;
     case "mongodb":
-      return `mongodb://${username}:***@${host}:${port}/${database}`;
+      return `mongodb://${username}:${secret}@${host}:${port}/${database}?authSource=admin`;
     case "redis":
-      return `redis://${username}:***@${host}:${port}`;
+      return `redis://:${secret}@${host}:${port}`;
     default:
-      return `${type}://${username}:***@${host}:${port}/${database}`;
+      return `${type}://${username}:${secret}@${host}:${port}/${database}`;
   }
 }

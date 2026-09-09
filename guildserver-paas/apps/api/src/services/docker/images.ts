@@ -152,9 +152,11 @@ export async function pullImage(
  *
  * Returns null when the image declares no ports, so the caller can fall back.
  */
-export async function getImageExposedPort(image: string): Promise<number | null> {
+export async function getImageExposedPort(image: string, dockerClient?: Docker): Promise<number | null> {
   try {
-    const info = await docker.getImage(image).inspect();
+    const info = await (dockerClient || docker).getImage(image).inspect();
+    const envPort = Number(info?.Config?.Env?.find((entry: string) => entry.startsWith("PORT="))?.slice(5));
+    if (Number.isInteger(envPort) && envPort > 0 && envPort <= 65535) return envPort;
     const exposed = info?.Config?.ExposedPorts ?? {};
     const ports = Object.keys(exposed)
       .map((k) => parseInt(String(k).split("/")[0], 10))

@@ -20,6 +20,8 @@ import { getProvider } from "../providers/factory";
 import { registerGithubWebhook } from "../services/github";
 import { encryptSecret } from "../utils/crypto";
 
+import { runtimeSettingsSchema } from "../services/app-runtime";
+
 const createApplicationSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
@@ -34,7 +36,7 @@ const createApplicationSchema = z.object({
   registryUrl: z.string().optional().nullable(),
   registryUsername: z.string().optional().nullable(),
   registryPassword: z.string().optional().nullable(),
-  containerPort: z.number().optional(),
+  ...runtimeSettingsSchema.shape,
   environment: z.record(z.string()).default({}),
   memoryLimit: z.number().optional(),
   cpuLimit: z.number().optional(),
@@ -45,6 +47,7 @@ const createApplicationSchema = z.object({
 });
 
 const updateApplicationSchema = z.object({
+  ...runtimeSettingsSchema.shape,
   id: z.string().uuid(),
   name: z.string().min(1).optional(),
   description: z.string().optional(),
@@ -209,6 +212,9 @@ export const applicationRouter = createTRPCRouter({
         });
       }
 
+      if (input.persistentStoragePath && (input.deploymentTarget !== "docker-local" || input.providerId)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Persistent storage is supported for apps on this server." });
+      }
       // Enforce plan limit on applications
       await enforcePlanLimit(project.organization.id, "applications");
 
@@ -238,6 +244,9 @@ export const applicationRouter = createTRPCRouter({
         }
       }
 
+      if (input.persistentStoragePath && (resolvedDeploymentTarget !== "docker-local" || resolvedProviderId)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Persistent storage is supported for apps on this server." });
+      }
       const [newApplication] = await ctx.db
         .insert(applications)
         .values({
@@ -311,6 +320,11 @@ export const applicationRouter = createTRPCRouter({
           code: "NOT_FOUND",
           message: "Application not found or access denied",
         });
+      }
+
+      if ((updates.persistentStoragePath ?? application.persistentStoragePath) &&
+          ((updates.deploymentTarget ?? application.deploymentTarget ?? "docker-local") !== "docker-local" || (updates.providerId ?? application.providerId))) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Persistent storage is supported for apps on this server." });
       }
 
       // Only re-encrypt the registry password when the client actually sent one;
