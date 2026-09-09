@@ -292,6 +292,19 @@ export const applications = pgTable("applications", {
   // Deployment settings
   replicas: integer("replicas").default(1),
   autoDeployment: boolean("auto_deployment").default(false),
+
+  // Rolling deploys and health checks.
+  // Every field is nullable and NULL means "previous built-in behaviour", so
+  // applications created before migration 0012 keep deploying unchanged.
+  deploymentStrategy: varchar("deployment_strategy", { length: 20 }),
+  healthCheckPath: text("health_check_path"),
+  healthCheckPort: integer("health_check_port"),
+  healthCheckInterval: integer("health_check_interval"),
+  healthCheckTimeout: integer("health_check_timeout"),
+  healthCheckRetries: integer("health_check_retries"),
+  healthCheckStartPeriod: integer("health_check_start_period"),
+  healthCheckExpectedStatus: text("health_check_expected_status"),
+  stopGracePeriod: integer("stop_grace_period"),
   
   // Preview deployments
   previewDeployments: boolean("preview_deployments").default(false),
@@ -406,6 +419,13 @@ export const deployments = pgTable("deployments", {
   providerId: uuid("provider_id").references(() => computeProviders.id, { onDelete: "set null" }),
   lxcVmId: integer("lxc_vm_id"),
   providerMetadata: jsonb("provider_metadata"),
+
+  // Rolling-deploy bookkeeping. Recorded so a deployment interrupted between
+  // "candidate is healthy" and "incumbent retired" can be reconciled instead of
+  // leaving two containers claiming the same Traefik router.
+  candidateContainerId: text("candidate_container_id"),
+  previousContainerId: text("previous_container_id"),
+  strategy: varchar("strategy", { length: 20 }),
 
   // Timing
   startedAt: timestamp("started_at"),
