@@ -105,6 +105,67 @@ describe('DockerLocalProvider', () => {
       expect(result.logs).toEqual(['deployed']);
       expect(result.providerMetadata).toEqual({ provider: 'docker-local' });
     });
+
+    it('forwards applicationConfig so per-app deploy settings are honoured', async () => {
+      // Without this the deploy path saw every health-check, stop-grace and
+      // deployment-strategy field as NULL, so the columns existed but nothing
+      // could ever read them.
+      mockedDeployContainer.mockResolvedValue({
+        containerId: 'abc',
+        containerName: 'gs-test',
+        hostPort: 8080,
+        logs: [],
+      });
+
+      const applicationConfig = {
+        healthCheckPath: '/healthz',
+        healthCheckRetries: 5,
+        stopGracePeriod: 30,
+        deploymentStrategy: 'rolling',
+      };
+
+      const provider = new DockerLocalProvider();
+      await provider.deploy({ ...deployConfig, applicationConfig });
+
+      expect(mockedDeployContainer.mock.calls[0][0].applicationConfig).toEqual(applicationConfig);
+    });
+
+    it('returns the rolling-deploy bookkeeping so the queue can persist it', async () => {
+      // strategy / candidate / previous are what let a deployment interrupted
+      // mid-promotion be reconciled instead of leaving two containers claiming
+      // one Traefik router.
+      mockedDeployContainer.mockResolvedValue({
+        containerId: 'new-1',
+        containerName: 'gs-test',
+        hostPort: 8080,
+        logs: [],
+        strategy: 'rolling',
+        candidateContainerId: 'cand-1',
+        previousContainerId: 'old-1',
+      } as any);
+
+      const provider = new DockerLocalProvider();
+      const result = await provider.deploy(deployConfig);
+
+      expect(result.strategy).toBe('rolling');
+      expect(result.candidateContainerId).toBe('cand-1');
+      expect(result.previousContainerId).toBe('old-1');
+    });
+
+    it('omits the bookkeeping on the legacy path rather than inventing values', async () => {
+      mockedDeployContainer.mockResolvedValue({
+        containerId: 'abc',
+        containerName: 'gs-test',
+        hostPort: 8080,
+        logs: [],
+      });
+
+      const provider = new DockerLocalProvider();
+      const result = await provider.deploy(deployConfig);
+
+      expect(result.candidateContainerId).toBeUndefined();
+      expect(result.previousContainerId).toBeUndefined();
+    });
   });
 
   // -------------------------------------------------------------------------

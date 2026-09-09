@@ -568,6 +568,10 @@ const deploymentWorker = new Worker(
         cpuLimit: app.cpuLimit,
         containerPort: detectedPort || app.containerPort || undefined,
         persistentStoragePath: app.persistentStoragePath,
+        // The application row carries the health-check, stop-grace and
+        // deployment-strategy settings. Without this the deploy path saw every
+        // field as NULL and could only ever take the legacy behaviour.
+        applicationConfig: app as unknown as Record<string, unknown>,
         replicas: app.replicas || 1,
         sourceType: app.sourceType || "docker",
         domains: domainList.length > 0 ? domainList : undefined,
@@ -715,6 +719,20 @@ const deploymentWorker = new Worker(
         completedAt: new Date(),
         imageTag: finalImageTag,
       };
+
+      // Record which replacement path ran, and the containers involved. A
+      // deployment interrupted between "candidate healthy" and "incumbent
+      // retired" leaves two containers claiming one Traefik router; these
+      // columns are what lets a later reconcile tell them apart.
+      if (result.strategy) {
+        deploymentUpdate.strategy = result.strategy;
+      }
+      if (result.candidateContainerId) {
+        deploymentUpdate.candidateContainerId = result.candidateContainerId;
+      }
+      if (result.previousContainerId) {
+        deploymentUpdate.previousContainerId = result.previousContainerId;
+      }
 
       // Store provider metadata for infrastructure tracking
       if (resolvedProviderId) {
