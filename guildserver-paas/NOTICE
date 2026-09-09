@@ -1,0 +1,10 @@
+GuildServer PaaS
+Copyright (c) Guild Technologies
+
+This product includes work derived from Coolify (https://github.com/coollabsio/coolify),
+Copyright (c) coollabs, licensed under the Apache License, Version 2.0.
+
+A copy of the Apache License 2.0 is included at LICENSES/Apache-2.0.txt.
+
+See docs/attribution/coolify.md for the specific artefacts involved and whether each
+was copied verbatim or reimplemented from reading.
