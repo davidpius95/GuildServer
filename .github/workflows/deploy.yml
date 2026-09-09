@@ -16,5 +16,7 @@ jobs:
       - name: Log deployment trigger
         run: |
           echo "Tests passed on main branch."
-          echo "Production VM will auto-update within 5 minutes via cron."
+          echo "Production hosts poll origin/main every 5 minutes via"
+          echo "scripts/self-update.sh, which gates on these check results"
+          echo "when GUILDSERVER_REQUIRE_CI=enforce."
           echo "Commit: ${{ github.event.workflow_run.head_sha }}"

@@ -11,6 +11,13 @@ env:
   POSTGRES_VERSION: '15'
   REDIS_VERSION: '7'
 
+# The pnpm workspace lives in a subdirectory of the repository. Workflows must
+# sit at the repository root for GitHub to run them at all, so every job runs
+# its commands from the workspace directory instead.
+defaults:
+  run:
+    working-directory: guildserver-paas
+
 jobs:
   # Lint and Type Check
   lint-and-typecheck:
@@ -24,12 +31,14 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 9
+          package_json_file: guildserver-paas/package.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
+          cache-dependency-path: guildserver-paas/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -78,12 +87,14 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 9
+          package_json_file: guildserver-paas/package.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
+          cache-dependency-path: guildserver-paas/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -104,6 +115,7 @@ jobs:
         run: pnpm --filter @guildserver/api test:ci
         env:
           TEST_DATABASE_URL: postgresql://test:test@localhost:5432/guildserver_test
+          DATABASE_URL: postgresql://test:test@localhost:5432/guildserver_test
           REDIS_URL: redis://localhost:6379/1
           JWT_SECRET: test-jwt-secret-key-for-ci
           NODE_ENV: test
@@ -111,7 +123,7 @@ jobs:
       - name: Upload backend coverage
         uses: codecov/codecov-action@v4
         with:
-          files: ./apps/api/coverage/lcov.info
+          files: ./guildserver-paas/apps/api/coverage/lcov.info
           flags: backend
           name: backend-coverage
 
@@ -128,12 +140,14 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 9
+          package_json_file: guildserver-paas/package.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
+          cache-dependency-path: guildserver-paas/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -146,7 +160,7 @@ jobs:
       - name: Upload frontend coverage
         uses: codecov/codecov-action@v4
         with:
-          files: ./apps/web/coverage/lcov.info
+          files: ./guildserver-paas/apps/web/coverage/lcov.info
           flags: frontend
           name: frontend-coverage
 
@@ -189,12 +203,14 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 9
+          package_json_file: guildserver-paas/package.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
+          cache-dependency-path: guildserver-paas/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -235,7 +251,7 @@ jobs:
         if: always()
         with:
           name: playwright-report
-          path: playwright-report/
+          path: guildserver-paas/playwright-report/
           retention-days: 7
 
       - name: Upload E2E screenshots
@@ -243,7 +259,7 @@ jobs:
         if: failure()
         with:
           name: playwright-screenshots
-          path: test-results/
+          path: guildserver-paas/test-results/
           retention-days: 7
 
   # Build Test
@@ -259,12 +275,14 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 9
+          package_json_file: guildserver-paas/package.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
+          cache-dependency-path: guildserver-paas/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -293,12 +311,14 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 9
+          package_json_file: guildserver-paas/package.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
+          cache-dependency-path: guildserver-paas/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -327,12 +347,14 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 9
+          package_json_file: guildserver-paas/package.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
+          cache-dependency-path: guildserver-paas/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
