@@ -21,6 +21,12 @@ import { registerGithubWebhook } from "../services/github";
 import { encryptSecret } from "../utils/crypto";
 
 import { runtimeSettingsSchema } from "../services/app-runtime";
+import {
+  parseHealthCheckConfig,
+  parseStopGracePeriod,
+  readConfiguredStrategy,
+  resolveDeploymentStrategy,
+} from "../services/docker/deploy-config";
 
 const createApplicationSchema = z.object({
   name: z.string().min(1),
@@ -186,6 +192,75 @@ export const applicationRouter = createTRPCRouter({
       // Never expose the stored registry password to the client
       const { registryPassword, ...safeApplication } = application;
       return safeApplication;
+    }),
+
+  /**
+   * The deploy strategy and health check this application will actually use.
+   *
+   * Read-only on purpose. The `deployment_strategy`, `health_check_*` and
+   * `stop_grace_period` columns are nullable and the resolution has several
+   * inputs an operator cannot see from the app row alone — the
+   * GS_ZERO_DOWNTIME kill switch, the preview-container rule, the
+   * persistent-storage guard, and the domain-based default. Showing the
+   * EFFECTIVE answer, with the reason, is what makes "why did my deploy take
+   * the old path?" answerable.
+   *
+   * `configurable: false` in the response means the storage for these settings
+   * has not been migrated yet, so the values shown are all derived defaults and
+   * a write endpoint would have nowhere to put anything.
+   */
+  deploymentSettings: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const application = await ctx.db.query.applications.findFirst({
+        where: eq(applications.id, input.id),
+        with: {
+          domains: true,
+          project: {
+            with: {
+              organization: {
+                with: { members: { where: eq(members.userId, ctx.user.id) } },
+              },
+            },
+          },
+        },
+      });
+
+      if (!application || (application.project?.organization?.members?.length ?? 0) === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Application not found or access denied",
+        });
+      }
+
+      const row = application as unknown as Record<string, unknown>;
+      const healthCheck = parseHealthCheckConfig(row);
+      const decision = resolveDeploymentStrategy({
+        configured: readConfiguredStrategy(row),
+        hasDomain: (application.domains?.length ?? 0) > 0,
+        isPreview: application.appName.includes("-preview-"),
+        hasPersistentStorage: !!application.persistentStoragePath,
+      });
+
+      return {
+        strategy: decision.strategy,
+        strategyReason: decision.reason,
+        stopGracePeriodSeconds: parseStopGracePeriod(row),
+        healthCheck: healthCheck
+          ? {
+              path: healthCheck.path,
+              port: healthCheck.port ?? null,
+              intervalSeconds: healthCheck.intervalSeconds,
+              timeoutSeconds: healthCheck.timeoutSeconds,
+              retries: healthCheck.retries,
+              startPeriodSeconds: healthCheck.startPeriodSeconds,
+              expectedStatus: healthCheck.expectedStatus,
+            }
+          : null,
+        /** null health check = the platform's built-in reachability probe. */
+        healthCheckMode: healthCheck ? ("configured" as const) : ("reachability-probe" as const),
+        configurable: "deploymentStrategy" in application || "deployment_strategy" in row,
+      };
     }),
 
   create: protectedProcedure
