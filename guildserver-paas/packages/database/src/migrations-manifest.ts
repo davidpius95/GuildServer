@@ -94,6 +94,7 @@ export const MIGRATIONS: MigrationManifestEntry[] = [
   { id: "0009_registry_credentials", file: "0009_registry_credentials.sql", family: "hand" },
   { id: "0010_billing_quotes_core", file: "0010_billing_quotes_core.sql", family: "hand" },
   { id: "0011_app_persistent_storage", file: "0011_app_persistent_storage.sql", family: "hand" },
+  { id: "0012_health_checks_and_deploy_strategy", file: "0012_health_checks_and_deploy_strategy.sql", family: "hand" },
 ];
 
 export function findMigration(id: string): MigrationManifestEntry | undefined {
