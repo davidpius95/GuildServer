@@ -271,22 +271,18 @@ describe('ProviderRouter', () => {
       expect(result.config).toEqual({}); // credentials must be redacted
     });
 
-    it('should set status to error when provider type is not implemented', async () => {
+    it('rejects an unimplemented provider type instead of storing it broken', async () => {
       const caller = providerRouter.createCaller(
         createAdminContext(adminUserId)
       );
 
-      const result = await caller.create({
-        name: 'My AWS',
-        type: 'aws-ecs',
-        config: {},
-      });
-
-      // Unimplemented providers should still be created but with error status
-      expect(result.name).toBe('My AWS');
-      expect(result.type).toBe('aws-ecs');
-      expect(result.status).toBe('error');
-      expect(result.healthMessage).toContain('not yet implemented');
+      // This previously succeeded, storing the provider with status 'error'.
+      // It could then be set as the organization default, and every deployment
+      // routed to it threw "not yet implemented" at deploy time instead of at
+      // configuration time. See the 'unimplemented provider types' block.
+      await expect(
+        caller.create({ name: 'My AWS', type: 'aws-ecs', config: {} }),
+      ).rejects.toThrow(/not implemented yet/);
     });
 
     it('should store provider in database with real config (not redacted)', async () => {
@@ -698,6 +694,60 @@ describe('ProviderRouter', () => {
   // ============================
   // Credential redaction (cross-cutting)
   // ============================
+  describe('unimplemented provider types', () => {
+    // The factory throws for these. Before, create() caught that, stored the
+    // provider with connectionStatus 'error', and let it be set as the org
+    // default — after which every deployment threw. Creation must refuse.
+    const unimplemented = [
+      'docker-remote',
+      'kubernetes',
+      'aws-ecs',
+      'gcp-cloudrun',
+      'azure-aci',
+      'hetzner',
+      'digitalocean',
+    ] as const;
+
+    for (const type of unimplemented) {
+      it(`refuses to create a "${type}" provider`, async () => {
+        await expect(
+          providerRouter
+            .createCaller(createAdminContext(adminUserId))
+            .create({ name: `test-${type}`, type, config: {}, isDefault: false }),
+        ).rejects.toThrow(/not implemented yet/);
+      });
+    }
+
+    it('persists nothing when creation is refused', async () => {
+      const caller = providerRouter.createCaller(createAdminContext(adminUserId));
+      await expect(
+        caller.create({ name: 'ghost', type: 'aws-ecs', config: {}, isDefault: false }),
+      ).rejects.toThrow();
+
+      const all = await caller.list();
+      expect(all.find((p: any) => p.name === 'ghost')).toBeUndefined();
+    });
+
+    it('names the supported types so the error is actionable', async () => {
+      await expect(
+        providerRouter
+          .createCaller(createAdminContext(adminUserId))
+          .create({ name: 'x', type: 'hetzner', config: {}, isDefault: false }),
+      ).rejects.toThrow(/docker-local/);
+    });
+
+    it('still allows the implemented types', async () => {
+      // Guards against over-correcting into refusing everything.
+      const created = await providerRouter.createCaller(createAdminContext(adminUserId)).create({
+        name: 'local-ok',
+        type: 'docker-local',
+        config: {},
+        isDefault: false,
+      });
+      expect(created.type).toBe('docker-local');
+    });
+  });
+
   describe('credential redaction', () => {
     it('should never expose config in any response', async () => {
       const sensitiveConfig = {
