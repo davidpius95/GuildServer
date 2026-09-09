@@ -11,7 +11,11 @@ const mockedVerifier = jest.mocked(domainVerifier);
 
 const createTestContext = (user?: any) => ({
   db,
-  user,
+  req: {} as any,
+  res: {} as any,
+  user: user ?? null,
+  isAuthenticated: !!user,
+  isAdmin: user?.role === 'admin',
 });
 
 describe('DomainRouter', () => {
@@ -27,6 +31,7 @@ describe('DomainRouter', () => {
       const result = await caller.add({
         applicationId: app.id,
         domain: 'custom.example.com',
+        method: 'redirect',
       });
 
       expect(result.domain).toBe('custom.example.com');
@@ -62,6 +67,7 @@ describe('DomainRouter', () => {
       const domain = await caller.add({
         applicationId: app.id,
         domain: 'custom.example.com',
+        method: 'redirect',
       });
 
       mockedVerifier.verifyRedirect.mockResolvedValueOnce({
@@ -89,6 +95,7 @@ describe('DomainRouter', () => {
       const domain = await caller.add({
         applicationId: app.id,
         domain: 'custom.example.com',
+        method: 'redirect',
       });
 
       mockedVerifier.verifyRedirect.mockResolvedValueOnce({
@@ -116,6 +123,7 @@ describe('DomainRouter', () => {
       await caller.add({
         applicationId: app.id,
         domain: 'custom.example.com',
+        method: 'redirect',
       });
 
       const statusList = await caller.getCertificateStatus({ applicationId: app.id });
@@ -135,6 +143,7 @@ describe('DomainRouter', () => {
       const domain = await caller.add({
         applicationId: app.id,
         domain: 'custom.example.com',
+        method: 'redirect',
       });
 
       const instructions = await caller.getInstructions({

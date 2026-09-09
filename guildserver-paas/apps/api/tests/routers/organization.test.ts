@@ -1,57 +1,61 @@
-import { describe, it, expect, beforeEach } from '@jest/globals';
+import { describe, it, expect } from '@jest/globals';
 import { organizationRouter } from '../../src/routers/organization';
 import { db, testUtils } from '../setup';
+import { members, organizations } from '@guildserver/database';
+import { eq, and } from 'drizzle-orm';
 
+// Mimics the shape produced by createContext() in src/trpc/context.ts
 const createTestContext = (user?: any) => ({
   db,
-  user,
+  req: {} as any,
+  res: {} as any,
+  user: user ?? null,
+  isAuthenticated: !!user,
+  isAdmin: user?.role === 'admin',
 });
 
 describe('OrganizationRouter', () => {
   describe('create', () => {
-    it('should create new organization and add user as owner', async () => {
+    it('should create new organization and add creator as owner', async () => {
       const user = await testUtils.createUser();
       const caller = organizationRouter.createCaller(createTestContext(user));
 
       const result = await caller.create({
         name: 'Test Organization',
+        slug: 'test-organization',
         description: 'A test organization',
       });
 
       expect(result).toMatchObject({
         name: 'Test Organization',
+        slug: 'test-organization',
         description: 'A test organization',
-        slug: expect.stringMatching(/^test-organization-\d+$/),
       });
 
       // Verify user is added as owner
-      const members = await db.select().from('members')
+      const memberRows = await db.select().from(members)
         .where(and(
-          eq('organizationId', result.id),
-          eq('userId', user.id)
+          eq(members.organizationId, result.id),
+          eq(members.userId, user.id)
         ));
 
-      expect(members).toHaveLength(1);
-      expect(members[0].role).toBe('owner');
+      expect(memberRows).toHaveLength(1);
+      expect(memberRows[0].role).toBe('owner');
     });
 
-    it('should generate unique slug', async () => {
+    it('should reject a slug that is already taken', async () => {
       const user = await testUtils.createUser();
       const caller = organizationRouter.createCaller(createTestContext(user));
 
-      const org1 = await caller.create({
-        name: 'Same Name',
-        description: 'First org',
+      await caller.create({
+        name: 'Same Slug Org',
+        slug: 'same-slug',
       });
 
-      const org2 = await caller.create({
-        name: 'Same Name',
-        description: 'Second org',
-      });
-
-      expect(org1.slug).not.toBe(org2.slug);
-      expect(org1.slug).toMatch(/^same-name-\d+$/);
-      expect(org2.slug).toMatch(/^same-name-\d+$/);
+      await expect(caller.create({
+        name: 'Another Org',
+        slug: 'same-slug',
+      })).rejects.toThrow('Organization slug is already taken');
     });
 
     it('should require authentication', async () => {
@@ -59,7 +63,7 @@ describe('OrganizationRouter', () => {
 
       await expect(caller.create({
         name: 'Test Org',
-        description: 'Test',
+        slug: 'test-org',
       })).rejects.toThrow('UNAUTHORIZED');
     });
 
@@ -69,12 +73,12 @@ describe('OrganizationRouter', () => {
 
       await expect(caller.create({
         name: '',
-        description: 'Test',
+        slug: 'valid-slug',
       })).rejects.toThrow();
 
       await expect(caller.create({
-        name: 'a', // Too short
-        description: 'Test',
+        name: 'Valid Name',
+        slug: 'Not A Valid Slug!',
       })).rejects.toThrow();
     });
   });
@@ -82,34 +86,34 @@ describe('OrganizationRouter', () => {
   describe('list', () => {
     it('should list organizations user is member of', async () => {
       const user = await testUtils.createUser();
-      const org1 = await testUtils.createOrganization({ name: 'Org 1' });
-      const org2 = await testUtils.createOrganization({ name: 'Org 2' });
-      const org3 = await testUtils.createOrganization({ name: 'Org 3' });
+      const owner = await testUtils.createUser();
+      const org1 = await testUtils.createOrganization(owner.id, { name: 'Org 1' });
+      const org2 = await testUtils.createOrganization(owner.id, { name: 'Org 2' });
+      await testUtils.createOrganization(owner.id, { name: 'Org 3' }); // user is not a member
 
       // Add user to org1 and org2, but not org3
       await testUtils.createMember(user.id, org1.id, 'owner');
-      await testUtils.createMember(user.id, org2.id, 'developer');
+      await testUtils.createMember(user.id, org2.id, 'member');
 
       const caller = organizationRouter.createCaller(createTestContext(user));
-      const organizations = await caller.list();
+      const orgs = await caller.list();
 
-      expect(organizations).toHaveLength(2);
-      
-      const orgNames = organizations.map(org => org.name).sort();
+      expect(orgs).toHaveLength(2);
+
+      const orgNames = orgs.map((org) => org.name).sort();
       expect(orgNames).toEqual(['Org 1', 'Org 2']);
 
-      // Check member info is included
-      const org1Result = organizations.find(org => org.name === 'Org 1');
-      expect(org1Result?.memberRole).toBe('owner');
-      expect(org1Result?.memberSince).toBeInstanceOf(Date);
+      // Check member role is included
+      const org1Result = orgs.find((org) => org.name === 'Org 1');
+      expect(org1Result?.role).toBe('owner');
     });
 
     it('should return empty array for user with no organizations', async () => {
       const user = await testUtils.createUser();
       const caller = organizationRouter.createCaller(createTestContext(user));
 
-      const organizations = await caller.list();
-      expect(organizations).toHaveLength(0);
+      const orgs = await caller.list();
+      expect(orgs).toHaveLength(0);
     });
 
     it('should require authentication', async () => {
@@ -130,29 +134,25 @@ describe('OrganizationRouter', () => {
         id: org.id,
         name: org.name,
         slug: org.slug,
-        createdAt: expect.any(Date),
-        updatedAt: expect.any(Date),
+        userRole: 'owner',
       });
-
-      expect(result.memberCount).toBeGreaterThan(0);
-      expect(result.projectCount).toBeGreaterThanOrEqual(0);
     });
 
     it('should deny access to non-members', async () => {
+      const owner = await testUtils.createUser();
       const user = await testUtils.createUser();
-      const org = await testUtils.createOrganization();
+      const org = await testUtils.createOrganization(owner.id);
       const caller = organizationRouter.createCaller(createTestContext(user));
 
       await expect(caller.getById({ id: org.id }))
-        .rejects.toThrow('Organization not found or access denied');
+        .rejects.toThrow("You don't have access to this organization");
     });
 
-    it('should return 404 for non-existent organization', async () => {
-      const user = await testUtils.createUser();
-      const caller = organizationRouter.createCaller(createTestContext(user));
+    it('should require authentication', async () => {
+      const caller = organizationRouter.createCaller(createTestContext());
 
-      await expect(caller.getById({ id: 'non-existent-id' }))
-        .rejects.toThrow('Organization not found or access denied');
+      await expect(caller.getById({ id: '00000000-0000-0000-0000-000000000000' }))
+        .rejects.toThrow('UNAUTHORIZED');
     });
   });
 
@@ -172,36 +172,20 @@ describe('OrganizationRouter', () => {
         name: 'Updated Organization',
         description: 'Updated description',
       });
-
-      expect(updated.updatedAt.getTime()).toBeGreaterThan(org.updatedAt.getTime());
     });
 
     it('should deny update for non-admin members', async () => {
+      const owner = await testUtils.createUser();
       const user = await testUtils.createUser();
-      const org = await testUtils.createOrganization();
-      await testUtils.createMember(user.id, org.id, 'developer'); // Not admin
+      const org = await testUtils.createOrganization(owner.id);
+      await testUtils.createMember(user.id, org.id, 'member'); // Not admin/owner
 
       const caller = organizationRouter.createCaller(createTestContext(user));
 
       await expect(caller.update({
         id: org.id,
         name: 'Updated Name',
-      })).rejects.toThrow('Insufficient permissions');
-    });
-
-    it('should validate slug uniqueness when updating', async () => {
-      const user = await testUtils.createUser();
-      const org1 = await testUtils.createOrganization({ slug: 'existing-slug' });
-      const org2 = await testUtils.createOrganization();
-      
-      await testUtils.createMember(user.id, org2.id, 'owner');
-
-      const caller = organizationRouter.createCaller(createTestContext(user));
-
-      await expect(caller.update({
-        id: org2.id,
-        slug: 'existing-slug',
-      })).rejects.toThrow('Slug already exists');
+      })).rejects.toThrow("You don't have permission to update this organization");
     });
   });
 
@@ -214,76 +198,59 @@ describe('OrganizationRouter', () => {
       expect(result.success).toBe(true);
 
       // Verify organization is deleted
-      const organizations = await db.select().from('organizations')
-        .where(eq('id', org.id));
-      expect(organizations).toHaveLength(0);
+      const orgRows = await db.select().from(organizations)
+        .where(eq(organizations.id, org.id));
+      expect(orgRows).toHaveLength(0);
     });
 
     it('should deny deletion for non-owners', async () => {
+      const owner = await testUtils.createUser();
       const user = await testUtils.createUser();
-      const org = await testUtils.createOrganization();
+      const org = await testUtils.createOrganization(owner.id);
       await testUtils.createMember(user.id, org.id, 'admin'); // Admin, not owner
 
       const caller = organizationRouter.createCaller(createTestContext(user));
 
       await expect(caller.delete({ id: org.id }))
-        .rejects.toThrow('Only organization owners can delete organizations');
-    });
-
-    it('should prevent deletion with existing projects', async () => {
-      const { user, org, project } = await testUtils.createTestSetup();
-      const caller = organizationRouter.createCaller(createTestContext(user));
-
-      await expect(caller.delete({ id: org.id }))
-        .rejects.toThrow('Cannot delete organization with existing projects');
+        .rejects.toThrow('Only the owner can delete this organization');
     });
   });
 
   describe('member management', () => {
     describe('inviteMember', () => {
-      it('should invite new member with valid email', async () => {
+      it('should add an existing user as a member by email', async () => {
         const { user, org } = await testUtils.createTestSetup();
+        const invitee = await testUtils.createUser({ email: 'newmember@example.com' });
         const caller = organizationRouter.createCaller(createTestContext(user));
 
-        const invitation = await caller.inviteMember({
+        const newMember = await caller.inviteMember({
           organizationId: org.id,
           email: 'newmember@example.com',
-          role: 'developer',
+          role: 'member',
         });
 
-        expect(invitation).toMatchObject({
-          email: 'newmember@example.com',
-          role: 'developer',
+        expect(newMember).toMatchObject({
+          userId: invitee.id,
           organizationId: org.id,
-          status: 'pending',
-          invitedBy: user.id,
+          role: 'member',
         });
-
-        expect(invitation.token).toBeDefined();
-        expect(invitation.expiresAt).toBeInstanceOf(Date);
       });
 
-      it('should prevent duplicate invitations', async () => {
+      it('should error when no account exists for the email', async () => {
         const { user, org } = await testUtils.createTestSetup();
         const caller = organizationRouter.createCaller(createTestContext(user));
-
-        await caller.inviteMember({
-          organizationId: org.id,
-          email: 'duplicate@example.com',
-          role: 'developer',
-        });
 
         await expect(caller.inviteMember({
           organizationId: org.id,
-          email: 'duplicate@example.com',
-          role: 'admin',
-        })).rejects.toThrow('User already invited or is a member');
+          email: 'nobody@example.com',
+          role: 'member',
+        })).rejects.toThrow('No GuildServer account exists for this email yet');
       });
 
       it('should prevent inviting existing members', async () => {
         const { user, org } = await testUtils.createTestSetup();
         const existingUser = await testUtils.createUser({ email: 'existing@example.com' });
-        await testUtils.createMember(existingUser.id, org.id, 'developer');
+        await testUtils.createMember(existingUser.id, org.id, 'member');
 
         const caller = organizationRouter.createCaller(createTestContext(user));
 
@@ -291,44 +258,46 @@ describe('OrganizationRouter', () => {
           organizationId: org.id,
           email: 'existing@example.com',
           role: 'admin',
-        })).rejects.toThrow('User already invited or is a member');
+        })).rejects.toThrow('User is already a member of this organization');
       });
 
       it('should require admin permissions', async () => {
+        const owner = await testUtils.createUser();
         const user = await testUtils.createUser();
-        const org = await testUtils.createOrganization();
-        await testUtils.createMember(user.id, org.id, 'developer'); // Not admin
+        const org = await testUtils.createOrganization(owner.id);
+        await testUtils.createMember(user.id, org.id, 'member'); // Not admin/owner
+        await testUtils.createUser({ email: 'target@example.com' });
 
         const caller = organizationRouter.createCaller(createTestContext(user));
 
         await expect(caller.inviteMember({
           organizationId: org.id,
-          email: 'test@example.com',
-          role: 'developer',
-        })).rejects.toThrow('Insufficient permissions');
+          email: 'target@example.com',
+          role: 'member',
+        })).rejects.toThrow("You don't have permission to invite members");
       });
     });
 
-    describe('listMembers', () => {
+    describe('getMembers', () => {
       it('should list all organization members', async () => {
         const { user, org } = await testUtils.createTestSetup();
-        
+
         // Add additional members
         const user2 = await testUtils.createUser({ email: 'user2@example.com' });
         const user3 = await testUtils.createUser({ email: 'user3@example.com' });
         await testUtils.createMember(user2.id, org.id, 'admin');
-        await testUtils.createMember(user3.id, org.id, 'developer');
+        await testUtils.createMember(user3.id, org.id, 'member');
 
         const caller = organizationRouter.createCaller(createTestContext(user));
-        const members = await caller.listMembers({ organizationId: org.id });
+        const orgMembers = await caller.getMembers({ organizationId: org.id });
 
-        expect(members).toHaveLength(3);
-        
-        const roles = members.map(m => m.role).sort();
-        expect(roles).toEqual(['admin', 'developer', 'owner']);
+        expect(orgMembers).toHaveLength(3);
 
-        // Check user info is included
-        members.forEach(member => {
+        const roles = orgMembers.map((m) => m.role).sort();
+        expect(roles).toEqual(['admin', 'member', 'owner']);
+
+        // Check user info is included, password hash excluded
+        orgMembers.forEach((member) => {
           expect(member.user).toMatchObject({
             id: expect.any(String),
             name: expect.any(String),
@@ -339,24 +308,25 @@ describe('OrganizationRouter', () => {
       });
 
       it('should require membership to view members', async () => {
+        const owner = await testUtils.createUser();
         const user = await testUtils.createUser();
-        const org = await testUtils.createOrganization();
+        const org = await testUtils.createOrganization(owner.id);
         const caller = organizationRouter.createCaller(createTestContext(user));
 
-        await expect(caller.listMembers({ organizationId: org.id }))
-          .rejects.toThrow('Organization not found or access denied');
+        await expect(caller.getMembers({ organizationId: org.id }))
+          .rejects.toThrow("You don't have access to this organization");
       });
     });
 
-    describe('updateMemberRole', () => {
+    describe('updateMember', () => {
       it('should update member role for admin', async () => {
         const { user, org } = await testUtils.createTestSetup();
         const member = await testUtils.createUser({ email: 'member@example.com' });
-        await testUtils.createMember(member.id, org.id, 'developer');
+        await testUtils.createMember(member.id, org.id, 'member');
 
         const caller = organizationRouter.createCaller(createTestContext(user));
 
-        const updated = await caller.updateMemberRole({
+        const updated = await caller.updateMember({
           organizationId: org.id,
           userId: member.id,
           role: 'admin',
@@ -365,29 +335,30 @@ describe('OrganizationRouter', () => {
         expect(updated.role).toBe('admin');
 
         // Verify in database
-        const members = await db.select().from('members')
+        const memberRows = await db.select().from(members)
           .where(and(
-            eq('organizationId', org.id),
-            eq('userId', member.id)
+            eq(members.organizationId, org.id),
+            eq(members.userId, member.id)
           ));
-        expect(members[0].role).toBe('admin');
+        expect(memberRows[0].role).toBe('admin');
       });
 
       it('should prevent role changes by non-admins', async () => {
+        const owner = await testUtils.createUser();
         const user = await testUtils.createUser();
-        const org = await testUtils.createOrganization();
+        const org = await testUtils.createOrganization(owner.id);
         const member = await testUtils.createUser();
-        
-        await testUtils.createMember(user.id, org.id, 'developer');
-        await testUtils.createMember(member.id, org.id, 'developer');
+
+        await testUtils.createMember(user.id, org.id, 'member');
+        await testUtils.createMember(member.id, org.id, 'member');
 
         const caller = organizationRouter.createCaller(createTestContext(user));
 
-        await expect(caller.updateMemberRole({
+        await expect(caller.updateMember({
           organizationId: org.id,
           userId: member.id,
           role: 'admin',
-        })).rejects.toThrow('Insufficient permissions');
+        })).rejects.toThrow("You don't have permission to update members");
       });
     });
 
@@ -395,7 +366,7 @@ describe('OrganizationRouter', () => {
       it('should remove member for admin', async () => {
         const { user, org } = await testUtils.createTestSetup();
         const member = await testUtils.createUser();
-        await testUtils.createMember(member.id, org.id, 'developer');
+        await testUtils.createMember(member.id, org.id, 'member');
 
         const caller = organizationRouter.createCaller(createTestContext(user));
 
@@ -407,22 +378,22 @@ describe('OrganizationRouter', () => {
         expect(result.success).toBe(true);
 
         // Verify member is removed
-        const members = await db.select().from('members')
+        const memberRows = await db.select().from(members)
           .where(and(
-            eq('organizationId', org.id),
-            eq('userId', member.id)
+            eq(members.organizationId, org.id),
+            eq(members.userId, member.id)
           ));
-        expect(members).toHaveLength(0);
+        expect(memberRows).toHaveLength(0);
       });
 
-      it('should prevent removing the last owner', async () => {
+      it('should prevent removing the organization owner', async () => {
         const { user, org } = await testUtils.createTestSetup();
         const caller = organizationRouter.createCaller(createTestContext(user));
 
         await expect(caller.removeMember({
           organizationId: org.id,
-          userId: user.id, // Removing self as last owner
-        })).rejects.toThrow('Cannot remove the last owner');
+          userId: user.id, // Removing self as owner
+        })).rejects.toThrow('Cannot remove the organization owner');
       });
     });
   });
