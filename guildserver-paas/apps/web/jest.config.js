@@ -11,9 +11,8 @@ const customJestConfig = {
   setupFilesAfterEnv: ['<rootDir>/tests/setup.tsx'],
   testEnvironment: 'jsdom',
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1',
-    // superjson is ESM-only and next/jest will not transform node_modules.
     '^superjson$': '<rootDir>/tests/mocks/superjson.ts',
+    '^@/(.*)$': '<rootDir>/src/$1',
   },
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',

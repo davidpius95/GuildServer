@@ -1,26 +1,28 @@
-/**
- * CommonJS stand-in for superjson.
- *
- * superjson 2.x publishes ESM only, and `next/jest` excludes node_modules from
- * transformation, so every component that reaches trpc-provider — which is most
- * pages — fails to parse under jest. The transport format is irrelevant to
- * component tests, so a pass-through is both sufficient and faster.
- */
+// `superjson` ships as ESM-only, and next/jest does not transform node_modules
+// by default. Rather than fight the transform pipeline, we swap in a minimal
+// CommonJS-compatible stand-in for tests. It only needs to round-trip plain
+// JSON-shaped values (strings, numbers, booleans, arrays, plain objects) —
+// everything our components and mocked tRPC responses actually send — so a
+// thin JSON-based serializer is sufficient here; it does not attempt to
+// replicate superjson's Date/Map/Set/BigInt support.
 const superjson = {
-  serialize: (v: unknown) => ({ json: v, meta: undefined }),
-  deserialize: (v: any) => (v && typeof v === "object" && "json" in v ? v.json : v),
-  stringify: (v: unknown) => JSON.stringify(v),
-  parse: (v: string) => JSON.parse(v),
-  registerCustom: () => {},
-  registerClass: () => {},
-  allowErrorProps: () => {},
+  serialize(value: unknown) {
+    return { json: value }
+  },
+  deserialize(payload: any) {
+    return payload?.json
+  },
+  stringify(value: unknown) {
+    return JSON.stringify(value)
+  },
+  parse(value: string) {
+    return JSON.parse(value)
+  },
+  registerClass() {},
+  registerSymbol() {},
+  registerCustom() {},
+  allowErrorProps() {},
 }
 
-export const serialize = superjson.serialize
-export const deserialize = superjson.deserialize
-export const stringify = superjson.stringify
-export const parse = superjson.parse
-export const registerCustom = superjson.registerCustom
-export const registerClass = superjson.registerClass
-export const allowErrorProps = superjson.allowErrorProps
 export default superjson
+export { superjson }

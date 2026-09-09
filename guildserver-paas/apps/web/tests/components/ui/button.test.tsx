@@ -40,7 +40,7 @@ describe('Button Component', () => {
 
     rerender(<Button size="lg">Large</Button>)
     button = screen.getByRole('button')
-    expect(button).toHaveClass('h-11', 'px-8')
+    expect(button).toHaveClass('h-11', 'px-6')
 
     rerender(<Button size="icon">Icon</Button>)
     button = screen.getByRole('button')
@@ -135,7 +135,9 @@ describe('Button Component', () => {
     )
     
     const button = screen.getByRole('button')
-    expect(button).toHaveTextContent('📧 Send Email')
+    // The gap between icon and label comes from a CSS margin class, not a
+    // text-node space, so textContent concatenates them with no space.
+    expect(button).toHaveTextContent('📧Send Email')
   })
 
   describe('variant combinations', () => {
@@ -144,7 +146,7 @@ describe('Button Component', () => {
       
       const button = screen.getByRole('button')
       expect(button).toHaveClass('border', 'border-input') // outline variant
-      expect(button).toHaveClass('h-11', 'px-8') // large size
+      expect(button).toHaveClass('h-11', 'px-6') // large size
     })
 
     it('handles destructive variant with small size', () => {

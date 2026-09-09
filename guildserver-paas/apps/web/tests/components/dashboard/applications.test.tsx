@@ -1,229 +1,186 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { describe, it, expect, jest } from '@jest/globals'
+import { screen, fireEvent, waitFor, waitForElementToBeRemoved } from '@testing-library/react'
+import { describe, it, expect } from '@jest/globals'
+import { rest } from 'msw'
 import ApplicationsPage from '../../../src/app/dashboard/applications/page'
+import { renderWithProviders } from '../../helpers/render'
+import { server, TEST_ORG_ID } from '../../mocks/server'
 
-// Mock the trpc provider
-const mockTrpc = {
-  application: {
-    list: {
-      useQuery: jest.fn(() => ({
-        data: [
-          {
-            id: '1',
-            name: 'api-gateway',
-            status: 'running',
-            environment: 'production',
-            lastDeploy: '2 hours ago',
-            url: 'https://api.company.com',
-            framework: 'Node.js',
-          },
-          {
-            id: '2',
-            name: 'web-dashboard',
-            status: 'running',
-            environment: 'production',
-            lastDeploy: '5 hours ago',
-            url: 'https://dashboard.company.com',  
-            framework: 'Next.js',
-          },
-        ],
-        isLoading: false,
-        error: null,
-      })),
-    },
-  },
-}
-
-// Mock the trpc context
-jest.mock('../../../src/components/trpc-provider', () => ({
-  trpc: mockTrpc,
-}))
+const APPS_URL = 'http://localhost:4000/trpc/application.listByOrg'
+const ORGS_URL = 'http://localhost:4000/trpc/organization.list'
 
 describe('ApplicationsPage', () => {
-  it('renders applications page with header', () => {
-    render(<ApplicationsPage />)
-    
+  it('renders the page header and primary action', async () => {
+    renderWithProviders(<ApplicationsPage />)
+
     expect(screen.getByText('Applications')).toBeInTheDocument()
-    expect(screen.getByText('Manage and deploy your applications')).toBeInTheDocument()
-    expect(screen.getByText('Deploy Application')).toBeInTheDocument()
+    expect(screen.getByText('Deploy and manage your applications')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /New Application/ })).toBeInTheDocument()
   })
 
-  it('displays application cards', () => {
-    render(<ApplicationsPage />)
-    
-    expect(screen.getByText('api-gateway')).toBeInTheDocument()
+  it('displays applications returned by the API', async () => {
+    renderWithProviders(<ApplicationsPage />)
+
+    expect(await screen.findByText('api-gateway')).toBeInTheDocument()
     expect(screen.getByText('web-dashboard')).toBeInTheDocument()
-    expect(screen.getByText('Node.js')).toBeInTheDocument()
-    expect(screen.getByText('Next.js')).toBeInTheDocument()
   })
 
-  it('shows application status badges', () => {
-    render(<ApplicationsPage />)
-    
+  it('shows a status badge per application', async () => {
+    renderWithProviders(<ApplicationsPage />)
+
+    await screen.findByText('api-gateway')
     const runningBadges = screen.getAllByText('running')
     expect(runningBadges).toHaveLength(2)
-    
-    const productionBadges = screen.getAllByText('production')
-    expect(productionBadges).toHaveLength(2)
   })
 
-  it('displays last deploy information', () => {
-    render(<ApplicationsPage />)
-    
-    expect(screen.getByText('2 hours ago')).toBeInTheDocument()
-    expect(screen.getByText('5 hours ago')).toBeInTheDocument()
+  it('shows the primary domain link for applications that have one', async () => {
+    renderWithProviders(<ApplicationsPage />)
+
+    await screen.findByText('web-dashboard')
+    const link = screen.getByRole('link', { name: /dashboard\.company\.com/ })
+    expect(link).toHaveAttribute('href', 'https://dashboard.company.com')
   })
 
-  it('filters applications based on search query', async () => {
-    render(<ApplicationsPage />)
-    
+  it('filters applications by name as the user types', async () => {
+    renderWithProviders(<ApplicationsPage />)
+
+    await screen.findByText('api-gateway')
+
     const searchInput = screen.getByPlaceholderText('Search applications...')
-    
     fireEvent.change(searchInput, { target: { value: 'api' } })
-    
+
     await waitFor(() => {
       expect(screen.getByText('api-gateway')).toBeInTheDocument()
       expect(screen.queryByText('web-dashboard')).not.toBeInTheDocument()
     })
   })
 
-  it('shows empty state when no applications match search', async () => {
-    render(<ApplicationsPage />)
-    
+  it('matches anywhere in the name, not just the start', async () => {
+    // Searching a prefix ('api' against 'api-gateway') cannot tell a substring
+    // match from a prefix match: swapping includes() for startsWith() in the
+    // page left the test above passing. This one searches mid-string so the
+    // distinction is actually asserted.
+    renderWithProviders(<ApplicationsPage />)
+
+    await screen.findByText('web-dashboard')
+
     const searchInput = screen.getByPlaceholderText('Search applications...')
-    
-    fireEvent.change(searchInput, { target: { value: 'nonexistent' } })
-    
+    fireEvent.change(searchInput, { target: { value: 'dash' } })
+
     await waitFor(() => {
-      expect(screen.getByText('No applications found')).toBeInTheDocument()
-      expect(screen.getByText('No applications match your search criteria')).toBeInTheDocument()
+      expect(screen.getByText('web-dashboard')).toBeInTheDocument()
+      expect(screen.queryByText('api-gateway')).not.toBeInTheDocument()
     })
   })
 
-  it('renders action buttons for each application', () => {
-    render(<ApplicationsPage />)
-    
-    const stopButtons = screen.getAllByText('Stop')
-    expect(stopButtons).toHaveLength(2)
-    
-    const settingsButtons = screen.getAllByLabelText(/Settings/)
-    expect(settingsButtons).toHaveLength(2)
+  it('shows a "no matches" empty state when the search has no results', async () => {
+    renderWithProviders(<ApplicationsPage />)
+
+    await screen.findByText('api-gateway')
+
+    const searchInput = screen.getByPlaceholderText('Search applications...')
+    fireEvent.change(searchInput, { target: { value: 'nonexistent' } })
+
+    await waitFor(() => {
+      expect(screen.getByText('No applications found')).toBeInTheDocument()
+      expect(
+        screen.getByText('No applications match your search criteria. Try a different search term.')
+      ).toBeInTheDocument()
+    })
   })
 
-  it('shows visit button for applications with URL', () => {
-    render(<ApplicationsPage />)
-    
-    const visitButtons = screen.getAllByText('Visit')
-    expect(visitButtons).toHaveLength(2)
+  it('renders per-application deploy/restart/delete actions', async () => {
+    renderWithProviders(<ApplicationsPage />)
+
+    await screen.findByText('api-gateway')
+
+    expect(screen.getAllByRole('button', { name: 'Deploy' })).toHaveLength(2)
+    expect(screen.getAllByTitle('Restart')).toHaveLength(2)
+    expect(screen.getAllByTitle('Delete')).toHaveLength(2)
   })
 
-  it('handles loading state', () => {
-    const mockTrpcLoading = {
-      application: {
-        list: {
-          useQuery: jest.fn(() => ({
-            data: undefined,
-            isLoading: true,
-            error: null,
-          })),
-        },
-      },
-    }
+  it('shows the loading skeleton while the applications query is in flight', async () => {
+    // A short (not infinite) delay: long enough that the skeleton is still
+    // showing when we assert, but short enough that the request settles
+    // and doesn't leave a dangling connection after the test ends.
+    server.use(
+      rest.get(APPS_URL, (req, res, ctx) => res(ctx.delay(50), ctx.json({ result: { data: [] } })))
+    )
 
-    jest.doMock('../../../src/components/trpc-provider', () => ({
-      trpc: mockTrpcLoading,
-    }))
+    renderWithProviders(<ApplicationsPage />)
 
-    render(<ApplicationsPage />)
-    
-    // Would show loading state - implementation depends on your loading UI
+    expect(await screen.findByLabelText('Loading applications')).toBeInTheDocument()
+    await waitForElementToBeRemoved(() => screen.queryByLabelText('Loading applications'))
+  })
+
+  it('degrades to the empty state (without crashing) if the applications query errors', async () => {
+    server.use(
+      rest.get(APPS_URL, (req, res, ctx) =>
+        res(ctx.status(500), ctx.json({ error: { message: 'Internal Server Error' } }))
+      )
+    )
+
+    renderWithProviders(<ApplicationsPage />)
+
+    // The page still renders its header even though the list request failed.
     expect(screen.getByText('Applications')).toBeInTheDocument()
+    // There is currently no dedicated error state for a failed application
+    // list — it just falls back to the "no applications" empty state. See
+    // the report for a note on this gap.
+    expect(await screen.findByText('No applications yet')).toBeInTheDocument()
   })
 
-  it('handles error state', () => {
-    const mockTrpcError = {
-      application: {
-        list: {
-          useQuery: jest.fn(() => ({
-            data: undefined,
-            isLoading: false,
-            error: { message: 'Failed to fetch applications' },
-          })),
-        },
-      },
-    }
+  describe('no organization yet', () => {
+    it('prompts the user to create an organization before showing the app list', async () => {
+      server.use(
+        rest.get(ORGS_URL, (req, res, ctx) => res(ctx.json({ result: { data: [] } })))
+      )
 
-    jest.doMock('../../../src/components/trpc-provider', () => ({
-      trpc: mockTrpcError,
-    }))
+      renderWithProviders(<ApplicationsPage />)
 
-    render(<ApplicationsPage />)
-    
-    // Error handling implementation depends on your error UI
-    expect(screen.getByText('Applications')).toBeInTheDocument()
-  })
-
-  it('displays framework information correctly', () => {
-    render(<ApplicationsPage />)
-    
-    // Check that framework information is displayed
-    expect(screen.getByText('Node.js')).toBeInTheDocument()
-    expect(screen.getByText('Next.js')).toBeInTheDocument()
-  })
-
-  it('shows application URLs when available', () => {
-    render(<ApplicationsPage />)
-    
-    // Both applications have URLs, so Visit buttons should be present
-    const visitButtons = screen.getAllByText('Visit')
-    expect(visitButtons).toHaveLength(2)
+      expect(await screen.findByText('Create an organization first')).toBeInTheDocument()
+      expect(
+        screen.getByText('You need an organization and project before deploying applications')
+      ).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: /Get Started/ })).toHaveAttribute(
+        'href',
+        '/dashboard/onboarding'
+      )
+    })
   })
 
   describe('empty state', () => {
-    it('shows empty state when no applications exist', () => {
-      const mockTrpcEmpty = {
-        application: {
-          list: {
-            useQuery: jest.fn(() => ({
-              data: [],
-              isLoading: false,
-              error: null,
-            })),
-          },
-        },
-      }
+    it('shows an empty state when the organization has no applications', async () => {
+      server.use(rest.get(APPS_URL, (req, res, ctx) => res(ctx.json({ result: { data: [] } }))))
 
-      jest.doMock('../../../src/components/trpc-provider', () => ({
-        trpc: mockTrpcEmpty,
-      }))
+      renderWithProviders(<ApplicationsPage />)
 
-      render(<ApplicationsPage />)
-      
-      expect(screen.getByText('No applications found')).toBeInTheDocument()
-      expect(screen.getByText('Get started by deploying your first application')).toBeInTheDocument()
+      expect(await screen.findByText('No applications yet')).toBeInTheDocument()
+      expect(
+        screen.getByText('Get started by deploying your first application from Docker or Git.')
+      ).toBeInTheDocument()
     })
   })
 
   describe('accessibility', () => {
-    it('has proper heading structure', () => {
-      render(<ApplicationsPage />)
-      
-      const mainHeading = screen.getByRole('heading', { level: 1 })
+    it('has a single top-level heading', async () => {
+      renderWithProviders(<ApplicationsPage />)
+
+      const mainHeading = await screen.findByRole('heading', { level: 1 })
       expect(mainHeading).toHaveTextContent('Applications')
     })
 
-    it('has accessible search input', () => {
-      render(<ApplicationsPage />)
-      
-      const searchInput = screen.getByRole('searchbox')
-      expect(searchInput).toHaveAttribute('placeholder', 'Search applications...')
+    it('has a labelled, discoverable search field', async () => {
+      renderWithProviders(<ApplicationsPage />)
+
+      const searchInput = await screen.findByPlaceholderText('Search applications...')
+      expect(searchInput.tagName).toBe('INPUT')
     })
 
-    it('has accessible buttons', () => {
-      render(<ApplicationsPage />)
-      
-      const deployButton = screen.getByRole('button', { name: /Deploy Application/ })
-      expect(deployButton).toBeInTheDocument()
+    it('has an accessible primary action button', async () => {
+      renderWithProviders(<ApplicationsPage />)
+
+      const newAppButton = await screen.findByRole('button', { name: /New Application/ })
+      expect(newAppButton).toBeInTheDocument()
     })
   })
-});
+})
