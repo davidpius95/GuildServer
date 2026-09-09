@@ -113,7 +113,7 @@ describe('ProviderRouter', () => {
   describe('listAvailable', () => {
     it('should return all 9 provider types', async () => {
       const caller = providerRouter.createCaller(
-        createUserContext(regularUserId)
+        createAdminContext(adminUserId)
       );
 
       const result = await caller.listAvailable();
@@ -134,7 +134,7 @@ describe('ProviderRouter', () => {
 
     it('should mark docker-local and proxmox as implemented', async () => {
       const caller = providerRouter.createCaller(
-        createUserContext(regularUserId)
+        createAdminContext(adminUserId)
       );
 
       const result = await caller.listAvailable();
@@ -161,7 +161,7 @@ describe('ProviderRouter', () => {
   describe('list', () => {
     it('should return empty array when no providers exist', async () => {
       const caller = providerRouter.createCaller(
-        createUserContext(regularUserId)
+        createAdminContext(adminUserId)
       );
 
       const result = await caller.list();
@@ -179,7 +179,7 @@ describe('ProviderRouter', () => {
       });
 
       const caller = providerRouter.createCaller(
-        createUserContext(regularUserId)
+        createAdminContext(adminUserId)
       );
 
       const result = await caller.list();
@@ -208,7 +208,7 @@ describe('ProviderRouter', () => {
       ]);
 
       const caller = providerRouter.createCaller(
-        createUserContext(regularUserId)
+        createAdminContext(adminUserId)
       );
 
       const result = await caller.list();
@@ -385,7 +385,7 @@ describe('ProviderRouter', () => {
         .returning();
 
       const caller = providerRouter.createCaller(
-        createUserContext(regularUserId)
+        createAdminContext(adminUserId)
       );
 
       const result = await caller.getById({ id: provider.id });
@@ -398,7 +398,7 @@ describe('ProviderRouter', () => {
 
     it('should throw NOT_FOUND for non-existent provider', async () => {
       const caller = providerRouter.createCaller(
-        createUserContext(regularUserId)
+        createAdminContext(adminUserId)
       );
 
       await expect(
@@ -723,16 +723,13 @@ describe('ProviderRouter', () => {
       expect(JSON.stringify(created)).not.toContain('super-secret');
 
       // Verify list response has empty config
-      const userCaller = providerRouter.createCaller(
-        createUserContext(regularUserId)
-      );
-      const listed = await userCaller.list();
+      const listed = await adminCaller.list();
       const found = listed.find((p) => p.id === created.id);
       expect(found?.config).toEqual({});
       expect(JSON.stringify(found)).not.toContain('super-secret');
 
       // Verify getById response has empty config
-      const fetched = await userCaller.getById({ id: created.id });
+      const fetched = await adminCaller.getById({ id: created.id });
       expect(fetched.config).toEqual({});
       expect(JSON.stringify(fetched)).not.toContain('super-secret');
 
@@ -754,9 +751,6 @@ describe('ProviderRouter', () => {
       const adminCaller = providerRouter.createCaller(
         createAdminContext(adminUserId)
       );
-      const userCaller = providerRouter.createCaller(
-        createUserContext(regularUserId)
-      );
 
       // 1. Create
       const created = await adminCaller.create({
@@ -769,11 +763,11 @@ describe('ProviderRouter', () => {
       expect(created.name).toBe('Lifecycle Provider');
 
       // 2. Read (list)
-      const list1 = await userCaller.list();
+      const list1 = await adminCaller.list();
       expect(list1.some((p) => p.id === created.id)).toBe(true);
 
       // 3. Read (getById)
-      const fetched = await userCaller.getById({ id: created.id });
+      const fetched = await adminCaller.getById({ id: created.id });
       expect(fetched.name).toBe('Lifecycle Provider');
 
       // 4. Update
@@ -794,12 +788,12 @@ describe('ProviderRouter', () => {
       expect(deleted.success).toBe(true);
 
       // 7. Verify deletion
-      const list2 = await userCaller.list();
+      const list2 = await adminCaller.list();
       expect(list2.some((p) => p.id === created.id)).toBe(false);
 
       // 8. getById should now throw
       await expect(
-        userCaller.getById({ id: created.id })
+        adminCaller.getById({ id: created.id })
       ).rejects.toThrow('Provider not found');
     });
   });
