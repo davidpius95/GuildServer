@@ -1,0 +1,45 @@
+# Ephemeral infrastructure for running the test suites.
+#
+# Deliberately separate from docker-compose.yml / docker-compose.prod.yml: on a
+# single-node install those describe the *live* stack, and pointing a suite that
+# truncates tables at them would destroy customer data. This file binds to
+# loopback-only, non-default ports and its own compose project name so it can
+# never collide with, or be mistaken for, a running install.
+#
+#   docker compose -p guildserver-test -f docker-compose.test.yml up -d
+#   docker compose -p guildserver-test -f docker-compose.test.yml down -v
+
+services:
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: guildserver-postgres-test
+    environment:
+      POSTGRES_DB: guildserver_test
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+    ports:
+      - "127.0.0.1:5433:5432"
+    tmpfs:
+      # Data lives in RAM: a test database should never survive a reboot, and
+      # this keeps the suite fast.
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d guildserver_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    labels:
+      gs.test-owned: "true"
+
+  redis-test:
+    image: redis:7-alpine
+    container_name: guildserver-redis-test
+    ports:
+      - "127.0.0.1:6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    labels:
+      gs.test-owned: "true"
