@@ -70,7 +70,7 @@ export const infrastructureRouter = createTRPCRouter({
    * Queries the Proxmox VE API in real-time. Returns both raw numbers
    * and human-readable formatted values for frontend display.
    */
-  getNodeResources: protectedProcedure
+  getNodeResources: adminProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const { client, config, provider } = await resolveProxmoxProvider(ctx.db, input.id);
@@ -118,7 +118,7 @@ export const infrastructureRouter = createTRPCRouter({
    * Returns container ID, name, status, and resource usage for each LXC.
    * Useful for the admin UI to see what's running on a node.
    */
-  listLxcContainers: protectedProcedure
+  listLxcContainers: adminProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const { client, config, provider } = await resolveProxmoxProvider(ctx.db, input.id);
@@ -169,7 +169,7 @@ export const infrastructureRouter = createTRPCRouter({
    * Used by the setup wizard to let admins choose which storage pool
    * to use for LXC rootfs.
    */
-  listStorages: protectedProcedure
+  listStorages: adminProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const { client, config, provider } = await resolveProxmoxProvider(ctx.db, input.id);
@@ -211,7 +211,7 @@ export const infrastructureRouter = createTRPCRouter({
    * Searches the provider's configured default storage (or a specified
    * storage) for CT templates (vztmpl). Used by the setup wizard.
    */
-  listTemplates: protectedProcedure
+  listTemplates: adminProcedure
     .input(
       z.object({
         id: z.string().uuid(),
@@ -460,7 +460,7 @@ export const infrastructureRouter = createTRPCRouter({
    * Proxmox node's API for current resource usage. Useful for the
    * infrastructure dashboard.
    */
-  overview: protectedProcedure.query(async ({ ctx }) => {
+  overview: adminProcedure.query(async ({ ctx }) => {
     const providers = await ctx.db.query.computeProviders.findMany({
       orderBy: (cp, { desc }) => [desc(cp.createdAt)],
     });
