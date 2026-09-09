@@ -10,7 +10,8 @@ const createJestConfig = nextJest({
 const customJestConfig = {
   setupFilesAfterEnv: ['<rootDir>/tests/setup.tsx'],
   testEnvironment: 'jsdom',
-  moduleNameMapping: {
+  moduleNameMapper: {
+    '^superjson$': '<rootDir>/tests/mocks/superjson.ts',
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   collectCoverageFrom: [
