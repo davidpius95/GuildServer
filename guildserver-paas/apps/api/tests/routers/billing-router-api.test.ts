@@ -1,5 +1,6 @@
 const createBillingQuote = jest.fn();
 const startFlutterwaveCharge = jest.fn();
+const startFlutterwaveCheckoutSession = jest.fn();
 const isStripeConfigured = jest.fn();
 const isFlutterwaveV4Configured = jest.fn();
 
@@ -17,6 +18,7 @@ jest.mock("../../src/services/billing/flutterwave-v4-client", () => ({
 
 jest.mock("../../src/services/billing/flutterwave-v4", () => ({
   createFlutterwaveCharge: startFlutterwaveCharge,
+  createFlutterwaveCheckoutSession: startFlutterwaveCheckoutSession,
   createVirtualAccount: jest.fn(),
   listVirtualAccounts: jest.fn(),
   listBanks: jest.fn(),
@@ -77,6 +79,7 @@ describe("billing router API", () => {
     isFlutterwaveV4Configured.mockReturnValue(true);
     createBillingQuote.mockResolvedValue({ id: "quote-1" });
     startFlutterwaveCharge.mockResolvedValue({ paymentTransactionId: "payment-1", reference: "GS-INVOICE" });
+    startFlutterwaveCheckoutSession.mockResolvedValue({ paymentTransactionId: "payment-1", reference: "GS-INVOICE", checkoutUrl: "https://checkout.flutterwave.com/session" });
   });
 
   it("reports configured payment providers without exposing secrets", async () => {
@@ -127,7 +130,7 @@ describe("billing router API", () => {
     ).rejects.toThrow("Only organization owners or admins can manage billing");
   });
 
-  it("starts Flutterwave payment for the remaining invoice balance", async () => {
+  it("starts a Flutterwave checkout session for card payment of the remaining invoice balance", async () => {
     const caller = createCaller(createDb({ role: "owner", userId: "user-1", organizationId: "22222222-2222-4222-8222-222222222222" }));
 
     await caller.payInvoiceWithFlutterwave({
@@ -136,7 +139,9 @@ describe("billing router API", () => {
       paymentMethod: "card",
     });
 
-    expect(startFlutterwaveCharge).toHaveBeenCalledWith(
+    // "card" payments go through the hosted checkout session flow, not the
+    // direct charge flow (see src/routers/billing.ts payInvoiceWithFlutterwave).
+    expect(startFlutterwaveCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({
         organizationId: "22222222-2222-4222-8222-222222222222",
         invoiceId: "11111111-1111-4111-8111-111111111111",
@@ -146,5 +151,29 @@ describe("billing router API", () => {
         paymentMethod: "card",
       }),
     );
+    expect(startFlutterwaveCharge).not.toHaveBeenCalled();
+  });
+
+  it("starts a direct Flutterwave charge for mobile money payment of the remaining invoice balance", async () => {
+    const caller = createCaller(createDb({ role: "owner", userId: "user-1", organizationId: "22222222-2222-4222-8222-222222222222" }));
+
+    await caller.payInvoiceWithFlutterwave({
+      organizationId: "22222222-2222-4222-8222-222222222222",
+      invoiceId: "11111111-1111-4111-8111-111111111111",
+      paymentMethod: "mobile_money",
+      mobileMoney: { network: "MTN", phoneNumber: "08012345678" },
+    });
+
+    expect(startFlutterwaveCharge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "22222222-2222-4222-8222-222222222222",
+        invoiceId: "11111111-1111-4111-8111-111111111111",
+        amountCents: 100000,
+        currency: "ngn",
+        purpose: "invoice",
+        paymentMethod: "mobile_money",
+      }),
+    );
+    expect(startFlutterwaveCheckoutSession).not.toHaveBeenCalled();
   });
 });
