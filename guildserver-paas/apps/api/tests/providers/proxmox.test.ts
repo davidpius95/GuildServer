@@ -22,6 +22,35 @@ jest.mock('drizzle-orm', () => ({
 // Mock the ProxmoxClient before importing ProxmoxProvider
 jest.mock('../../src/services/proxmox-client');
 
+// Mock ssh2 so bootstrapDockerViaSSH() never opens a real network connection.
+// Without this, deploy() calls sshExec() which attempts a real TCP connection
+// to the fake LXC IP in testConfig and hangs until it times out, blowing past
+// Jest's 10s test timeout.
+jest.mock('ssh2', () => {
+  const { EventEmitter } = require('events');
+  class MockClient extends EventEmitter {
+    connect() {
+      // Emit "ready" asynchronously so listeners registered after
+      // construction (but before connect()) still receive it.
+      process.nextTick(() => this.emit('ready'));
+      return this;
+    }
+    exec(_command: string, callback: (err: any, stream: any) => void) {
+      const stream = new EventEmitter() as any;
+      stream.stderr = new EventEmitter();
+      process.nextTick(() => {
+        stream.emit('data', Buffer.from('BOOTSTRAP_OK\n'));
+        stream.emit('close', 0);
+      });
+      callback(null, stream);
+    }
+    end() {
+      // no-op
+    }
+  }
+  return { Client: MockClient };
+});
+
 // Mock the logger to suppress output during tests
 jest.mock('../../src/utils/logger', () => ({
   logger: {

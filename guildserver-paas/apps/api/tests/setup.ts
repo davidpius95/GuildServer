@@ -83,8 +83,8 @@ export const testUtils = {
   createUser: async (overrides: Record<string, any> = {}) => {
     const defaultUser = {
       name: 'Test User',
-      email: `test-${Date.now()}@example.com`,
-      passwordHash: '$2a$10$testhashedpassword',
+      email: `test-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`,
+      password: '$2a$10$testhashedpassword',
       ...overrides,
     };
 
