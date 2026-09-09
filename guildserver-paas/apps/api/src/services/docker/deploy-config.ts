@@ -31,7 +31,20 @@ export const DEFAULT_STRATEGY_WHEN_UNSET = {
   withoutDomain: "recreate",
 } as const satisfies Record<string, DeploymentStrategy>;
 
-/** Global kill switch. `GS_ZERO_DOWNTIME=0` forces every deploy back to `recreate`. */
+/**
+ * Global switch for rolling deploys.
+ *
+ *   unset / "0"  every deploy takes the legacy recreate path
+ *   "1"          apps may use rolling, per the precedence in
+ *                resolveDeploymentStrategy
+ *
+ * Default-off is deliberate. Installs deploy from main automatically and
+ * unattended, so a merge that silently changed how every domained app is
+ * replaced would be a live behaviour change nobody chose. An explicit per-app
+ * `deployment_strategy = 'rolling'` still requires this switch: one env var
+ * turns the whole feature off during an incident, which is worth more than the
+ * convenience of a per-app override that survives it.
+ */
 export const ZERO_DOWNTIME_ENV = "GS_ZERO_DOWNTIME";
 
 /**
@@ -224,7 +237,7 @@ export interface StrategyDecision {
  * Decide how this deploy replaces the running container.
  *
  * Precedence, safety first:
- *   1. `GS_ZERO_DOWNTIME=0` — global kill switch, no exceptions.
+ *   1. `GS_ZERO_DOWNTIME` not set to "1" — feature off, no exceptions.
  *   2. Preview containers — scoped per branch, short-lived, and nothing durable
  *      points at them; keeping them on the legacy path preserves the existing
  *      `appNameFilter` semantics untouched.
@@ -235,8 +248,11 @@ export interface StrategyDecision {
 export function resolveDeploymentStrategy(input: StrategyInput): StrategyDecision {
   const env = input.env ?? process.env;
 
-  if (env[ZERO_DOWNTIME_ENV] === "0") {
-    return { strategy: "recreate", reason: `${ZERO_DOWNTIME_ENV}=0 kill switch is set` };
+  if (env[ZERO_DOWNTIME_ENV] !== "1") {
+    return {
+      strategy: "recreate",
+      reason: `rolling deploys are off (set ${ZERO_DOWNTIME_ENV}=1 to enable)`,
+    };
   }
 
   if (input.isPreview) {

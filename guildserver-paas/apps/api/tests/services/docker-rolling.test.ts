@@ -200,7 +200,8 @@ describe('rolling deploy', () => {
     mockCheckContainerHealth.mockResolvedValue(healthy);
     // Zero out the Traefik convergence pause so tests don't sit in a sleep.
     process.env.GS_TRAEFIK_CONVERGE_MS = '0';
-    delete process.env.GS_ZERO_DOWNTIME;
+    // Rolling deploys are opt-in; this suite is about the rolling path.
+    process.env.GS_ZERO_DOWNTIME = '1';
     delete process.env.CLOUDFLARE_TUNNEL;
   });
 
@@ -404,6 +405,21 @@ describe('legacy recreate path', () => {
   afterEach(() => {
     process.env = { ...savedEnv };
   });
+
+  it('takes the legacy path when GS_ZERO_DOWNTIME is unset', async () => {
+    // The default. A merge must not silently change how apps are replaced.
+    delete process.env.GS_ZERO_DOWNTIME;
+    const { docker, events } = makeFakeDocker({ existing: [incumbent(matchingTraefikLabels)] });
+    const result = await deployContainer(baseOpts(), docker);
+
+    expect(result.strategy).toBe('recreate');
+    const creates = events.filter((e) => e.type === 'create');
+    expect(creates).toHaveLength(1);
+    expect(events.findIndex((e) => e.type === 'remove' && e.id === 'incumbent-1')).toBeLessThan(
+      events.indexOf(creates[0]),
+    );
+    expect(mockCheckContainerHealth).not.toHaveBeenCalled();
+  }, 30000);
 
   it('GS_ZERO_DOWNTIME=0 takes the legacy path: remove first, then create', async () => {
     process.env.GS_ZERO_DOWNTIME = '0';

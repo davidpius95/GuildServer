@@ -185,7 +185,14 @@ describe('readConfiguredStrategy', () => {
 });
 
 describe('resolveDeploymentStrategy', () => {
-  const base = { hasDomain: true, isPreview: false, hasPersistentStorage: false, env: {} as NodeJS.ProcessEnv };
+  // Rolling deploys are opt-in, so the shared base turns the feature on and
+  // the off-by-default behaviour gets its own block below.
+  const base = {
+    hasDomain: true,
+    isPreview: false,
+    hasPersistentStorage: false,
+    env: { GS_ZERO_DOWNTIME: '1' } as NodeJS.ProcessEnv,
+  };
 
   it('defaults to rolling for an app with a domain', () => {
     const decision = resolveDeploymentStrategy({ ...base, configured: null });
@@ -209,7 +216,7 @@ describe('resolveDeploymentStrategy', () => {
     expect(resolveDeploymentStrategy({ ...base, configured: 'blue-green' }).strategy).toBe('rolling');
   });
 
-  describe('GS_ZERO_DOWNTIME=0 kill switch', () => {
+  describe('GS_ZERO_DOWNTIME switch', () => {
     it('forces recreate even when the app explicitly asks for rolling', () => {
       const decision = resolveDeploymentStrategy({
         ...base,
@@ -217,16 +224,32 @@ describe('resolveDeploymentStrategy', () => {
         env: { GS_ZERO_DOWNTIME: '0' },
       });
       expect(decision.strategy).toBe('recreate');
-      expect(decision.reason).toMatch(/kill switch/);
+      expect(decision.reason).toMatch(/rolling deploys are off/);
     });
 
-    it('does not trip on other values', () => {
+    it('is off when unset, so a merge cannot change deploy behaviour silently', () => {
+      // Installs deploy from main unattended. Rolling has to be chosen, not
+      // inherited: unset must mean the legacy path even for a domained app.
+      const decision = resolveDeploymentStrategy({ ...base, configured: null, env: {} });
+      expect(decision.strategy).toBe('recreate');
+      expect(decision.reason).toMatch(/set GS_ZERO_DOWNTIME=1/);
+    });
+
+    it('is off when unset even if the app explicitly asks for rolling', () => {
+      expect(
+        resolveDeploymentStrategy({ ...base, configured: 'rolling', env: {} }).strategy,
+      ).toBe('recreate');
+    });
+
+    it('enables rolling only for the exact value "1"', () => {
       expect(
         resolveDeploymentStrategy({ ...base, configured: null, env: { GS_ZERO_DOWNTIME: '1' } }).strategy,
       ).toBe('rolling');
-      expect(
-        resolveDeploymentStrategy({ ...base, configured: null, env: {} }).strategy,
-      ).toBe('rolling');
+      for (const value of ['true', 'yes', 'on', '2', '']) {
+        expect(
+          resolveDeploymentStrategy({ ...base, configured: null, env: { GS_ZERO_DOWNTIME: value } }).strategy,
+        ).toBe('recreate');
+      }
     });
   });
 
@@ -245,7 +268,7 @@ describe('resolveDeploymentStrategy', () => {
       ...base,
       hasPersistentStorage: true,
       configured: 'rolling',
-      env: { GS_ZERO_DOWNTIME_SHARED_VOLUME: '1' },
+      env: { GS_ZERO_DOWNTIME: '1', GS_ZERO_DOWNTIME_SHARED_VOLUME: '1' },
     });
     expect(optedIn.strategy).toBe('rolling');
   });
