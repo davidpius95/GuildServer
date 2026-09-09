@@ -89,6 +89,10 @@ export interface DeploymentStrategy {
 class CICDService {
   private pipelines: Map<string, Pipeline> = new Map();
   private executions: Map<string, PipelineExecution> = new Map();
+  // Monotonic counter appended to execution IDs so two executions created
+  // within the same millisecond (e.g. triggerPipeline -> retryExecution)
+  // never collide on `Date.now()` alone.
+  private executionIdCounter = 0;
 
   async createPipeline(config: {
     name: string;
@@ -174,7 +178,7 @@ class CICDService {
       throw new Error("Pipeline is not active");
     }
 
-    const executionId = `execution-${Date.now()}`;
+    const executionId = `execution-${Date.now()}-${this.executionIdCounter++}`;
     const execution: PipelineExecution = {
       id: executionId,
       pipelineId,
@@ -194,8 +198,14 @@ class CICDService {
     this.executions.set(execution.id, execution);
     logger.info("Pipeline execution triggered", { pipelineId, executionId: execution.id });
 
-    // Start execution asynchronously
-    this.executePipeline(execution.id);
+    // Start execution asynchronously. This must be deferred to the next
+    // tick — executePipeline() is an async function whose body (including
+    // the synchronous `execution.status = "running"` at its top) would
+    // otherwise run immediately, before this function returns, so the
+    // caller would never observe the "queued" status.
+    setImmediate(() => {
+      this.executePipeline(execution.id);
+    });
 
     return execution;
   }

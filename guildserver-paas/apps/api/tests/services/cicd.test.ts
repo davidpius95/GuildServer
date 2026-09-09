@@ -1,9 +1,19 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import { cicdService } from '../../src/services/cicd';
+
+// `cicdService` is a module-level singleton holding pipelines/executions in
+// memory. Several tests below create pipelines against the same repository
+// URL and branch, so without resetting the singleton between tests, a
+// webhook test would also match pipelines left over from earlier tests.
+// jest.resetModules() + a fresh require() per test isolates each test's
+// service instance.
+let cicdService: typeof import('../../src/services/cicd').cicdService;
 
 describe('CICDService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.resetModules();
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    cicdService = require('../../src/services/cicd').cicdService;
   });
 
   describe('createPipeline', () => {
