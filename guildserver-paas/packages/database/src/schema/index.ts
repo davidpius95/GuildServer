@@ -1074,7 +1074,11 @@ export const usageRecords = pgTable("usage_records", {
 export const paymentMethods = pgTable("payment_methods", {
   id: uuid("id").primaryKey().defaultRandom(),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
-  stripePaymentMethodId: varchar("stripe_payment_method_id", { length: 255 }).notNull(),
+  // Nullable: migration 0004 drops the NOT NULL deliberately, because
+  // Flutterwave and crypto payment methods have no Stripe identifier. The
+  // schema declared it NOT NULL anyway, so Drizzle typed it as required and
+  // disagreed with every deployed database.
+  stripePaymentMethodId: varchar("stripe_payment_method_id", { length: 255 }),
   type: varchar("type", { length: 50 }).default("card"),
   cardBrand: varchar("card_brand", { length: 50 }),
   cardLast4: varchar("card_last4", { length: 4 }),

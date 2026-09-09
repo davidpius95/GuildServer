@@ -111,6 +111,27 @@ jobs:
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/guildserver_test
 
+      # Catches the class of bug where a column is declared in schema/index.ts
+      # but no migration creates it — which shipped undetected until now and
+      # left every fresh install with a schema the code could not use.
+      # instance_types/instances are provisioned by a separate script rather
+      # than by a migration, so a fresh install needs both steps. Documented
+      # here because db:verify treats their absence as drift, correctly.
+      - name: Provision instance tables
+        run: pnpm --filter @guildserver/database db:migrate-instances
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/guildserver_test
+
+      - name: Verify schema matches migrations
+        run: pnpm --filter @guildserver/database db:verify
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/guildserver_test
+
+      - name: Run migration-runner tests
+        run: pnpm --filter @guildserver/database test
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/guildserver_test
+
       - name: Run backend tests
         run: pnpm --filter @guildserver/api test:ci
         env:
