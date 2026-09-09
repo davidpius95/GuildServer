@@ -14,13 +14,13 @@ CREATE TABLE IF NOT EXISTS "database_backups" (
 	"completed_at" timestamp
 );
 --> statement-breakpoint
-ALTER TABLE "applications" ADD COLUMN "registry_url" text;--> statement-breakpoint
-ALTER TABLE "applications" ADD COLUMN "registry_username" text;--> statement-breakpoint
-ALTER TABLE "applications" ADD COLUMN "registry_password" text;--> statement-breakpoint
-ALTER TABLE "domains" ADD COLUMN "redirects_to" varchar(255);--> statement-breakpoint
-ALTER TABLE "domains" ADD COLUMN "last_checked_at" timestamp;--> statement-breakpoint
-ALTER TABLE "domains" ADD COLUMN "verification_error" text;--> statement-breakpoint
-ALTER TABLE "domains" ADD COLUMN "last_http_status" integer;--> statement-breakpoint
+ALTER TABLE "applications" ADD COLUMN IF NOT EXISTS "registry_url" text;--> statement-breakpoint
+ALTER TABLE "applications" ADD COLUMN IF NOT EXISTS "registry_username" text;--> statement-breakpoint
+ALTER TABLE "applications" ADD COLUMN IF NOT EXISTS "registry_password" text;--> statement-breakpoint
+ALTER TABLE "domains" ADD COLUMN IF NOT EXISTS "redirects_to" varchar(255);--> statement-breakpoint
+ALTER TABLE "domains" ADD COLUMN IF NOT EXISTS "last_checked_at" timestamp;--> statement-breakpoint
+ALTER TABLE "domains" ADD COLUMN IF NOT EXISTS "verification_error" text;--> statement-breakpoint
+ALTER TABLE "domains" ADD COLUMN IF NOT EXISTS "last_http_status" integer;--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "database_backups_database_id_idx" ON "database_backups" ("database_id");--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "database_backups" ADD CONSTRAINT "database_backups_database_id_databases_id_fk" FOREIGN KEY ("database_id") REFERENCES "databases"("id") ON DELETE cascade ON UPDATE no action;
