@@ -1,8 +1,11 @@
-import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
-import { drizzle } from "drizzle-orm/postgres-js";
 import * as path from "path";
 import * as dotenv from "dotenv";
+import {
+  ensureTrackingTable,
+  reconcileDrizzleHistory,
+  applyPending,
+} from "./migration-runner";
 
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 
@@ -12,20 +15,36 @@ if (!connectionString) {
   throw new Error("DATABASE_URL environment variable is required");
 }
 
-const client = postgres(connectionString, { max: 1 });
-const db = drizzle(client);
+const sql = postgres(connectionString, { max: 1 });
 
 async function main() {
-  console.log("🚀 Running database migrations...");
+  console.log("Running database migrations...");
 
   try {
-    await migrate(db, { migrationsFolder: "./migrations" });
-    console.log("✅ Database migrations completed successfully");
+    await ensureTrackingTable(sql);
+
+    const reconciled = await reconcileDrizzleHistory(sql);
+    if (reconciled.length > 0) {
+      console.log(
+        `Reconciled ${reconciled.length} migration(s) already applied via drizzle's own history: ${reconciled.join(", ")}`
+      );
+    }
+
+    const results = await applyPending(sql);
+    const executed = results.filter((r) => r.status === "executed");
+    const skipped = results.filter((r) => r.status === "skipped");
+
+    for (const r of executed) {
+      console.log(`  applied: ${r.id}`);
+    }
+    console.log(
+      `Migrations complete: ${executed.length} applied, ${skipped.length} already up to date (of ${results.length} total).`
+    );
   } catch (error) {
-    console.error("❌ Migration failed:", error);
-    process.exit(1);
+    console.error("Migration failed:", error);
+    process.exitCode = 1;
   } finally {
-    await client.end();
+    await sql.end();
   }
 }
 
