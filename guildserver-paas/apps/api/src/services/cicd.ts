@@ -92,7 +92,7 @@ class CICDService {
   // Monotonic counter appended to execution IDs so two executions created
   // within the same millisecond (e.g. triggerPipeline -> retryExecution)
   // never collide on `Date.now()` alone.
-  private executionIdCounter = 0;
+  private idCounter = 0;
 
   async createPipeline(config: {
     name: string;
@@ -104,18 +104,23 @@ class CICDService {
     environment?: Record<string, string>;
   }): Promise<Pipeline> {
     const pipeline: Pipeline = {
-      id: `pipeline-${Date.now()}`,
+      // Date.now() alone collides: two pipelines created within the same
+      // millisecond produced the same id and the second silently overwrote the
+      // first in this.pipelines. Two API calls in quick succession, or any
+      // seeding loop, destroyed a pipeline with no error. The counter makes ids
+      // unique regardless of clock resolution.
+      id: `pipeline-${Date.now()}-${this.idCounter++}`,
       name: config.name,
       applicationId: config.applicationId,
       organizationId: config.organizationId,
       repository: config.repository,
       stages: config.stages.map((stage, index) => ({
         ...stage,
-        id: `stage-${Date.now()}-${index}`,
+        id: `stage-${Date.now()}-${this.idCounter++}-${index}`,
       })),
       triggers: config.triggers.map((trigger, index) => ({
         ...trigger,
-        id: `trigger-${Date.now()}-${index}`,
+        id: `trigger-${Date.now()}-${this.idCounter++}-${index}`,
       })),
       environment: config.environment || {},
       status: "active",
@@ -178,14 +183,14 @@ class CICDService {
       throw new Error("Pipeline is not active");
     }
 
-    const executionId = `execution-${Date.now()}-${this.executionIdCounter++}`;
+    const executionId = `execution-${Date.now()}-${this.idCounter++}`;
     const execution: PipelineExecution = {
       id: executionId,
       pipelineId,
       status: "queued",
       trigger,
       stages: pipeline.stages.map(stage => ({
-        id: `stage-exec-${Date.now()}-${stage.id}`,
+        id: `stage-exec-${Date.now()}-${this.idCounter++}-${stage.id}`,
         stageId: stage.id,
         name: stage.name,
         status: "pending",

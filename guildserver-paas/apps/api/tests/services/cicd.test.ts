@@ -196,6 +196,48 @@ describe('CICDService', () => {
     });
   });
 
+  describe('identifier uniqueness', () => {
+    it('gives every pipeline a distinct id even within one millisecond', async () => {
+      // `pipeline-${Date.now()}` collided, and Map.set silently replaced the
+      // earlier pipeline. This surfaced as handleGitWebhook returning no
+      // executions on a fast machine, but the real cost is a pipeline
+      // disappearing in production with no error anywhere.
+      const make = (n: number) =>
+        cicdService.createPipeline({
+          name: `P${n}`,
+          applicationId: `app-${n}`,
+          organizationId: 'org-123',
+          repository: { provider: 'github' as const, url: 'https://github.com/test/repo', branch: 'main' },
+          stages: [{ name: 'Build', type: 'build' as const, order: 1, configuration: {} }],
+          triggers: [{ type: 'push' as const, configuration: { branches: ['main'] }, enabled: true }],
+        });
+
+      const created = await Promise.all([make(1), make(2), make(3), make(4), make(5)]);
+      const ids = created.map((p) => p.id);
+
+      expect(new Set(ids).size).toBe(5);
+      const listed = await cicdService.getPipelines('org-123');
+      expect(listed).toHaveLength(5);
+    });
+
+    it('gives stages and triggers distinct ids across pipelines', async () => {
+      const spec = {
+        applicationId: 'app-1',
+        organizationId: 'org-123',
+        repository: { provider: 'github' as const, url: 'https://github.com/test/repo', branch: 'main' },
+        stages: [{ name: 'Build', type: 'build' as const, order: 1, configuration: {} }],
+        triggers: [{ type: 'push' as const, configuration: { branches: ['main'] }, enabled: true }],
+      };
+      const [a, b] = await Promise.all([
+        cicdService.createPipeline({ ...spec, name: 'A' }),
+        cicdService.createPipeline({ ...spec, name: 'B' }),
+      ]);
+
+      expect(a.stages[0].id).not.toBe(b.stages[0].id);
+      expect(a.triggers[0].id).not.toBe(b.triggers[0].id);
+    });
+  });
+
   describe('handleGitWebhook', () => {
     it('should trigger matching pipelines from webhook', async () => {
       const repoUrl = 'https://github.com/test/repo';
