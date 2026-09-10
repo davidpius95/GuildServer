@@ -25,6 +25,7 @@ import { deploymentsTotal, deploymentDuration, queueDepth } from "../services/pr
 import crypto from "crypto";
 import path from "path";
 import { runServiceDeployJob } from "./service-deploy";
+import { resolveCloneToken } from "../services/git-clone-token";
 
 // Redis connection
 // Note: dotenv may not be loaded when this module initializes (import hoisting),
@@ -274,18 +275,12 @@ const deploymentWorker = new Worker(
         let gitToken: string | undefined;
         const sourceProvider = (app.sourceType as string) || "git";
         if (["github", "gitlab", "bitbucket", "gitea"].includes(sourceProvider) && userId) {
-          const oauthAccount = await db.query.oauthAccounts.findFirst({
-            where: and(
-              eq(oauthAccounts.userId, userId),
-              eq(oauthAccounts.provider, sourceProvider)
-            ),
-          });
-          if (oauthAccount?.accessToken) {
-            gitToken = oauthAccount.accessToken;
-            allBuildLogs.push("Using authenticated clone (OAuth token found)");
-          } else {
-            allBuildLogs.push("No OAuth token found — attempting unauthenticated clone");
-          }
+          // Resolved through getValidAccessToken so an expired token is renewed
+          // instead of handed to git. Reading the column directly failed private
+          // clones about 8 hours after GitHub was connected.
+          const clone = await resolveCloneToken(userId, sourceProvider);
+          gitToken = clone.token;
+          allBuildLogs.push(clone.note);
         }
 
         // Clone repository

@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { eq, and } from "drizzle-orm";
 import { db, users, oauthAccounts, organizations, members, projects, plans, subscriptions } from "@guildserver/database";
 import { logger } from "../utils/logger";
+import { githubTokenFields } from "../services/github-token-response";
 import crypto from "crypto";
 
 export const oauthRouter = Router();
@@ -101,6 +102,13 @@ oauthRouter.get("/github/callback", async (req: Request, res: Response) => {
 
     const { access_token, scope } = tokenData;
 
+    // A GitHub App issues user tokens that expire (typically after 8 hours)
+    // together with a refresh token. Only access_token used to be stored, so
+    // every GitHub connection silently died 8 hours after it was made and
+    // could never be renewed. Keep the refresh token and expiry so
+    // getValidAccessToken() can renew it.
+    const githubTokens = githubTokenFields(tokenData);
+
     // Fetch GitHub user profile
     const userResponse = await fetch("https://api.github.com/user", {
       headers: { Authorization: `token ${access_token}`, Accept: "application/vnd.github.v3+json" },
@@ -168,6 +176,8 @@ oauthRouter.get("/github/callback", async (req: Request, res: Response) => {
       name: githubUser.name || githubUser.login,
       avatar: githubUser.avatar_url,
       accessToken: access_token,
+      refreshToken: githubTokens.refreshToken,
+      tokenExpiresAt: githubTokens.tokenExpiresAt,
       scope: actualScopes,
     });
 

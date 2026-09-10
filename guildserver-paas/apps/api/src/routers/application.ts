@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure, enforcePlanLimit } from "../trpc/trpc";
-import { applications, projects, members, deployments, computeProviders, oauthAccounts } from "@guildserver/database";
+import { applications, projects, members, deployments, computeProviders } from "@guildserver/database";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { deploymentQueue } from "../queues/deployment";
 import {
@@ -18,6 +18,7 @@ import { healthCheck } from "../services/container-manager";
 import { listGithubRepos, listGithubBranches } from "../services/git-provider";
 import { getProvider } from "../providers/factory";
 import { registerGithubWebhook } from "../services/github";
+import { getValidAccessToken } from "../services/oauth-tokens";
 import { encryptSecret } from "../utils/crypto";
 
 import { runtimeSettingsSchema } from "../services/app-runtime";
@@ -340,14 +341,11 @@ export const applicationRouter = createTRPCRouter({
       // Register GitHub Webhook
       if (input.sourceType === "github" && input.repository) {
         try {
-          const account = await ctx.db.query.oauthAccounts.findFirst({
-            where: and(
-              eq(oauthAccounts.userId, ctx.user.id),
-              eq(oauthAccounts.provider, "github")
-            ),
-          });
+          // Through getValidAccessToken so an expired GitHub App token is renewed
+          // rather than sent to GitHub and rejected. Failures land in the catch.
+          const accessToken = await getValidAccessToken(ctx.user.id, "github");
 
-          if (account?.accessToken) {
+          if (accessToken) {
             // Determine the API base URL from env
             const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guild-technologies.com";
             // Check if it's the traefik setup where webhook route is on main domain under /api?
@@ -356,7 +354,7 @@ export const applicationRouter = createTRPCRouter({
             const webhookUrl = `${baseUrl}/webhooks/github`;
             const secret = process.env.GITHUB_WEBHOOK_SECRET || "guildserver-webhook-secret-default";
             
-            await registerGithubWebhook(input.repository, account.accessToken, webhookUrl, secret);
+            await registerGithubWebhook(input.repository, accessToken, webhookUrl, secret);
           }
         } catch (error) {
           console.warn("Failed to register webhook during app creation:", error);
@@ -421,19 +419,16 @@ export const applicationRouter = createTRPCRouter({
       // Register GitHub Webhook if repository was updated
       if (updates.repository && updatedApplication.sourceType === "github") {
         try {
-          const account = await ctx.db.query.oauthAccounts.findFirst({
-            where: and(
-              eq(oauthAccounts.userId, ctx.user.id),
-              eq(oauthAccounts.provider, "github")
-            ),
-          });
+          // Through getValidAccessToken so an expired GitHub App token is renewed
+          // rather than sent to GitHub and rejected. Failures land in the catch.
+          const accessToken = await getValidAccessToken(ctx.user.id, "github");
 
-          if (account?.accessToken) {
+          if (accessToken) {
             const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guild-technologies.com";
             const webhookUrl = `${baseUrl}/webhooks/github`;
             const secret = process.env.GITHUB_WEBHOOK_SECRET || "guildserver-webhook-secret-default";
             
-            await registerGithubWebhook(updates.repository, account.accessToken, webhookUrl, secret);
+            await registerGithubWebhook(updates.repository, accessToken, webhookUrl, secret);
           }
         } catch (error) {
           console.warn("Failed to register webhook during app update:", error);
