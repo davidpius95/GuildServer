@@ -20,6 +20,7 @@ import { providerRouter } from "../routers/provider";
 import { instanceRouter } from "../routers/instance";
 import { infrastructureRouter } from "../routers/infrastructure";
 import { securityRouter } from "../routers/security";
+import { serviceRouter } from "../routers/service";
 
 export const appRouter = createTRPCRouter({
   auth: authRouter,
@@ -43,6 +44,8 @@ export const appRouter = createTRPCRouter({
   instance: instanceRouter,
   infrastructure: infrastructureRouter,
   security: securityRouter,
+  /** Docker Compose stacks. */
+  service: serviceRouter,
 });
 
 export type AppRouter = typeof appRouter;
