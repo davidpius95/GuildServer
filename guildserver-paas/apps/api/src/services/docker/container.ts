@@ -8,6 +8,8 @@ import { ensureNetwork } from "./networks";
 import { pullImage, detectDefaultPort, getImageExposedPort } from "./images";
 import {
   ContainerSpec,
+  GS_ROLE_CANDIDATE,
+  GS_ROLE_LABEL,
   buildAppLabels,
   buildContainerConfig,
   buildTraefikLabels,
@@ -331,6 +333,32 @@ export async function deployContainer(
   }
 }
 
+/**
+ * Pick the container that is actually serving this application.
+ *
+ * During a rolling deploy three containers can briefly share `gs.app.id`: the
+ * incumbent, the health-gated candidate on an unrouted port, and the promoted
+ * replacement. Taking `containers[0]` — whatever Docker happened to list first
+ * — meant logs, stats and restart could address the candidate instead of the
+ * container serving traffic, so a user watching a deploy could be shown the
+ * wrong logs, or restart a container that was about to be discarded.
+ *
+ * A candidate is never the answer: it is unrouted by construction and exists
+ * only until it passes or fails its gate. Among the rest, prefer the
+ * most recently started, which is the promoted container once one exists.
+ */
+export function pickServingContainer(containers: Docker.ContainerInfo[]): Docker.ContainerInfo | null {
+  if (containers.length === 0) return null;
+
+  const serving = containers.filter((c) => c.Labels?.[GS_ROLE_LABEL] !== GS_ROLE_CANDIDATE);
+  // If everything present is a candidate, the deploy is mid-flight and there is
+  // genuinely nothing serving yet. Returning the candidate is better than
+  // returning nothing: it is the only container that exists.
+  const pool = serving.length > 0 ? serving : containers;
+
+  return pool.reduce((newest, c) => (c.Created > newest.Created ? c : newest), pool[0]);
+}
+
 export async function getAppContainer(applicationId: string, dockerClient?: Docker): Promise<Docker.Container | null> {
   const d = dockerClient || docker;
   const containers = await d.listContainers({
@@ -340,8 +368,8 @@ export async function getAppContainer(applicationId: string, dockerClient?: Dock
     },
   });
 
-  if (containers.length === 0) return null;
-  return d.getContainer(containers[0].Id);
+  const chosen = pickServingContainer(containers);
+  return chosen ? d.getContainer(chosen.Id) : null;
 }
 
 export interface ExecResult {
@@ -419,9 +447,9 @@ export async function getAppContainerInfo(applicationId: string, dockerClient?: 
     filters: { label: [`${GS_LABELS.APP_ID}=${applicationId}`] },
   });
 
-  if (containers.length === 0) return null;
+  const c = pickServingContainer(containers);
+  if (!c) return null;
 
-  const c = containers[0];
   return {
     containerId: c.Id,
     containerName: c.Names[0]?.replace("/", "") || "",
