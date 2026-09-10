@@ -1,0 +1,8 @@
+# slogan: Not valid YAML.
+# category: testing
+
+services:
+  app:
+    image: example/app:1.0
+   environment:
+      - BROKEN=1

@@ -1,0 +1,31 @@
+# documentation: https://example.invalid/docs
+# slogan: Exercises every generator command.
+# category: testing
+# tags: fixture,generators
+# logo: svgs/example.png
+# port: 8080
+
+services:
+  app:
+    image: example/app:1.0
+    environment:
+      - SERVICE_URL_APP_8080
+      - PASSWORD=${SERVICE_PASSWORD_APP}
+      - LONG_PASSWORD=${SERVICE_PASSWORD_64_APP}
+      - SYMBOL_PASSWORD=${SERVICE_PASSWORDWITHSYMBOLS_APP}
+      - SYMBOL_PASSWORD_64=${SERVICE_PASSWORDWITHSYMBOLS_64_APP}
+      - RANDOM=${SERVICE_BASE64_APP}
+      - RANDOM_32=${SERVICE_BASE64_32_APP}
+      - RANDOM_64=${SERVICE_BASE64_64_APP}
+      - RANDOM_128=${SERVICE_BASE64_128_APP}
+      - REAL=${SERVICE_REALBASE64_APP}
+      - REAL_64=${SERVICE_REALBASE64_64_APP}
+      - HEX_32=${SERVICE_HEX_32_APP}
+      - HEX_64=${SERVICE_HEX_64_APP}
+      - USERNAME=${SERVICE_USER_APP}
+      - LOWER_USERNAME=${SERVICE_LOWERCASEUSER_APP}
+      # Not magic: a real variable the user must supply.
+      - OPENAI=${SERVICE_OPENAI_API_KEY}
+      - ROLE=${SERVICE_ROLE_KEY}
+    ports:
+      - "8080"

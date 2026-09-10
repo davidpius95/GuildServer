@@ -1,0 +1,14 @@
+# documentation: https://example.invalid/docs
+# slogan: Uses derived JWT variables Coolify signs itself.
+# category: testing
+# tags: fixture
+# logo: svgs/example.png
+# port: 8000
+
+services:
+  kong:
+    image: example/kong:1.0
+    environment:
+      - ANON_KEY=${SERVICE_SUPABASEANON_KEY}
+      - SERVICE_KEY=${SERVICE_SUPABASESERVICE_KEY}
+      - JWT=${SERVICE_PASSWORD_JWT}
