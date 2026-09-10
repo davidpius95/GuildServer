@@ -236,6 +236,40 @@ export const members = pgTable("members", {
 }));
 
 // Projects
+/**
+ * Scoped personal access tokens for the public REST API (/api/v1).
+ *
+ * Only a SHA-256 hash is stored: tokens are 32 random bytes, so a slow
+ * password hash adds nothing, and a plain digest allows an indexed equality
+ * lookup on every request. The plaintext is shown once, at creation.
+ *
+ * A token acts as `userId` within `organizationId`, and requests are
+ * authorized exactly as that user would be — so removing the user from the
+ * organization disables the token with no separate revocation step.
+ */
+export const apiTokens = pgTable("api_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  /** Safe-to-display leading characters, e.g. gs_pat_ab12cd34. */
+  tokenPrefix: varchar("token_prefix", { length: 32 }).notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  /** Subset of "read" | "deploy" | "write" | "admin". */
+  scopes: jsonb("scopes").$type<string[]>().notNull().default([]),
+  /** Optional project restriction; null means all reachable projects. */
+  projectIds: jsonb("project_ids").$type<string[] | null>(),
+  expiresAt: timestamp("expires_at"),
+  lastUsedAt: timestamp("last_used_at"),
+  lastUsedIp: varchar("last_used_ip", { length: 64 }),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  organizationIdIdx: index("api_tokens_organization_id_idx").on(table.organizationId),
+  userIdIdx: index("api_tokens_user_id_idx").on(table.userId),
+}));
+
 export const projects = pgTable("projects", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: varchar("name", { length: 255 }).notNull(),
