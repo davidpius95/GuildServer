@@ -131,3 +131,36 @@ docker image prune -f >/dev/null 2>&1 || true
 docker builder prune -f --filter "until=168h" >/dev/null 2>&1 || true
 
 log "Update complete. Now running ${LATEST:0:7}."
+
+# --- keep the installed updater in step with the repo ------------------------
+#
+# The cron runs a COPY of this script (typically /usr/local/bin/
+# guildserver-self-update.sh), not the file in the repo. So edits here reach
+# the repository and never reach production: the copy on this host was byte
+# identical to the repo at the commit it was installed from, and would have
+# stayed frozen there indefinitely while the repo moved on.
+#
+# After a successful deploy, refresh that copy from the repo. Guards, because a
+# deploy script that breaks itself takes the host's ability to deploy with it:
+#   - only ever when the content actually differs
+#   - only if the new version parses (`bash -n`)
+#   - the previous version is kept alongside for a manual rollback
+#   - any failure is logged and ignored; the deploy already succeeded
+REPO_UPDATER="$COMPOSE_DIR/scripts/self-update.sh"
+INSTALLED_UPDATER="$(readlink -f "${BASH_SOURCE[0]}")"
+
+if [ -f "$REPO_UPDATER" ] && [ "$INSTALLED_UPDATER" != "$(readlink -f "$REPO_UPDATER")" ]; then
+  if ! cmp -s "$REPO_UPDATER" "$INSTALLED_UPDATER"; then
+    if bash -n "$REPO_UPDATER" 2>/dev/null; then
+      if sudo -n cp "$INSTALLED_UPDATER" "${INSTALLED_UPDATER}.prev" 2>/dev/null \
+         && sudo -n cp "$REPO_UPDATER" "$INSTALLED_UPDATER" 2>/dev/null; then
+        log "Refreshed the installed updater from the repo (previous kept at ${INSTALLED_UPDATER}.prev)."
+      else
+        log "WARNING: the installed updater is out of date and could not be refreshed automatically."
+        log "         Run: sudo cp $REPO_UPDATER $INSTALLED_UPDATER"
+      fi
+    else
+      log "WARNING: $REPO_UPDATER does not parse; keeping the installed updater."
+    fi
+  fi
+fi
