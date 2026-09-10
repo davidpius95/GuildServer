@@ -4,6 +4,14 @@ import { eq, and } from "drizzle-orm";
 import { db, users, oauthAccounts, organizations, members, projects, plans, subscriptions } from "@guildserver/database";
 import { logger } from "../utils/logger";
 import { githubTokenFields } from "../services/github-token-response";
+import {
+  consumeLinkJti,
+  isAllowedLinkOrigin,
+  linkOAuthAccountToUser,
+  rememberLinkState,
+  takeLinkState,
+  verifyLinkToken,
+} from "../services/oauth-link";
 import crypto from "crypto";
 
 export const oauthRouter = Router();
@@ -64,6 +72,56 @@ oauthRouter.get("/github", (req: Request, res: Response) => {
     state,
   });
 
+  res.redirect(`https://github.com/login/oauth/authorize?${params}`);
+});
+
+// Link GitHub to the already signed-in user (Settings -> Connect GitHub).
+//
+// Sign-in matches accounts by email, and this GitHub App cannot read private
+// emails, so the ordinary flow created a second, empty account instead of
+// attaching GitHub to the user who clicked "Connect". See
+// services/oauth-link.ts for the full threat model.
+oauthRouter.post("/github/link", async (req: Request, res: Response) => {
+  const clientId = process.env.GITHUB_CLIENT_ID;
+  if (!clientId) {
+    return res.status(500).json({ error: "GitHub OAuth not configured. Set GITHUB_CLIENT_ID env var." });
+  }
+
+  // Another site must not be able to submit its own link token from a
+  // victim's browser.
+  if (!isAllowedLinkOrigin(req.headers.origin, FRONTEND_URL)) {
+    logger.warn("GitHub link: rejected request from unexpected origin", { origin: req.headers.origin ?? "(none)" });
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const claims = verifyLinkToken(req.body?.token, "github");
+  if (!claims) {
+    return res.redirect(`${FRONTEND_URL}/dashboard/settings?github=link_invalid`);
+  }
+  if (!(await consumeLinkJti(claims.jti))) {
+    return res.redirect(`${FRONTEND_URL}/dashboard/settings?github=link_used`);
+  }
+
+  const nonce = crypto.randomBytes(32).toString("hex");
+  if (!(await rememberLinkState(nonce, claims.userId))) {
+    return res.redirect(`${FRONTEND_URL}/dashboard/settings?github=link_unavailable`);
+  }
+
+  const returnTo =
+    typeof req.body?.returnTo === "string" && req.body.returnTo.startsWith("/") && !req.body.returnTo.startsWith("//")
+      ? req.body.returnTo
+      : "/dashboard/settings";
+
+  // The state carries no identity: only a nonce the callback redeems once.
+  const state = Buffer.from(JSON.stringify({ csrf: nonce, returnTo, scope: "repo", linkPending: true })).toString("base64url");
+  setStateCookie(res, state);
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: `${API_URL}/auth/github/callback`,
+    scope: "user:email repo",
+    state,
+  });
   res.redirect(`https://github.com/login/oauth/authorize?${params}`);
 });
 
@@ -157,10 +215,14 @@ oauthRouter.get("/github/callback", async (req: Request, res: Response) => {
 
     let returnTo = "";
     let requestedScope = "";
+    let linkPending = false;
+    let stateNonce = "";
     try {
       const stateObj = JSON.parse(Buffer.from(state as string, "base64url").toString());
       if (stateObj.returnTo) returnTo = stateObj.returnTo;
       if (stateObj.scope) requestedScope = stateObj.scope;
+      if (stateObj.linkPending === true) linkPending = true;
+      if (typeof stateObj.csrf === "string") stateNonce = stateObj.csrf;
     } catch (e) {}
 
     // GitHub's token response sometimes omits the scope field.
@@ -168,8 +230,35 @@ oauthRouter.get("/github/callback", async (req: Request, res: Response) => {
     // Fall back to tokenData.scope, and then to the requestedScope we sent.
     const actualScopes = userResponse.headers.get("x-oauth-scopes") || scope || (requestedScope === "repo" ? "user:email repo" : "user:email");
 
+    let result: { user: any; isNew: boolean };
+    if (linkPending) {
+      // Linking from Settings: attach to the user who started the link, and
+      // never create one. The user comes from server-side state redeemed
+      // exactly once, not from anything the browser sent.
+      const linkUserId = await takeLinkState(stateNonce);
+      if (!linkUserId) {
+        return res.redirect(`${FRONTEND_URL}/dashboard/settings?github=link_expired`);
+      }
+      const linked = await linkOAuthAccountToUser({
+        userId: linkUserId,
+        provider: "github",
+        providerAccountId: String(githubUser.id),
+        accessToken: access_token,
+        refreshToken: githubTokens.refreshToken,
+        tokenExpiresAt: githubTokens.tokenExpiresAt,
+        scope: actualScopes,
+      });
+      if (linked.status === "conflict") {
+        return res.redirect(`${FRONTEND_URL}/dashboard/settings?github=already_linked`);
+      }
+      const linkedUser = await db.query.users.findFirst({ where: eq(users.id, linkUserId) });
+      if (!linkedUser) {
+        return res.redirect(`${FRONTEND_URL}/auth/login?error=oauth_failed`);
+      }
+      result = { user: linkedUser, isNew: false };
+    } else {
     // Find or create user
-    const result = await findOrCreateOAuthUser({
+    result = await findOrCreateOAuthUser({
       provider: "github",
       providerAccountId: String(githubUser.id),
       email,
@@ -180,6 +269,7 @@ oauthRouter.get("/github/callback", async (req: Request, res: Response) => {
       tokenExpiresAt: githubTokens.tokenExpiresAt,
       scope: actualScopes,
     });
+    }
 
     // Generate JWT
     const jwtToken = jwt.sign(

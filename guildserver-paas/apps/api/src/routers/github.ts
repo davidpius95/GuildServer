@@ -5,6 +5,7 @@ import { oauthAccounts } from "@guildserver/database";
 import { eq, and } from "drizzle-orm";
 import { listGithubRepos, listGithubBranches, listGitlabRepos, listGitlabBranches, listBitbucketRepos, listBitbucketBranches } from "../services/git-provider";
 import { getValidAccessToken, isAuthFailure } from "../services/oauth-tokens";
+import { createLinkToken, LINK_TOKEN_TTL_SECONDS } from "../services/oauth-link";
 
 export const githubRouter = createTRPCRouter({
   // Check if the current user has GitHub/GitLab/Bitbucket connected
@@ -124,6 +125,18 @@ export const githubRouter = createTRPCRouter({
     }),
 
   // Disconnect OAuth account
+  /**
+   * Begin linking GitHub to the signed-in user.
+   *
+   * Returns a short-lived, single-use token the browser POSTs to
+   * /auth/github/link. Sign-in's email matching cannot be used for this: the
+   * GitHub App cannot read private emails, so it created duplicate accounts.
+   */
+  createLinkIntent: protectedProcedure.mutation(async ({ ctx }) => ({
+    token: createLinkToken(ctx.user.id, "github"),
+    expiresInSeconds: LINK_TOKEN_TTL_SECONDS,
+  })),
+
   disconnect: protectedProcedure
     .input(z.object({ provider: z.enum(["github", "gitlab", "bitbucket", "google"]) }))
     .mutation(async ({ ctx, input }) => {
