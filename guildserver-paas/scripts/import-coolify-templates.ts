@@ -357,6 +357,8 @@ export interface ServiceTemplateService {
   image: string | null;
   hasHealthcheck: boolean;
   ports: number[];
+  /** A one-shot init task: it is meant to exit, so do not treat that as a crash. */
+  oneShot: boolean;
 }
 
 export interface ServiceTemplate {

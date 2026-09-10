@@ -14,6 +14,7 @@ import {
   collectUserVariables,
   parseMetadata,
   parseTemplate,
+  stripCoolifyOnlyKeys,
   stripMetadataHeader,
   translateCompose,
   TemplateParseError,
@@ -479,6 +480,51 @@ describe("parseTemplate", () => {
 
     it("ignores an escaped literal dollar", () => {
       expect(collectUserVariables("cost=$$NOT_A_VAR")).toEqual([]);
+    });
+  });
+
+  describe("Coolify-only Compose keys", () => {
+    it("strips exclude_from_hc from the emitted body", () => {
+      // It is Coolify's key, not Compose's. Docker rejects a service carrying
+      // it, so a vendored body that kept it could not be deployed at all.
+      const source = [
+        "# slogan: One-shot init container.",
+        "",
+        "services:",
+        "  init:",
+        "    image: e/mc:1",
+        '    restart: "no"',
+        "    exclude_from_hc: true",
+        "  app:",
+        "    image: e/a:1",
+      ].join("\n");
+
+      const template = parseTemplate("init", source);
+      expect(template.compose).not.toContain("exclude_from_hc");
+      expect(template.compose).toContain("image: e/mc:1");
+    });
+
+    it("records what the stripped key meant before removing it", () => {
+      const source = [
+        "# slogan: x",
+        "",
+        "services:",
+        "  init:",
+        "    image: e/mc:1",
+        "    exclude_from_hc: true",
+        "  app:",
+        "    image: e/a:1",
+        "    restart: always",
+      ].join("\n");
+
+      const template = parseTemplate("init", source);
+      expect(template.services.find((service) => service.name === "init")!.oneShot).toBe(true);
+      expect(template.services.find((service) => service.name === "app")!.oneShot).toBe(false);
+    });
+
+    it("leaves a body without Coolify-only keys untouched", () => {
+      const body = "services:\n  app:\n    image: e/a:1";
+      expect(stripCoolifyOnlyKeys(body)).toBe(body);
     });
   });
 

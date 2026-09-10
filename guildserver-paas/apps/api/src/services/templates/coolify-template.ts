@@ -454,6 +454,30 @@ export function translateCompose(composeBody: string): TranslationResult {
 }
 
 // ---------------------------------------------------------------------------
+// Coolify-only Compose keys
+// ---------------------------------------------------------------------------
+
+/**
+ * Keys Coolify understands that Docker Compose does not.
+ *
+ * `exclude_from_hc` is Coolify's own extension. Docker rejects a service
+ * definition carrying it, and Coolify strips it before deploying, so leaving it
+ * in the vendored body would hand the Compose engine a file it cannot run. The
+ * information it carries is recorded on the service summary (`oneShot`) before
+ * the key is removed.
+ */
+const COOLIFY_ONLY_KEYS = ["exclude_from_hc"];
+
+const COOLIFY_ONLY_LINE = new RegExp(`^\\s*(?:${COOLIFY_ONLY_KEYS.join("|")}):`);
+
+export function stripCoolifyOnlyKeys(compose: string): string {
+  return compose
+    .split(/\r?\n/)
+    .filter((line) => !COOLIFY_ONLY_LINE.test(line))
+    .join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // User-supplied variables
 // ---------------------------------------------------------------------------
 
@@ -526,6 +550,16 @@ export interface ComposeServiceSummary {
   hasHealthcheck: boolean;
   /** Container ports the service exposes, from `ports:`/`expose:`. */
   ports: number[];
+  /**
+   * The service is a one-shot task rather than a long-running one, so its
+   * exiting is success, not failure.
+   *
+   * Set by Coolify's `exclude_from_hc: true` or by `restart: "no"`. Seven
+   * templates use it for init containers — formbricks runs `mc mb` to create a
+   * bucket and stops — and treating those as crashes would fail templates that
+   * are working correctly.
+   */
+  oneShot: boolean;
 }
 
 export interface ParsedTemplate {
@@ -673,6 +707,7 @@ function summariseServices(compose: string): ComposeServiceSummary[] {
       image,
       hasHealthcheck: typeof definition.healthcheck === "object" && definition.healthcheck !== null,
       ports: [...ports].sort((a, b) => a - b),
+      oneShot: definition.exclude_from_hc === true || String(definition.restart) === "no",
     });
   }
 
@@ -701,8 +736,11 @@ export function parseTemplate(id: string, source: string): ParsedTemplate {
     throw new TemplateParseError("Template has metadata but no Compose body");
   }
 
-  const { compose, variables } = translateCompose(body);
-  const services = summariseServices(compose);
+  const { compose: translated, variables } = translateCompose(body);
+  const services = summariseServices(translated);
+  // Only once the summary has captured what it means: `exclude_from_hc` is not
+  // a Compose key, and a body still carrying it cannot be deployed.
+  const compose = stripCoolifyOnlyKeys(translated);
 
   const warnings: string[] = [];
   if (metadata.ignore) warnings.push("Upstream marks this template `ignore: true`");
