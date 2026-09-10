@@ -20,6 +20,7 @@ import {
   User,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { getFriendlyMessage } from "@/lib/errors"
 
 function StatCard({
   title,

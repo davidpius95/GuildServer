@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -38,6 +38,7 @@ import { useOrganization } from "@/hooks/use-auth"
 import { toast } from "sonner"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useRouter } from "next/navigation"
+import { getFriendlyMessage } from "@/lib/errors"
 
 const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || ""
 
@@ -222,6 +223,44 @@ export default function SettingsPage() {
     },
     onError: (err: any) => toast.error(getFriendlyMessage(err)),
   })
+
+  // Connecting GitHub must attach it to THIS account. The plain OAuth redirect
+  // matched by email, which the GitHub App cannot read, and so created a second
+  // empty account. Ask the API for a short-lived link token, then POST it (a
+  // form, not a URL, so the token stays out of logs and history).
+  const githubLinkIntent = trpc.github.createLinkIntent.useMutation({
+    onError: (err: any) => toast.error(getFriendlyMessage(err)),
+  })
+  const startGithubLink = async () => {
+    const { token } = await githubLinkIntent.mutateAsync()
+    const form = document.createElement("form")
+    form.method = "POST"
+    form.action = `${API_URL}/auth/github/link`
+    for (const [name, value] of Object.entries({ token, returnTo: "/dashboard/settings" })) {
+      const input = document.createElement("input")
+      input.type = "hidden"
+      input.name = name
+      input.value = value
+      form.appendChild(input)
+    }
+    document.body.appendChild(form)
+    form.submit()
+  }
+
+  // Outcome of a GitHub link, reported by the API as ?github=<code>.
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("github")
+    if (!code) return
+    const messages: Record<string, string> = {
+      already_linked: "That GitHub account is already connected to a different GuildServer account.",
+      link_expired: "The GitHub connection took too long or was already used. Please try again.",
+      link_used: "That connection link was already used. Please try again.",
+      link_invalid: "The connection link was invalid. Please try again.",
+      link_unavailable: "GitHub linking is temporarily unavailable. Please try again shortly.",
+    }
+    if (messages[code]) toast.error(messages[code])
+    window.history.replaceState(null, "", window.location.pathname)
+  }, [])
 
   const org = orgQuery.data
   const members = membersQuery.data ?? []
@@ -804,7 +843,7 @@ export default function SettingsPage() {
                               variant="outline"
                               size="sm"
                               onClick={() => {
-                                window.location.href = `${API_URL}/auth/github?scope=repo`
+                                void startGithubLink()
                               }}
                             >
                               <ExternalLink className="mr-2 h-3.5 w-3.5" />
@@ -825,7 +864,7 @@ export default function SettingsPage() {
                       ) : (
                         <Button
                           onClick={() => {
-                            window.location.href = `${API_URL}/auth/github?scope=repo`
+                            void startGithubLink()
                           }}
                         >
                           <GitHubIcon className="mr-2 h-4 w-4" />

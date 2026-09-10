@@ -31,6 +31,7 @@ import {
 } from "lucide-react"
 import { trpc } from "@/components/trpc-provider"
 import { useOrganization, useCurrentUser } from "@/hooks/use-auth"
+import { getFriendlyMessage } from "@/lib/errors"
 
 const getRoleColor = (role: string) => {
   switch (role) {

@@ -30,6 +30,7 @@ import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/empty-state"
+import { getFriendlyMessage } from "@/lib/errors"
 
 // Mock compliance frameworks, issues and scans previously lived here. They
 // rendered invented SOC 2 / HIPAA scores, fake findings and fake scan history.

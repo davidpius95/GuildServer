@@ -26,6 +26,7 @@ import {
   AlertTriangle,
   XCircle,
 } from "lucide-react"
+import { getFriendlyMessage } from "@/lib/errors"
 
 const statusStyles: Record<string, string> = {
   active: "bg-green-50 text-green-700 border-green-200",

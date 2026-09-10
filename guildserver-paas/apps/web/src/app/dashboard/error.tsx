@@ -4,6 +4,7 @@ import { useEffect } from "react"
 import { AlertTriangle, RefreshCw, LayoutDashboard } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+import { getFriendlyMessage } from "@/lib/errors"
 
 export default function DashboardError({
   error,

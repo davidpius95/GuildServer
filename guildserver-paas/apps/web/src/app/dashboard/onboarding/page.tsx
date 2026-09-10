@@ -18,6 +18,7 @@ import {
   CheckCircle,
   Loader2
 } from "lucide-react"
+import { getFriendlyMessage } from "@/lib/errors"
 
 export default function OnboardingPage() {
   const router = useRouter()

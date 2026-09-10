@@ -20,6 +20,7 @@ import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog"
 import { ResponsiveModal } from "@/components/ui/responsive-modal"
 import { EmptyState } from "@/components/empty-state"
 import { formatDateTime } from "@/lib/utils"
+import { getFriendlyMessage } from "@/lib/errors"
 
 const getStatusColor = (status: string) => {
   switch (status) {
