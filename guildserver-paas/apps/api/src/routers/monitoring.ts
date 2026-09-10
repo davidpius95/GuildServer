@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { createTRPCRouter, protectedProcedure } from "../trpc/trpc";
+import { createTRPCRouter, protectedProcedure, adminProcedure } from "../trpc/trpc";
+import { buildDiskReport } from "../services/disk-report";
 import { metrics, applications, members, deployments, projects } from "@guildserver/database";
 import { eq, and, desc, gte, count, sql, inArray } from "drizzle-orm";
 import {
@@ -84,6 +85,26 @@ const getMetricsSchema = z.object({
 });
 
 export const monitoringRouter = createTRPCRouter({
+  /**
+   * What could be reclaimed on the Docker host, without reclaiming it.
+   *
+   * Platform admins only: it covers every tenant's images and volumes on the
+   * host. Report mode — nothing is deleted. See services/disk-report/policy.ts
+   * for the retention rules, chiefly that no rollback target is ever a candidate.
+   */
+  diskReport: adminProcedure
+    .input(
+      z
+        .object({
+          rollbackKeepPerApp: z.number().int().min(1).max(50).optional(),
+          rollbackRetentionDays: z.number().int().min(1).max(365).optional(),
+          buildCacheIdleDays: z.number().int().min(0).max(365).optional(),
+          stoppedContainerDays: z.number().int().min(0).max(3650).optional(),
+        })
+        .optional(),
+    )
+    .query(async ({ input }) => buildDiskReport({}, input ?? {})),
+
   recordMetric: protectedProcedure
     .input(recordMetricSchema)
     .mutation(async ({ ctx, input }) => {
