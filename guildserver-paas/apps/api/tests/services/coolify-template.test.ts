@@ -94,17 +94,15 @@ describe("classifyVariable", () => {
     expect(classifyVariable("DATABASE_URL")).toBeNull();
   });
 
-  it("splits domain variables into service name and port", () => {
-    expect(classifyVariable("SERVICE_URL_APP_3000")).toEqual({
-      key: "SERVICE_URL_APP_3000",
+  it("splits domain variables into service label and port", () => {
+    expect(classifyVariable("SERVICE_URL_APP_3000")).toMatchObject({
       kind: "domain",
       format: "url",
       serviceName: "app",
       port: 3000,
     });
 
-    expect(classifyVariable("SERVICE_FQDN_REDIS_CACHE_6379")).toEqual({
-      key: "SERVICE_FQDN_REDIS_CACHE_6379",
+    expect(classifyVariable("SERVICE_FQDN_REDIS_CACHE_6379")).toMatchObject({
       kind: "domain",
       format: "fqdn",
       serviceName: "redis_cache",
@@ -112,13 +110,19 @@ describe("classifyVariable", () => {
     });
   });
 
-  it("keeps a non-numeric trailing segment as part of the service name", () => {
-    expect(classifyVariable("SERVICE_URL_MY_APP")).toEqual({
-      key: "SERVICE_URL_MY_APP",
+  it("keeps a non-numeric trailing segment as part of the label", () => {
+    expect(classifyVariable("SERVICE_URL_MY_APP")).toMatchObject({
       kind: "domain",
       format: "url",
       serviceName: "my_app",
       port: null,
+    });
+  });
+
+  it("leaves a domain unresolved until a Compose body is available", () => {
+    expect(classifyVariable("SERVICE_URL_APP_3000")).toMatchObject({
+      targetService: null,
+      resolution: "unresolved",
     });
   });
 
@@ -299,23 +303,103 @@ describe("parseTemplate", () => {
     expect(template.warnings.some((warning) => warning.includes("SERVICE_SUPABASEANON_KEY"))).toBe(true);
   });
 
-  it("warns when a domain variable targets a service the file does not define", () => {
-    const source = [
-      "# slogan: Mismatched domain target.",
-      "",
-      "services:",
-      "  web:",
-      "    image: example/web:1.0",
-      "    environment:",
-      "      - SERVICE_URL_FRONTEND_3000",
-    ].join("\n");
+  describe("domain resolution", () => {
+    // The label in SERVICE_URL_<LABEL> is free-form and usually is NOT a
+    // Compose service name. 89 of the 341 importable templates would be flagged
+    // broken if it were read as one, so each rule below earns its keep.
 
-    const template = parseTemplate("mismatch", source);
-    expect(
-      template.warnings.some(
-        (warning) => warning.includes("SERVICE_URL_FRONTEND_3000") && warning.includes("frontend"),
-      ),
-    ).toBe(true);
+    const compose = (services: string[]) =>
+      ["# slogan: x", "", "services:", ...services].join("\n");
+
+    it("matches an exact service name", () => {
+      const template = parseTemplate(
+        "exact",
+        compose(["  web:", "    image: e/w:1", "    environment:", "      - SERVICE_URL_WEB_3000"]),
+      );
+      expect(domain("SERVICE_URL_WEB_3000", template)).toMatchObject({
+        targetService: "web",
+        resolution: "exact",
+      });
+    });
+
+    it("matches a label that is a prefix of the service name", () => {
+      // Real case: actualbudget labels its URL ACTUAL, service is actual_server.
+      const template = parseTemplate("actualbudget", fixture("actualbudget"));
+      expect(domain("SERVICE_URL_ACTUAL_5006", template)).toMatchObject({
+        targetService: "actual_server",
+        resolution: "prefix",
+      });
+      expect(template.warnings).toEqual([]);
+    });
+
+    it("falls back to the only service when nothing else matches", () => {
+      const template = parseTemplate(
+        "single",
+        compose(["  runtime:", "    image: e/r:1", "    environment:", "      - SERVICE_URL_DASHBOARD"]),
+      );
+      expect(domain("SERVICE_URL_DASHBOARD", template)).toMatchObject({
+        targetService: "runtime",
+        resolution: "only-service",
+      });
+    });
+
+    it("uses the port when exactly one service exposes it", () => {
+      const template = parseTemplate(
+        "byport",
+        compose([
+          "  frontend:",
+          "    image: e/f:1",
+          "    ports: ['9000']",
+          "    environment:",
+          "      - SERVICE_URL_SOMETHINGELSE_9000",
+          "  db:",
+          "    image: e/d:1",
+        ]),
+      );
+      expect(domain("SERVICE_URL_SOMETHINGELSE_9000", template)).toMatchObject({
+        targetService: "frontend",
+        resolution: "port",
+      });
+    });
+
+    it("matches across separator differences, e.g. INVOICENINJA to invoice-ninja", () => {
+      const template = parseTemplate(
+        "invoice-ninja",
+        compose([
+          "  invoice-ninja:",
+          "    image: e/i:1",
+          "    environment:",
+          "      - SERVICE_URL_INVOICENINJA",
+          "  mariadb:",
+          "    image: mariadb:11",
+        ]),
+      );
+      expect(domain("SERVICE_URL_INVOICENINJA", template)).toMatchObject({
+        targetService: "invoice-ninja",
+        resolution: "prefix",
+      });
+    });
+
+    it("warns rather than guessing when two services match the same label", () => {
+      // Real case: seaweedfs has seaweedfs-master and seaweedfs-admin. Picking
+      // one would silently route the domain to the wrong container.
+      const template = parseTemplate(
+        "seaweedfs",
+        compose([
+          "  seaweedfs-master:",
+          "    image: e/m:1",
+          "    environment:",
+          "      - SERVICE_URL_SEAWEEDFS",
+          "  seaweedfs-admin:",
+          "    image: e/a:1",
+        ]),
+      );
+      expect(domain("SERVICE_URL_SEAWEEDFS", template)).toMatchObject({
+        targetService: null,
+        resolution: "unresolved",
+      });
+      expect(template.warnings.some((w) => w.includes("SERVICE_URL_SEAWEEDFS"))).toBe(true);
+    });
   });
 
   it("warns about a service with no image", () => {

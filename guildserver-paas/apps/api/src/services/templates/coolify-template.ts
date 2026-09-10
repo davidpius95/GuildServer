@@ -138,15 +138,29 @@ export interface GeneratedVariable {
   identifier: string;
 }
 
+/** How a domain variable's label was matched to a real Compose service. */
+export type DomainResolution = "exact" | "prefix" | "port" | "only-service" | "unresolved";
+
 export interface DomainVariable {
   key: string;
   kind: "domain";
   /** `url` yields scheme://host, `fqdn` yields the bare host. */
   format: "url" | "fqdn";
-  /** Compose service the domain routes to. */
+  /**
+   * The label upstream used, lowercased. This is NOT reliably a Compose service
+   * name — `SERVICE_URL_ACTUAL_5006` labels a stack whose only service is
+   * `actual_server`, and that mismatch is the norm rather than the exception in
+   * the corpus. Use `targetService` for routing.
+   */
   serviceName: string;
   /** Container port to route to, when the name carried one. */
   port: number | null;
+  /**
+   * The Compose service the proxy should route to, resolved from the label.
+   * Null when no rule could identify one, which is a genuine defect.
+   */
+  targetService: string | null;
+  resolution: DomainResolution;
 }
 
 export interface UnsupportedVariable {
@@ -204,10 +218,22 @@ export function classifyVariable(key: string): TemplateVariable | null {
           format,
           serviceName: tail.slice(0, lastUnderscore).toLowerCase(),
           port: Number(maybePort),
+          // Resolution needs the Compose body, which this function does not
+          // have. `resolveDomainTargets` fills these in.
+          targetService: null,
+          resolution: "unresolved",
         };
       }
     }
-    return { key, kind: "domain", format, serviceName: tail.toLowerCase(), port: null };
+    return {
+      key,
+      kind: "domain",
+      format,
+      serviceName: tail.toLowerCase(),
+      port: null,
+      targetService: null,
+      resolution: "unresolved",
+    };
   }
 
   const matched = matchCommand(rest);
@@ -454,6 +480,77 @@ export interface ParsedTemplate {
   warnings: string[];
 }
 
+/**
+ * Work out which Compose service each domain variable should route to.
+ *
+ * Coolify's label is free-form. `SERVICE_URL_ACTUAL_5006` sits in a file whose
+ * only service is `actual_server`; `SERVICE_URL_APPWRITE` sits in a file with
+ * thirty services. Treating the label as a service name and warning on mismatch
+ * would flag 89 of 341 templates as broken when they are fine, so we resolve it
+ * instead, cheapest and most certain rule first:
+ *
+ *   1. exact         label is a service name
+ *   2. port          exactly one service exposes the port in the label
+ *   3. prefix        exactly one service name starts with (or contains) the label
+ *   4. only-service  the file has a single service, so there is no ambiguity
+ *
+ * A label that survives all four is genuinely unroutable and warns.
+ */
+function flatten(value: string): string {
+  return value.toLowerCase().replace(/[-_]/g, "");
+}
+
+export function resolveDomainTargets(
+  variables: TemplateVariable[],
+  services: ComposeServiceSummary[],
+): void {
+  const byName = new Map(services.map((service) => [service.name.toLowerCase(), service.name]));
+
+  for (const variable of variables) {
+    if (variable.kind !== "domain") continue;
+    const label = variable.serviceName;
+
+    const exact = byName.get(label);
+    if (exact) {
+      variable.targetService = exact;
+      variable.resolution = "exact";
+      continue;
+    }
+
+    if (variable.port !== null) {
+      const exposing = services.filter((service) => service.ports.includes(variable.port!));
+      if (exposing.length === 1) {
+        variable.targetService = exposing[0].name;
+        variable.resolution = "port";
+        continue;
+      }
+    }
+
+    // Labels drop separators that service names keep: SERVICE_URL_INVOICENINJA
+    // against a service called `invoice-ninja`, SERVICE_URL_NEWAPI against
+    // `new-api`. Compare with separators stripped from both sides.
+    const flatLabel = flatten(label);
+    const related = services.filter((service) => {
+      const name = flatten(service.name);
+      return name.startsWith(flatLabel) || flatLabel.startsWith(name) || name.includes(flatLabel);
+    });
+    if (related.length === 1) {
+      variable.targetService = related[0].name;
+      variable.resolution = "prefix";
+      continue;
+    }
+
+    if (services.length === 1) {
+      variable.targetService = services[0].name;
+      variable.resolution = "only-service";
+      continue;
+    }
+
+    variable.targetService = null;
+    variable.resolution = "unresolved";
+  }
+}
+
 export class TemplateParseError extends Error {
   constructor(message: string) {
     super(message);
@@ -555,14 +652,15 @@ export function parseTemplate(id: string, source: string): ParsedTemplate {
     }
   }
 
-  // A domain variable pointing at a Compose service that does not exist means
-  // routing would silently go nowhere.
-  const serviceNames = new Set(services.map((service) => service.name.toLowerCase()));
+  // A domain variable we cannot tie to any service means the proxy would have
+  // nowhere to send traffic.
+  resolveDomainTargets(variables, services);
   for (const variable of variables) {
     if (variable.kind !== "domain") continue;
-    if (!serviceNames.has(variable.serviceName)) {
+    if (variable.resolution === "unresolved") {
       warnings.push(
-        `Domain variable ${variable.key} targets Compose service "${variable.serviceName}", which the file does not define`,
+        `Domain variable ${variable.key} could not be matched to any of this file's Compose services ` +
+          `(${services.map((service) => service.name).join(", ")})`,
       );
     }
   }
