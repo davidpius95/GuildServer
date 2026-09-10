@@ -2,6 +2,14 @@
 # Poll origin/main and deploy the checkout that contains this script.
 # Install via cron: */5 * * * * /path/to/guildserver-paas/scripts/self-update.sh >> /var/log/guildserver-update.log 2>&1
 
+# The whole script is one brace group, so bash parses all of it before
+# executing any of it. This file is replaced on disk while running, both by
+# its own self-refresh and by an operator installing a new version; bash
+# reads scripts incrementally, so an unwrapped script resumes at the old
+# byte offset inside the new text. On 10 September that executed half a
+# comment ("conclusively: command not found") mid-deploy and triggered a
+# rollback. `exit` before the closing brace means nothing after it is read.
+{
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -152,15 +160,29 @@ INSTALLED_UPDATER="$(readlink -f "${BASH_SOURCE[0]}")"
 if [ -f "$REPO_UPDATER" ] && [ "$INSTALLED_UPDATER" != "$(readlink -f "$REPO_UPDATER")" ]; then
   if ! cmp -s "$REPO_UPDATER" "$INSTALLED_UPDATER"; then
     if bash -n "$REPO_UPDATER" 2>/dev/null; then
-      if sudo -n cp "$INSTALLED_UPDATER" "${INSTALLED_UPDATER}.prev" 2>/dev/null \
-         && sudo -n cp "$REPO_UPDATER" "$INSTALLED_UPDATER" 2>/dev/null; then
+      # Stage beside the target, then rename. `cp` onto the installed path would
+      # rewrite the file THIS process is executing, in place; bash reads a
+      # script from disk as it runs, so it would carry on at the same byte
+      # offset inside the new content. A rename gives the new script a new
+      # inode and leaves the running one untouched.
+      STAGED="$(sudo -n mktemp "${INSTALLED_UPDATER}.new.XXXXXX" 2>/dev/null)"
+      if [ -n "$STAGED" ] \
+         && sudo -n cp "$INSTALLED_UPDATER" "${INSTALLED_UPDATER}.prev" 2>/dev/null \
+         && sudo -n cp "$REPO_UPDATER" "$STAGED" 2>/dev/null \
+         && sudo -n chmod 0755 "$STAGED" 2>/dev/null \
+         && sudo -n mv -f "$STAGED" "$INSTALLED_UPDATER" 2>/dev/null; then
         log "Refreshed the installed updater from the repo (previous kept at ${INSTALLED_UPDATER}.prev)."
       else
+        [ -n "$STAGED" ] && sudo -n rm -f "$STAGED" 2>/dev/null
         log "WARNING: the installed updater is out of date and could not be refreshed automatically."
-        log "         Run: sudo cp $REPO_UPDATER $INSTALLED_UPDATER"
+        log "         Install it atomically, and never while an update is running:"
+        log "         sudo cp $REPO_UPDATER ${INSTALLED_UPDATER}.new && sudo mv -f ${INSTALLED_UPDATER}.new $INSTALLED_UPDATER"
       fi
     else
       log "WARNING: $REPO_UPDATER does not parse; keeping the installed updater."
     fi
   fi
 fi
+
+exit 0
+}
