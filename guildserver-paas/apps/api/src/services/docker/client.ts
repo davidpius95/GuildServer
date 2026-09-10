@@ -14,7 +14,26 @@ export const GS_LABELS = {
   DEPLOYMENT_ID: "gs.deployment.id",
   PROJECT_ID: "gs.project.id",
   TYPE: "gs.type",
+
+  /**
+   * Stack-scoped labels for Compose services.
+   *
+   * `SERVICE_ID` is the one that matters. It carries the stack's row UUID, so
+   * every destructive operation on a stack — stop, restart, delete, orphan
+   * sweep — filters on a globally unique value rather than on a name prefix.
+   * Name prefixes are how `gs-api` cleanup takes out `gs-api-gateway`; a UUID
+   * cannot do that.
+   */
+  SERVICE_ID: "gs.service.id",
+  SERVICE_NAME: "gs.service.name",
+  /** The key under `services:` in the user's Compose file. */
+  COMPOSE_SERVICE: "gs.compose.service",
+  /** The `docker compose -p` project name we deployed the stack under. */
+  COMPOSE_PROJECT: "gs.compose.project",
 };
+
+/** Value of `GS_LABELS.TYPE` for resources belonging to a Compose stack. */
+export const GS_TYPE_SERVICE = "service";
 
 export function isLocalhostDomain(domain: string): boolean {
   const d = domain.toLowerCase();

@@ -24,6 +24,7 @@ import { decryptSecret } from "../utils/crypto";
 import { deploymentsTotal, deploymentDuration, queueDepth } from "../services/prometheus-metrics";
 import crypto from "crypto";
 import path from "path";
+import { runServiceDeployJob } from "./service-deploy";
 
 // Redis connection
 // Note: dotenv may not be loaded when this module initializes (import hoisting),
@@ -68,6 +69,14 @@ const deploymentWorker = new Worker(
   async (job) => {
     const jobStartTime = process.hrtime();
     logger.info("Processing deployment job", { jobId: job.id, data: job.data });
+
+    // Compose stacks reuse this queue rather than growing a parallel one, so
+    // they inherit deployment history, live logs and the rollback machinery.
+    // The handler lives in its own module; nothing below this line applies to
+    // a stack, which has no single application row, image or host port.
+    if (job.name === "deploy-service") {
+      return await runServiceDeployJob(job.data);
+    }
 
     const { deploymentId, applicationId, userId, isRollback, sourceDeploymentId, isPreview, previewBranch } = job.data;
     const allBuildLogs: string[] = [];

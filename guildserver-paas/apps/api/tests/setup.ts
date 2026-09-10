@@ -60,6 +60,11 @@ async function clearTestData() {
     'k8s_deployments',
     'kubernetes_clusters',
     'deployments',
+    // Compose stacks. Listed before `services` so the cascade is explicit
+    // rather than implied.
+    'service_containers',
+    'service_volumes',
+    'services',
     'applications',
     'compute_providers',
     'databases',
