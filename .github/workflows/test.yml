@@ -8,8 +8,6 @@ on:
 
 env:
   NODE_VERSION: '20'
-  POSTGRES_VERSION: '15'
-  REDIS_VERSION: '7'
 
 # The pnpm workspace lives in a subdirectory of the repository. Workflows must
 # sit at the repository root for GitHub to run them at all, so every job runs
@@ -30,7 +28,6 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
           package_json_file: guildserver-paas/package.json
 
       - name: Setup Node.js
@@ -56,7 +53,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:${{ env.POSTGRES_VERSION }}
+        image: postgres:15
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -70,7 +67,7 @@ jobs:
           - 5432:5432
 
       redis:
-        image: redis:${{ env.REDIS_VERSION }}
+        image: redis:7
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
@@ -86,7 +83,6 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
           package_json_file: guildserver-paas/package.json
 
       - name: Setup Node.js
@@ -160,7 +156,6 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
           package_json_file: guildserver-paas/package.json
 
       - name: Setup Node.js
@@ -193,7 +188,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:${{ env.POSTGRES_VERSION }}
+        image: postgres:15
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -207,7 +202,7 @@ jobs:
           - 5432:5432
 
       redis:
-        image: redis:${{ env.REDIS_VERSION }}
+        image: redis:7
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
@@ -223,7 +218,6 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
           package_json_file: guildserver-paas/package.json
 
       - name: Setup Node.js
@@ -295,7 +289,6 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
           package_json_file: guildserver-paas/package.json
 
       - name: Setup Node.js
@@ -331,7 +324,6 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
           package_json_file: guildserver-paas/package.json
 
       - name: Setup Node.js
@@ -367,7 +359,6 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
           package_json_file: guildserver-paas/package.json
 
       - name: Setup Node.js
