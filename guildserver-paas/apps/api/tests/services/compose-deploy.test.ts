@@ -54,6 +54,8 @@ async function createStack(overrides: Record<string, any> = {}) {
 function fakeDocker(inventory: {
   containers?: { Id: string; Names: string[]; Image?: string; State?: string; Status?: string; Labels: Record<string, string>; Ports?: any[] }[];
   volumes?: string[];
+  /** Return every container regardless of the label filter. See listContainers. */
+  ignoreFilters?: boolean;
 }) {
   const containers = inventory.containers ?? [];
   const volumes = new Set(inventory.volumes ?? []);
@@ -65,6 +67,12 @@ function fakeDocker(inventory: {
     removedVolumes,
     survivingVolumes: volumes,
     listContainers: jest.fn(async (opts: any) => {
+      // `ignoreFilters` models a daemon that returns more than we asked for —
+      // a wrong filter passed by a future refactor, or an API that does not
+      // narrow the way we assume. The application-side label re-check is the
+      // only thing standing between that and deleting someone else's
+      // container, so it needs a test that actually reaches it.
+      if (inventory.ignoreFilters) return [...containers];
       const wanted: string[] = opts?.filters?.label ?? [];
       return containers.filter((c) =>
         wanted.every((pair) => {
@@ -248,6 +256,44 @@ describe('reconcileContainers', () => {
 });
 
 describe('removeStack', () => {
+  it('refuses foreign containers even when the daemon ignores the label filter', async () => {
+    // The label filter is the first defence and is covered elsewhere. This
+    // covers the second: a re-check in application code that only ever runs
+    // when the daemon hands back more than we asked for. Deleting that line
+    // leaves every other test green, so without this the guard is decorative.
+    const stack = await createStack();
+    const other = await createStack();
+    const docker = fakeDocker({
+      ignoreFilters: true,
+      containers: [
+        container(stack.id, 'web'),
+        container(other.id, 'web'),
+        {
+          Id: 'customer-app',
+          Names: ['/gs-daily-habit-tracker-app-beabc5c7'],
+          State: 'running',
+          Status: 'Up 3 days',
+          Labels: { [GS_LABELS.MANAGED]: 'true', [GS_LABELS.TYPE]: 'application', [GS_LABELS.APP_ID]: 'app-uuid' },
+        },
+        { Id: 'unmanaged', Names: ['/someones-postgres'], State: 'running', Status: 'Up 90 days', Labels: {} },
+      ],
+    });
+
+    const result = await removeStack({
+      serviceId: stack.id,
+      database: db,
+      dockerClient: docker as any,
+      runner: jest.fn(async () => ({ code: 0, stdout: '', stderr: '' })) as any,
+    });
+
+    // Only this stack's own container is touched.
+    expect(result.sweptContainers).toEqual([`ctr-web-${stack.id.slice(0, 4)}`]);
+    expect(docker.removedContainers).not.toContain('customer-app');
+    expect(docker.removedContainers).not.toContain('unmanaged');
+    expect(docker.removedContainers).not.toContain(`ctr-web-${other.id.slice(0, 4)}`);
+    expect(docker.removedContainers).toHaveLength(1);
+  });
+
   /**
    * The customer-protecting test.
    *
