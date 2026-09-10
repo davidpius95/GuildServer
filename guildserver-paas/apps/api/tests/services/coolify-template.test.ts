@@ -11,6 +11,7 @@ import { join } from "path";
 
 import {
   classifyVariable,
+  collectUserVariables,
   parseMetadata,
   parseTemplate,
   stripMetadataHeader,
@@ -450,6 +451,35 @@ describe("parseTemplate", () => {
     expect(template.compose).toContain("${_APP_DOMAIN:-$SERVICE_FQDN_APPWRITE}");
     expect(template.compose).toContain("- SERVICE_URL_APPWRITE=${SERVICE_URL_APPWRITE}/");
     expect(generated("SERVICE_PASSWORD_64_APPWRITE", template).generator.length).toBe(64);
+  });
+
+  describe("user-supplied variables", () => {
+    it("declares a variable with no default as required", () => {
+      // Real case: Ghost's mysql service has MYSQL_DATABASE=${MYSQL_DATABASE}
+      // with no default, so deploying without asking gives MySQL an empty
+      // database name.
+      const template = parseTemplate("ghost", fixture("ghost"));
+      const byKey = new Map(template.userVariables.map((variable) => [variable.key, variable]));
+
+      expect(byKey.get("MAIL_OPTIONS_AUTH_PASS")).toMatchObject({ required: true, defaultValue: null });
+      expect(byKey.get("MAIL_OPTIONS_PORT")).toMatchObject({ required: false, defaultValue: "465" });
+    });
+
+    it("treats a variable as optional when any occurrence supplies a default", () => {
+      // Ghost references MYSQL_DATABASE bare in one service and as
+      // ${MYSQL_DATABASE-ghost} in another. One default keeps the stack working.
+      const variables = collectUserVariables("a=${X}\nb=${X-fallback}\n");
+      expect(variables).toEqual([{ key: "X", required: false, defaultValue: "fallback" }]);
+    });
+
+    it("never lists a magic variable as user-supplied", () => {
+      const variables = collectUserVariables("${SERVICE_PASSWORD_DB} ${SERVICE_URL_APP_3000} ${REAL}");
+      expect(variables.map((variable) => variable.key)).toEqual(["REAL"]);
+    });
+
+    it("ignores an escaped literal dollar", () => {
+      expect(collectUserVariables("cost=$$NOT_A_VAR")).toEqual([]);
+    });
   });
 
   describe("malformed input", () => {

@@ -454,6 +454,68 @@ export function translateCompose(composeBody: string): TranslationResult {
 }
 
 // ---------------------------------------------------------------------------
+// User-supplied variables
+// ---------------------------------------------------------------------------
+
+/**
+ * A variable the template expects the operator to provide.
+ *
+ * Distinct from the magic ones: nothing generates these. Ghost's mysql service
+ * has `MYSQL_DATABASE=${MYSQL_DATABASE}` with no default at all, so deploying
+ * without asking the user gives MySQL an empty database name. Coolify surfaces
+ * these in its UI; if we did not declare them the stack would come up broken
+ * with no indication why.
+ */
+export interface UserVariable {
+  key: string;
+  /** No occurrence supplies a default, so a value must be collected. */
+  required: boolean;
+  /** The default upstream supplies, when it supplies one. */
+  defaultValue: string | null;
+}
+
+const REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?:(:?[-?])([^}]*))?\}|\$([A-Za-z_][A-Za-z0-9_]*)/g;
+
+/**
+ * Collect every non-magic variable the Compose body references.
+ *
+ * A variable is required when NO occurrence of it carries a default. Templates
+ * reference the same name both ways — Ghost uses `${MYSQL_DATABASE-ghost}` in
+ * one service and bare `${MYSQL_DATABASE}` in another — and one default is
+ * enough to keep the stack working, so the optional reading wins.
+ */
+export function collectUserVariables(compose: string): UserVariable[] {
+  const found = new Map<string, UserVariable>();
+
+  // `$$` is an escaped literal dollar, not a reference.
+  for (const match of compose.split("$$").join(" ").matchAll(REFERENCE)) {
+    const key = match[1] ?? match[4];
+    if (!key || classifyVariable(key)) continue;
+
+    const operator = match[2];
+    const fallback = match[3];
+    const hasDefault = operator !== undefined && operator.endsWith("-");
+
+    const existing = found.get(key);
+    if (!existing) {
+      found.set(key, {
+        key,
+        required: !hasDefault,
+        defaultValue: hasDefault ? (fallback ?? "") : null,
+      });
+      continue;
+    }
+
+    if (hasDefault) {
+      existing.required = false;
+      existing.defaultValue ??= fallback ?? "";
+    }
+  }
+
+  return [...found.values()].sort((a, b) => a.key.localeCompare(b.key));
+}
+
+// ---------------------------------------------------------------------------
 // Whole-template parsing
 // ---------------------------------------------------------------------------
 
@@ -475,6 +537,8 @@ export interface ParsedTemplate {
   /** Compose body with Coolify declarations translated. */
   compose: string;
   variables: TemplateVariable[];
+  /** Variables the operator must or may supply; nothing generates these. */
+  userVariables: UserVariable[];
   services: ComposeServiceSummary[];
   /** Non-fatal problems; a template with any of these is not publishable. */
   warnings: string[];
@@ -677,6 +741,7 @@ export function parseTemplate(id: string, source: string): ParsedTemplate {
     metadata,
     compose,
     variables,
+    userVariables: collectUserVariables(compose),
     services,
     warnings,
   };

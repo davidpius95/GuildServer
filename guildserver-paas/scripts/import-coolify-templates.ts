@@ -45,6 +45,7 @@ import {
   TemplateParseError,
   type ParsedTemplate,
   type TemplateVariable,
+  type UserVariable,
 } from "../apps/api/src/services/templates/coolify-template";
 
 // ---------------------------------------------------------------------------
@@ -207,6 +208,7 @@ interface EmittedTemplate {
   notices: string[];
   services: ParsedTemplate["services"];
   variables: TemplateVariable[];
+  userVariables: UserVariable[];
   publishable: boolean;
   verification: VerificationStatus;
   warnings: string[];
@@ -242,6 +244,7 @@ function toEmitted(
     notices: parsed.metadata.notices,
     services: parsed.services,
     variables: parsed.variables,
+    userVariables: parsed.userVariables,
     // Both conditions matter: no warnings AND a recorded pass. A template that
     // parses cleanly but has never been deployed is not publishable.
     publishable: parsed.warnings.length === 0 && verification === "passed",
@@ -340,6 +343,15 @@ export type ServiceTemplateVariable =
   | ServiceTemplateDomainVariable
   | ServiceTemplateUnsupportedVariable;
 
+/** A variable the operator supplies; nothing generates these. */
+export interface ServiceTemplateUserVariable {
+  key: string;
+  /** No reference site supplies a default, so a value must be collected. */
+  required: boolean;
+  /** Pin this into the environment; do not leave it to per-site defaults. */
+  defaultValue: string | null;
+}
+
 export interface ServiceTemplateService {
   name: string;
   image: string | null;
@@ -363,6 +375,8 @@ export interface ServiceTemplate {
   notices: string[];
   services: ServiceTemplateService[];
   variables: ServiceTemplateVariable[];
+  /** Prompt for every entry with \`required: true\` before deploying. */
+  userVariables: ServiceTemplateUserVariable[];
   /**
    * True only when the template parses cleanly AND has passed the deployment
    * gate at this upstream commit. Anything the catalogue offers to customers

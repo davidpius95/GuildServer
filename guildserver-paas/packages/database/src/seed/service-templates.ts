@@ -80,6 +80,15 @@ export type ServiceTemplateVariable =
   | ServiceTemplateDomainVariable
   | ServiceTemplateUnsupportedVariable
 
+/** A variable the operator supplies; nothing generates these. */
+export interface ServiceTemplateUserVariable {
+  key: string
+  /** No reference site supplies a default, so a value must be collected. */
+  required: boolean
+  /** Pin this into the environment; do not leave it to per-site defaults. */
+  defaultValue: string | null
+}
+
 export interface ServiceTemplateService {
   name: string
   image: string | null
@@ -103,6 +112,8 @@ export interface ServiceTemplate {
   notices: string[]
   services: ServiceTemplateService[]
   variables: ServiceTemplateVariable[]
+  /** Prompt for every entry with `required: true` before deploying. */
+  userVariables: ServiceTemplateUserVariable[]
   /**
    * True only when the template parses cleanly AND has passed the deployment
    * gate at this upstream commit. Anything the catalogue offers to customers
@@ -208,6 +219,78 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'AP_ENGINE_EXECUTABLE_PATH',
+        required: false,
+        defaultValue: 'dist/packages/engine/main.js',
+      },
+      {
+        key: 'AP_ENVIRONMENT',
+        required: false,
+        defaultValue: 'prod',
+      },
+      {
+        key: 'AP_EXECUTION_MODE',
+        required: false,
+        defaultValue: 'UNSANDBOXED',
+      },
+      {
+        key: 'AP_SANDBOX_RUN_TIME_SECONDS',
+        required: false,
+        defaultValue: '600',
+      },
+      {
+        key: 'AP_SIGN_UP_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'AP_TELEMETRY_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'AP_TEMPLATES_SOURCE_URL',
+        required: false,
+        defaultValue: 'https://cloud.activepieces.com/api/v1/flow-templates',
+      },
+      {
+        key: 'AP_TRIGGER_DEFAULT_POLL_INTERVAL',
+        required: false,
+        defaultValue: '5',
+      },
+      {
+        key: 'AP_WEBHOOK_TIMEOUT_SECONDS',
+        required: false,
+        defaultValue: '30',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'activepieces',
+      },
+      {
+        key: 'POSTGRES_HOST',
+        required: false,
+        defaultValue: 'postgres',
+      },
+      {
+        key: 'POSTGRES_PORT',
+        required: false,
+        defaultValue: '5432',
+      },
+      {
+        key: 'REDIS_HOST',
+        required: false,
+        defaultValue: 'redis',
+      },
+      {
+        key: 'REDIS_PORT',
+        required: false,
+        defaultValue: '6379',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -243,6 +326,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'prefix',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -322,6 +406,58 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRES',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'AFFINE_REVISION',
+        required: false,
+        defaultValue: 'stable',
+      },
+      {
+        key: 'COPILOT_FAL_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'COPILOT_OPENAI_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'COPILOT_PERPLEXITY_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAILER_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAILER_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAILER_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAILER_SENDER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAILER_USER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'affine',
       },
     ],
     publishable: false,
@@ -476,6 +612,68 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'RUSTFS',
       },
     ],
+    userVariables: [
+      {
+        key: 'ALLOW_UNSECURE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'CDN_ENDPOINT',
+        required: false,
+        defaultValue: '/alexandrie/',
+      },
+      {
+        key: 'CONFIG_DISABLE_LANDING',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'CONFIG_DISABLE_SIGNUP',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'MINIO_BUCKET',
+        required: false,
+        defaultValue: 'alexandrie',
+      },
+      {
+        key: 'MINIO_SECURE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'alexandrie-db',
+      },
+      {
+        key: 'RUSTFS_CONSOLE_ENABLE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RUSTFS_LOG_LEVEL',
+        required: false,
+        defaultValue: 'info',
+      },
+      {
+        key: 'SMTP_HOST',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'SMTP_MAIL',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'SMTP_PASSWORD',
+        required: false,
+        defaultValue: '',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -559,6 +757,63 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 3001,
         targetService: 'anything-llm',
         resolution: 'prefix',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'DISABLE_TELEMETRY',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'GID',
+        required: false,
+        defaultValue: '1000',
+      },
+      {
+        key: 'PASSWORDLOWERCASE',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'PASSWORDMAXCHAR',
+        required: false,
+        defaultValue: '250',
+      },
+      {
+        key: 'PASSWORDMINCHAR',
+        required: false,
+        defaultValue: '6',
+      },
+      {
+        key: 'PASSWORDNUMERIC',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'PASSWORDREQUIREMENTS',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'PASSWORDSYMBOL',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'PASSWORDUPPERCASE',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'SERVER_PORT',
+        required: false,
+        defaultValue: '3001',
+      },
+      {
+        key: 'UID',
+        required: false,
+        defaultValue: '1000',
       },
     ],
     publishable: false,
@@ -714,6 +969,173 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'admin_frontend_backend',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AI_OPENAI_API_KEY',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'appflowy_cloud_backend',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'APPFLOWY_MAILER_SMTP_EMAIL',
+        required: false,
+        defaultValue: 'notify@appflowy.io',
+      },
+      {
+        key: 'APPFLOWY_MAILER_SMTP_HOST',
+        required: false,
+        defaultValue: 'smtp.gmail.com',
+      },
+      {
+        key: 'APPFLOWY_MAILER_SMTP_PASSWORD',
+        required: false,
+        defaultValue: 'email_sender_password',
+      },
+      {
+        key: 'APPFLOWY_MAILER_SMTP_PORT',
+        required: false,
+        defaultValue: '587',
+      },
+      {
+        key: 'APPFLOWY_MAILER_SMTP_TLS_KIND',
+        required: false,
+        defaultValue: 'none',
+      },
+      {
+        key: 'APPFLOWY_MAILER_SMTP_USERNAME',
+        required: false,
+        defaultValue: 'notify@appflowy.io',
+      },
+      {
+        key: 'APPFLOWY_S3_BUCKET',
+        required: false,
+        defaultValue: 'appflowy',
+      },
+      {
+        key: 'APPFLOWY_S3_CREATE_BUCKET',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'APPFLOWY_S3_REGION',
+        required: false,
+        defaultValue: 'us-east-1',
+      },
+      {
+        key: 'AZURE_OPENAI_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AZURE_OPENAI_API_VERSION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AZURE_OPENAI_ENDPOINT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'connection_upgrade',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOTRUE_ADMIN_EMAIL',
+        required: false,
+        defaultValue: 'admin@example.com',
+      },
+      {
+        key: 'gotrue_backend',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOTRUE_JWT_EXP',
+        required: false,
+        defaultValue: '7200',
+      },
+      {
+        key: 'GOTRUE_SMTP_ADMIN_EMAIL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOTRUE_SMTP_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOTRUE_SMTP_PASS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOTRUE_SMTP_PORT',
+        required: false,
+        defaultValue: '587',
+      },
+      {
+        key: 'GOTRUE_SMTP_USER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'host',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'http_host',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'http_upgrade',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'appflowy',
+      },
+      {
+        key: 'proxy_add_x_forwarded_for',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'remote_addr',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'request_id',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'RUST_LOG',
+        required: false,
+        defaultValue: 'info',
+      },
+      {
+        key: 'scheme',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -749,6 +1171,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'prefix',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -782,6 +1205,33 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: null,
         targetService: 'appsmith',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'APPSMITH_DISABLE_INTERCOM',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'APPSMITH_DISABLE_TELEMETRY',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'APPSMITH_MAIL_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'APPSMITH_SENTRY_DSN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'APPSMITH_SMART_LOOK_ID',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -1009,6 +1459,648 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MARIADB',
       },
     ],
+    userVariables: [
+      {
+        key: '_APP_ASSISTANT_OPENAI_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_BROWSER_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_COMPRESSION_MIN_SIZE_BYTES',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_COMPUTE_BUILD_TIMEOUT',
+        required: false,
+        defaultValue: '900',
+      },
+      {
+        key: '_APP_COMPUTE_CPUS',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: '_APP_COMPUTE_INACTIVE_THRESHOLD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_COMPUTE_MAINTENANCE_INTERVAL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_COMPUTE_MEMORY',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: '_APP_COMPUTE_RUNTIMES_NETWORK',
+        required: false,
+        defaultValue: 'runtimes',
+      },
+      {
+        key: '_APP_COMPUTE_SIZE_LIMIT',
+        required: false,
+        defaultValue: '30000000',
+      },
+      {
+        key: '_APP_CONSOLE_COUNTRIES_DENYLIST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_CONSOLE_DOMAIN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_CONSOLE_HOSTNAMES',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_CONSOLE_SESSION_ALERTS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_CONSOLE_WHITELIST_EMAILS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_CONSOLE_WHITELIST_IPS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_CONSOLE_WHITELIST_ROOT',
+        required: false,
+        defaultValue: 'enabled',
+      },
+      {
+        key: '_APP_CUSTOM_DOMAIN_DENY_LIST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_DATABASE_SHARED_NAMESPACE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_DATABASE_SHARED_TABLES',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_DATABASE_SHARED_TABLES_V1',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_DB_HOST',
+        required: false,
+        defaultValue: 'appwrite-mariadb',
+      },
+      {
+        key: '_APP_DB_PORT',
+        required: false,
+        defaultValue: '3306',
+      },
+      {
+        key: '_APP_DB_SCHEMA',
+        required: false,
+        defaultValue: 'appwrite',
+      },
+      {
+        key: '_APP_DNS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_DOCKER_HUB_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_DOCKER_HUB_USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_DOMAIN',
+        required: false,
+        defaultValue: '$SERVICE_FQDN_APPWRITE',
+      },
+      {
+        key: '_APP_DOMAIN_FUNCTIONS',
+        required: false,
+        defaultValue: 'functions.$SERVICE_FQDN_APPWRITE',
+      },
+      {
+        key: '_APP_DOMAIN_SITES',
+        required: false,
+        defaultValue: 'sites.$SERVICE_FQDN_APPWRITE',
+      },
+      {
+        key: '_APP_DOMAIN_TARGET_A',
+        required: false,
+        defaultValue: '127.0.0.1',
+      },
+      {
+        key: '_APP_DOMAIN_TARGET_AAAA',
+        required: false,
+        defaultValue: '::1',
+      },
+      {
+        key: '_APP_DOMAIN_TARGET_CAA',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_DOMAIN_TARGET_CNAME',
+        required: false,
+        defaultValue: 'localhost',
+      },
+      {
+        key: '_APP_EDITION',
+        required: false,
+        defaultValue: 'self-hosted',
+      },
+      {
+        key: '_APP_EMAIL_CERTIFICATES',
+        required: false,
+        defaultValue: 'enabled',
+      },
+      {
+        key: '_APP_EMAIL_SECURITY',
+        required: false,
+        defaultValue: 'certs@appwrite.io',
+      },
+      {
+        key: '_APP_ENV',
+        required: false,
+        defaultValue: 'production',
+      },
+      {
+        key: '_APP_EXECUTOR_HOST',
+        required: false,
+        defaultValue: 'http://appwrite-executor/v1',
+      },
+      {
+        key: '_APP_EXPERIMENT_LOGGING_CONFIG',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_EXPERIMENT_LOGGING_PROVIDER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_FUNCTIONS_CREATION_ABUSE_LIMIT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_FUNCTIONS_RUNTIMES',
+        required: false,
+        defaultValue: 'node-20.0,php-8.2,python-3.11,ruby-3.2',
+      },
+      {
+        key: '_APP_FUNCTIONS_TIMEOUT',
+        required: false,
+        defaultValue: '900',
+      },
+      {
+        key: '_APP_GRAPHQL_MAX_BATCH_SIZE',
+        required: false,
+        defaultValue: '10',
+      },
+      {
+        key: '_APP_GRAPHQL_MAX_COMPLEXITY',
+        required: false,
+        defaultValue: '250',
+      },
+      {
+        key: '_APP_GRAPHQL_MAX_DEPTH',
+        required: false,
+        defaultValue: '3',
+      },
+      {
+        key: '_APP_LOCALE',
+        required: false,
+        defaultValue: 'en',
+      },
+      {
+        key: '_APP_LOGGING_CONFIG',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_LOGGING_PROVIDER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_MAINTENANCE_DELAY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_MAINTENANCE_INTERVAL',
+        required: false,
+        defaultValue: '86400',
+      },
+      {
+        key: '_APP_MAINTENANCE_RETENTION_ABUSE',
+        required: false,
+        defaultValue: '86400',
+      },
+      {
+        key: '_APP_MAINTENANCE_RETENTION_AUDIT',
+        required: false,
+        defaultValue: '1209600',
+      },
+      {
+        key: '_APP_MAINTENANCE_RETENTION_AUDIT_CONSOLE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_MAINTENANCE_RETENTION_CACHE',
+        required: false,
+        defaultValue: '2592000',
+      },
+      {
+        key: '_APP_MAINTENANCE_RETENTION_EXECUTION',
+        required: false,
+        defaultValue: '1209600',
+      },
+      {
+        key: '_APP_MAINTENANCE_RETENTION_SCHEDULES',
+        required: false,
+        defaultValue: '86400',
+      },
+      {
+        key: '_APP_MAINTENANCE_RETENTION_USAGE_HOURLY',
+        required: false,
+        defaultValue: '8640000',
+      },
+      {
+        key: '_APP_MAINTENANCE_START_TIME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_MESSAGE_EMAIL_TEST_DSN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_MESSAGE_PUSH_TEST_DSN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_MESSAGE_SMS_TEST_DSN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_MIGRATIONS_FIREBASE_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_MIGRATIONS_FIREBASE_CLIENT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_OPTIONS_ABUSE',
+        required: false,
+        defaultValue: 'enabled',
+      },
+      {
+        key: '_APP_OPTIONS_FORCE_HTTPS',
+        required: false,
+        defaultValue: 'disabled',
+      },
+      {
+        key: '_APP_OPTIONS_ROUTER_FORCE_HTTPS',
+        required: false,
+        defaultValue: 'disabled',
+      },
+      {
+        key: '_APP_OPTIONS_ROUTER_PROTECTION',
+        required: false,
+        defaultValue: 'disabled',
+      },
+      {
+        key: '_APP_QUEUE_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_REDIS_HOST',
+        required: false,
+        defaultValue: 'appwrite-redis',
+      },
+      {
+        key: '_APP_REDIS_PASS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_REDIS_PORT',
+        required: false,
+        defaultValue: '6379',
+      },
+      {
+        key: '_APP_REDIS_USER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_SITES_RUNTIMES',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_SITES_TIMEOUT',
+        required: false,
+        defaultValue: '900',
+      },
+      {
+        key: '_APP_SMS_FROM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_SMS_PROJECTS_DENY_LIST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_SMS_PROVIDER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_SMTP_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_SMTP_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_SMTP_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_SMTP_SECURE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_SMTP_USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_STATS_RESOURCES_INTERVAL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_STORAGE_ANTIVIRUS',
+        required: false,
+        defaultValue: 'disabled',
+      },
+      {
+        key: '_APP_STORAGE_ANTIVIRUS_HOST',
+        required: false,
+        defaultValue: 'appwrite-clamav',
+      },
+      {
+        key: '_APP_STORAGE_ANTIVIRUS_PORT',
+        required: false,
+        defaultValue: '3310',
+      },
+      {
+        key: '_APP_STORAGE_BACKBLAZE_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_STORAGE_BACKBLAZE_BUCKET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_STORAGE_BACKBLAZE_REGION',
+        required: false,
+        defaultValue: 'us-west-004',
+      },
+      {
+        key: '_APP_STORAGE_BACKBLAZE_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_STORAGE_DEVICE',
+        required: false,
+        defaultValue: 'local',
+      },
+      {
+        key: '_APP_STORAGE_DO_SPACES_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_STORAGE_DO_SPACES_BUCKET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_STORAGE_DO_SPACES_REGION',
+        required: false,
+        defaultValue: 'us-east-1',
+      },
+      {
+        key: '_APP_STORAGE_DO_SPACES_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_STORAGE_LIMIT',
+        required: false,
+        defaultValue: '30000000',
+      },
+      {
+        key: '_APP_STORAGE_LINODE_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_STORAGE_LINODE_BUCKET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_STORAGE_LINODE_REGION',
+        required: false,
+        defaultValue: 'eu-central-1',
+      },
+      {
+        key: '_APP_STORAGE_LINODE_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_STORAGE_PREVIEW_LIMIT',
+        required: false,
+        defaultValue: '20000000',
+      },
+      {
+        key: '_APP_STORAGE_S3_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_STORAGE_S3_BUCKET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_STORAGE_S3_ENDPOINT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_STORAGE_S3_REGION',
+        required: false,
+        defaultValue: 'us-east-1',
+      },
+      {
+        key: '_APP_STORAGE_S3_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_STORAGE_WASABI_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_STORAGE_WASABI_BUCKET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_STORAGE_WASABI_REGION',
+        required: false,
+        defaultValue: 'eu-central-1',
+      },
+      {
+        key: '_APP_STORAGE_WASABI_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_SYSTEM_EMAIL_ADDRESS',
+        required: false,
+        defaultValue: 'team@appwrite.io',
+      },
+      {
+        key: '_APP_SYSTEM_EMAIL_NAME',
+        required: false,
+        defaultValue: 'Appwrite',
+      },
+      {
+        key: '_APP_SYSTEM_RESPONSE_FORMAT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_SYSTEM_SECURITY_EMAIL_ADDRESS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_SYSTEM_TEAM_EMAIL',
+        required: false,
+        defaultValue: 'team@appwrite.io',
+      },
+      {
+        key: '_APP_USAGE_AGGREGATION_INTERVAL',
+        required: false,
+        defaultValue: '30',
+      },
+      {
+        key: '_APP_USAGE_STATS',
+        required: false,
+        defaultValue: 'enabled',
+      },
+      {
+        key: '_APP_VCS_GITHUB_APP_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_VCS_GITHUB_APP_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_VCS_GITHUB_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_VCS_GITHUB_CLIENT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_VCS_GITHUB_PRIVATE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_VCS_GITHUB_WEBHOOK_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_WEBHOOK_MAX_FAILED_ATTEMPTS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: '_APP_WORKER_PER_CORE',
+        required: false,
+        defaultValue: '6',
+      },
+      {
+        key: '_APP_WORKERS_NUM',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -1127,6 +2219,78 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'ARGILLA_ENABLE_TELEMETRY',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'ARGILLA_USERNAME',
+        required: false,
+        defaultValue: 'argilla',
+      },
+      {
+        key: 'BACKGROUND_NUM_WORKERS',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'CLUSTER_NAME',
+        required: false,
+        defaultValue: 'es-argilla-local',
+      },
+      {
+        key: 'CLUSTER_ROUTING_ALLOCATION_DISK_THRESHOLD_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'DEFAULT_USER_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'DISCOVERY_TYPE',
+        required: false,
+        defaultValue: 'single-node',
+      },
+      {
+        key: 'ES_JAVA_OPTS',
+        required: false,
+        defaultValue: '\\"-Xms512m -Xmx512m\\"',
+      },
+      {
+        key: 'HF_HUB_DISABLE_TELEMETRY',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'NODE_NAME',
+        required: false,
+        defaultValue: 'elasticsearch',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'argilla',
+      },
+      {
+        key: 'REINDEX_DATASETS',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'WORKSPACE',
+        required: false,
+        defaultValue: 'default',
+      },
+      {
+        key: 'XPACK_SECURITY_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -1160,6 +2324,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 80,
         targetService: 'audiobookshelf',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'TIMEZONE',
+        required: false,
+        defaultValue: 'America/Toronto',
       },
     ],
     publishable: false,
@@ -1247,6 +2418,68 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRESQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'AUTHENTIK_EMAIL__FROM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTHENTIK_EMAIL__HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTHENTIK_EMAIL__PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTHENTIK_EMAIL__PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTHENTIK_EMAIL__TIMEOUT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTHENTIK_EMAIL__USE_SSL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTHENTIK_EMAIL__USE_TLS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTHENTIK_EMAIL__USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTHENTIK_ERROR_REPORTING__ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'AUTHENTIK_TAG',
+        required: false,
+        defaultValue: '2025.10.3',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'authentik',
+      },
+      {
+        key: 'POSTGRES_HOST',
+        required: false,
+        defaultValue: 'postgresql',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -1322,6 +2555,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'UI',
       },
     ],
+    userVariables: [
+      {
+        key: 'PG_CONSOLE_LOGGER_LEVEL',
+        required: false,
+        defaultValue: 'info',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -1358,6 +2598,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -1393,6 +2634,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'prefix',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -1444,6 +2686,48 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'CONTAINER_DETAILS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'DISABLE_SSH',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'LOG_LEVEL',
+        required: false,
+        defaultValue: 'warn',
+      },
+      {
+        key: 'SHARE_ALL_SYSTEMS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'SKIP_GPU',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'SYSTEM_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -1479,6 +2763,38 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'prefix',
       },
     ],
+    userVariables: [
+      {
+        key: 'DISABLE_SSH',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'LOG_LEVEL',
+        required: false,
+        defaultValue: 'warn',
+      },
+      {
+        key: 'SKIP_GPU',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'SYSTEM_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -1512,6 +2828,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 32,
         },
         identifier: 'PASSWORD64',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'BITCOIN_PRINTTOCONSOLE',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'BITCOIN_RPCUSER',
+        required: false,
+        defaultValue: 'bitcoinuser',
+      },
+      {
+        key: 'BITCOIN_SERVER',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'BITCOIN_TXINDEX',
+        required: false,
+        defaultValue: '1',
       },
     ],
     publishable: false,
@@ -1583,6 +2921,68 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 3000,
         targetService: 'pds',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'LOG_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'PDS_ADMIN_EMAIL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PDS_BLOB_UPLOAD_LIMIT',
+        required: false,
+        defaultValue: '104857600',
+      },
+      {
+        key: 'PDS_BSKY_APP_VIEW_DID',
+        required: false,
+        defaultValue: 'did:web:api.bsky.app',
+      },
+      {
+        key: 'PDS_BSKY_APP_VIEW_URL',
+        required: false,
+        defaultValue: 'https://api.bsky.app',
+      },
+      {
+        key: 'PDS_CRAWLERS',
+        required: false,
+        defaultValue: 'https://bsky.network',
+      },
+      {
+        key: 'PDS_DATA_DIRECTORY',
+        required: false,
+        defaultValue: '/pds',
+      },
+      {
+        key: 'PDS_DID_PLC_URL',
+        required: false,
+        defaultValue: 'https://plc.directory',
+      },
+      {
+        key: 'PDS_EMAIL_FROM_ADDRESS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PDS_EMAIL_SMTP_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PDS_REPORT_SERVICE_DID',
+        required: false,
+        defaultValue: 'did:plc:ar7c4by46qjdydhdevvrndac',
+      },
+      {
+        key: 'PDS_REPORT_SERVICE_URL',
+        required: false,
+        defaultValue: 'https://mod.bsky.app/xrpc/com.atproto.moderation.createReport',
       },
     ],
     publishable: false,
@@ -1681,6 +3081,73 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'GITHUB_APP_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GITHUB_APP_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_DRIVER',
+        required: false,
+        defaultValue: 'smtp',
+      },
+      {
+        key: 'MAIL_ENCRYPTION',
+        required: false,
+        defaultValue: 'tls',
+      },
+      {
+        key: 'MAIL_FROM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_FROM_NAME',
+        required: false,
+        defaultValue: 'BookStack',
+      },
+      {
+        key: 'MAIL_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_PORT',
+        required: false,
+        defaultValue: '587',
+      },
+      {
+        key: 'MAIL_USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'bookstackapp',
+      },
+      {
+        key: 'QUEUE_CONNECTION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Europe/Berlin',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -1725,6 +3192,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -1760,6 +3228,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -1934,6 +3403,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MINIO',
       },
     ],
+    userVariables: [
+      {
+        key: 'BUDIBASE_ENVIRONMENT',
+        required: false,
+        defaultValue: 'PRODUCTION',
+      },
+      {
+        key: 'ENABLE_ANALYTICS',
+        required: false,
+        defaultValue: 'true',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [
@@ -2020,6 +3501,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'BUGSINK',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'bugsink',
       },
     ],
     publishable: false,
@@ -2166,6 +3654,59 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'BUZZ_ALLOW_NIP_OA_AUTH',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'BUZZ_AUTO_MIGRATE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'BUZZ_GIT_CONFORMANCE_PROBE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'BUZZ_REQUIRE_AUTH_TOKEN',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'BUZZ_REQUIRE_RELAY_MEMBERSHIP',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'BUZZ_S3_BUCKET',
+        required: false,
+        defaultValue: 'buzz-media',
+      },
+      {
+        key: 'BUZZ_TAG',
+        required: false,
+        defaultValue: 'main',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'buzz',
+      },
+      {
+        key: 'RELAY_OWNER_PUBKEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'RUST_LOG',
+        required: false,
+        defaultValue:
+          'buzz_relay=info,buzz_db=info,buzz_auth=info,buzz_pubsub=info,tower_http=info',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -2210,6 +3751,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 8083,
         targetService: 'calibre-web',
         resolution: 'prefix',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'DOCKER_MODS',
+        required: false,
+        defaultValue: 'linuxserver/mods:universal-calibre',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Etc/UTC',
       },
     ],
     publishable: false,
@@ -2273,6 +3826,68 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 8084,
         targetService: 'calibre-web-downloader',
         resolution: 'prefix',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'APP_ENV',
+        required: false,
+        defaultValue: 'prod',
+      },
+      {
+        key: 'BOOK_LANGUAGE',
+        required: false,
+        defaultValue: 'en',
+      },
+      {
+        key: 'CWA_DB_PATH',
+        required: false,
+        defaultValue: '/cwa-config/app.db',
+      },
+      {
+        key: 'FLASK_PORT',
+        required: false,
+        defaultValue: '8084',
+      },
+      {
+        key: 'GID',
+        required: false,
+        defaultValue: '100',
+      },
+      {
+        key: 'LOG_LEVEL',
+        required: false,
+        defaultValue: 'info',
+      },
+      {
+        key: 'NETWORK_SHARE_MODE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'PGID',
+        required: false,
+        defaultValue: '1000',
+      },
+      {
+        key: 'PUID',
+        required: false,
+        defaultValue: '1000',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'UTC',
+      },
+      {
+        key: 'UID',
+        required: false,
+        defaultValue: '1000',
+      },
+      {
+        key: 'USE_BOOK_TITLE',
+        required: false,
+        defaultValue: 'true',
       },
     ],
     publishable: false,
@@ -2373,6 +3988,58 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'CAP_AWS_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CAP_AWS_BUCKET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CAP_AWS_ENDPOINT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CAP_AWS_REGION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CAP_AWS_SECRET_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MYSQL_ALLOW_EMPTY_PASSWORD',
+        required: false,
+        defaultValue: 'yes',
+      },
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'planetscale',
+      },
+      {
+        key: 'S3_INTERNAL_ENDPOINT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'S3_PATH_STYLE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'S3_PUBLIC_ENDPOINT',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [
@@ -2426,6 +4093,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -2519,6 +4187,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'CP_DISABLE_HTTPS',
+        required: false,
+        defaultValue: '1',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -2552,6 +4227,48 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 8080,
         targetService: 'celld',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'AWS_ACCESS_KEY_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_REGION',
+        required: false,
+        defaultValue: 'us-east-1',
+      },
+      {
+        key: 'AWS_SECRET_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_SESSION_TOKEN',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'CELLD_BUCKET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CELLD_VERSION',
+        required: false,
+        defaultValue: 'latest',
+      },
+      {
+        key: 'RUST_LOG',
+        required: false,
+        defaultValue: 'info',
+      },
+      {
+        key: 'S3_ENDPOINT',
+        required: false,
+        defaultValue: '',
       },
     ],
     publishable: false,
@@ -2602,6 +4319,78 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 5000,
         targetService: 'changedetection',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'DISABLE_VERSION_CHECK',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'FETCH_WORKERS',
+        required: false,
+        defaultValue: '10',
+      },
+      {
+        key: 'HIDE_REFERER',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'LOGGER_LEVEL',
+        required: false,
+        defaultValue: 'DEBUG',
+      },
+      {
+        key: 'MAX_CONCURRENT_CHROME_PROCESSES',
+        required: false,
+        defaultValue: '10',
+      },
+      {
+        key: 'MINIMUM_SECONDS_RECHECK_TIME',
+        required: false,
+        defaultValue: '3',
+      },
+      {
+        key: 'PGID',
+        required: false,
+        defaultValue: '1000',
+      },
+      {
+        key: 'PLAYWRIGHT_DRIVER_URL',
+        required: false,
+        defaultValue: 'ws://browser-sockpuppet-chrome:3000',
+      },
+      {
+        key: 'PUID',
+        required: false,
+        defaultValue: '1000',
+      },
+      {
+        key: 'SCREEN_DEPTH',
+        required: false,
+        defaultValue: '16',
+      },
+      {
+        key: 'SCREEN_HEIGHT',
+        required: false,
+        defaultValue: '1024',
+      },
+      {
+        key: 'SCREEN_WIDTH',
+        required: false,
+        defaultValue: '1920',
+      },
+      {
+        key: 'SCREENSHOT_MAX_HEIGHT',
+        required: false,
+        defaultValue: '16000',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'UTC',
       },
     ],
     publishable: false,
@@ -2715,6 +4504,73 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'ACTIVE_STORAGE_SERVICE',
+        required: false,
+        defaultValue: 'local',
+      },
+      {
+        key: 'ADMIN_EMAIL',
+        required: false,
+        defaultValue: 'admin@example',
+      },
+      {
+        key: 'AWS_ACCESS_KEY_ID',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'AWS_S3_BUCKET',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'AWS_S3_REGION',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'AWS_SECRET_ACCESS_KEY',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'CHASKIQ_APPSTORE_TOKEN',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'DEFAULT_SENDER_EMAIL',
+        required: false,
+        defaultValue: 'admin@example',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'chaskiq',
+      },
+      {
+        key: 'SMTP_ADDRESS',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'SMTP_DELIVERY_METHOD',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'SMTP_PASSWORD',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'SMTP_USERNAME',
+        required: false,
+        defaultValue: '',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -2813,6 +4669,108 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'ACTIVE_STORAGE_SERVICE',
+        required: false,
+        defaultValue: 'local',
+      },
+      {
+        key: 'CHATWOOT_DEFAULT_LOCALE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CHATWOOT_MAILER_SENDER_EMAIL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CHATWOOT_SMTP_ADDRESS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CHATWOOT_SMTP_AUTHENTICATION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CHATWOOT_SMTP_DOMAIN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CHATWOOT_SMTP_ENABLE_STARTTLS_AUTO',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CHATWOOT_SMTP_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CHATWOOT_SMTP_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CHATWOOT_SMTP_USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENABLE_ACCOUNT_SIGNUP',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'FORCE_SSL',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'INSTALLATION_ENV',
+        required: false,
+        defaultValue: 'docker',
+      },
+      {
+        key: 'NODE_ENV',
+        required: false,
+        defaultValue: 'production',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'chatwoot',
+      },
+      {
+        key: 'POSTGRES_HOST',
+        required: false,
+        defaultValue: 'postgres',
+      },
+      {
+        key: 'RAILS_ENV',
+        required: false,
+        defaultValue: 'production',
+      },
+      {
+        key: 'RAILS_MAX_THREADS',
+        required: false,
+        defaultValue: '5',
+      },
+      {
+        key: 'REDIS_OPENSSL_VERIFY_MODE',
+        required: false,
+        defaultValue: 'none',
+      },
+      {
+        key: 'SAFE_FETCH_ALLOW_PRIVATE_NETWORK',
+        required: false,
+        defaultValue: 'false',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -2872,6 +4830,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -2919,6 +4878,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -2962,6 +4922,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'prefix',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -3031,6 +4992,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'CLASSICPRESS',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -3100,6 +5062,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'CLASSICPRESS',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -3136,6 +5099,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -3182,6 +5146,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -3207,6 +5172,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
       },
     ],
     variables: [],
+    userVariables: [
+      {
+        key: 'CLOUDFLARE_API_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DOMAINS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'IP6_PROVIDER',
+        required: false,
+        defaultValue: 'none',
+      },
+      {
+        key: 'PROXIED',
+        required: false,
+        defaultValue: 'false',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -3234,6 +5221,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
       },
     ],
     variables: [],
+    userVariables: [
+      {
+        key: 'CLOUDFLARE_TUNNEL_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -3308,6 +5302,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'cloudreve-db',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -3334,6 +5335,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
       },
     ],
     variables: [],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -3388,6 +5390,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'prefix',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -3473,6 +5476,33 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'CMD_ALLOW_EMAIL_REGISTER',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'CMD_EMAIL',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'CMD_PROTOCOL_USESSL',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'CMD_USECDN',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'codimd-db',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -3515,6 +5545,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: null,
         targetService: 'convertx',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'ACCOUNT_REGISTRATION',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'ALLOW_UNAUTHENTICATED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'AUTO_DELETE_EVERY_N_HOURS',
+        required: false,
+        defaultValue: '24',
+      },
+      {
+        key: 'HTTP_ALLOWED',
+        required: false,
+        defaultValue: 'true',
       },
     ],
     publishable: false,
@@ -3615,6 +5667,128 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'unresolved',
       },
     ],
+    userVariables: [
+      {
+        key: 'ACTIONS_USER_TIMEOUT_SECS',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'AWS_ACCESS_KEY_ID',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'AWS_REGION',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'AWS_S3_DISABLE_CHECKSUMS',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'AWS_S3_DISABLE_SSE',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'AWS_S3_FORCE_PATH_STYLE',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'AWS_SECRET_ACCESS_KEY',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'AWS_SESSION_TOKEN',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'CONVEX_RELEASE_VERSION_DEV',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'DATABASE_URL',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'DISABLE_BEACON',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DO_NOT_REQUIRE_SSL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'INSTANCE_NAME',
+        required: false,
+        defaultValue: 'self-hosted-convex',
+      },
+      {
+        key: 'MYSQL_URL',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'POSTGRES_URL',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'REDACT_LOGS_TO_CLIENT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'RUST_BACKTRACE',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'RUST_LOG',
+        required: false,
+        defaultValue: 'info',
+      },
+      {
+        key: 'S3_ENDPOINT_URL',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'S3_STORAGE_EXPORTS_BUCKET',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'S3_STORAGE_FILES_BUCKET',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'S3_STORAGE_MODULES_BUCKET',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'S3_STORAGE_SEARCH_BUCKET',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'S3_STORAGE_SNAPSHOT_IMPORTS_BUCKET',
+        required: false,
+        defaultValue: '',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [
@@ -3659,6 +5833,33 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'unresolved',
       },
     ],
+    userVariables: [
+      {
+        key: 'ALLOW_ADVANCED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'ALLOW_FILES',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'MAX_EXPIRATION',
+        required: false,
+        defaultValue: '360',
+      },
+      {
+        key: 'MAX_VIEWS',
+        required: false,
+        defaultValue: '100',
+      },
+      {
+        key: 'SIZE_LIMIT',
+        required: false,
+        defaultValue: '4 MiB',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [
@@ -3697,6 +5898,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -3731,6 +5933,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 8080,
         targetService: 'dashy',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'TIMEZONE',
+        required: false,
+        defaultValue: 'UTC',
       },
     ],
     publishable: false,
@@ -3769,6 +5978,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -3811,6 +6021,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 4512,
         targetService: 'denokv',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'COOLIFY_VOLUME_APP',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -3874,6 +6091,38 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 8055,
         targetService: 'directus',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'ADMIN_EMAIL',
+        required: false,
+        defaultValue: 'admin@example.com',
+      },
+      {
+        key: 'CORS_ALLOWED_HEADERS',
+        required: false,
+        defaultValue: 'Content-Type,Authorization',
+      },
+      {
+        key: 'CORS_CREDENTIALS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'CORS_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'CORS_METHODS',
+        required: false,
+        defaultValue: 'GET,POST,PATCH,DELETE,OPTIONS',
+      },
+      {
+        key: 'CORS_ORIGIN',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -3969,6 +6218,43 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRESQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'ADMIN_EMAIL',
+        required: false,
+        defaultValue: 'admin@example.com',
+      },
+      {
+        key: 'CORS_ALLOWED_HEADERS',
+        required: false,
+        defaultValue: 'Content-Type,Authorization',
+      },
+      {
+        key: 'CORS_CREDENTIALS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'CORS_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'CORS_METHODS',
+        required: false,
+        defaultValue: 'GET,POST,PATCH,DELETE,OPTIONS',
+      },
+      {
+        key: 'CORS_ORIGIN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'directus',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -3995,6 +6281,53 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
       },
     ],
     variables: [],
+    userVariables: [
+      {
+        key: 'DIUN_PROVIDERS_DOCKER',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'DIUN_PROVIDERS_DOCKER_WATCHBYDEFAULT',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'DIUN_WATCH_JITTER',
+        required: false,
+        defaultValue: '30s',
+      },
+      {
+        key: 'DIUN_WATCH_SCHEDULE',
+        required: false,
+        defaultValue: ' * */6 * * *',
+      },
+      {
+        key: 'DIUN_WATCH_WORKERS',
+        required: false,
+        defaultValue: '20',
+      },
+      {
+        key: 'LOG_JSON',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'LOG_LEVEL',
+        required: false,
+        defaultValue: 'info',
+      },
+      {
+        key: 'SERVICE_WEBHOOK_URL_SLACK',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'TIME_ZONE',
+        required: false,
+        defaultValue: 'Europe/Vienna',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -4046,6 +6379,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'REGISTRY',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'REGISTRY_AUTH_HTPASSWD_PATH',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'USERNAME',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -4129,6 +6479,53 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRES',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'MAIL_DRIVER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_FROM_ADDRESS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_FROM_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTMARK_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_SECURE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_USERNAME',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -4245,6 +6642,93 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'CERT_INFO_COUNTRY_NAME',
+        required: false,
+        defaultValue: 'DO',
+      },
+      {
+        key: 'CERT_INFO_EMAIL',
+        required: false,
+        defaultValue: 'example@gmail.com',
+      },
+      {
+        key: 'CERT_INFO_LOCALITY_NAME',
+        required: false,
+        defaultValue: 'Santiago',
+      },
+      {
+        key: 'CERT_INFO_ORGANIZATION_NAME',
+        required: false,
+        defaultValue: 'Example INC',
+      },
+      {
+        key: 'CERT_INFO_ORGANIZATIONAL_UNIT',
+        required: false,
+        defaultValue: 'IT Department',
+      },
+      {
+        key: 'CERT_INFO_STATE_OR_PROVIDENCE',
+        required: false,
+        defaultValue: 'Santiago',
+      },
+      {
+        key: 'CERT_VALID_DAYS',
+        required: false,
+        defaultValue: '365',
+      },
+      {
+        key: 'DISABLE_LOGIN',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'NEXT_PRIVATE_RESEND_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NEXT_PRIVATE_SMTP_FROM_ADDRESS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NEXT_PRIVATE_SMTP_FROM_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NEXT_PRIVATE_SMTP_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NEXT_PRIVATE_SMTP_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NEXT_PRIVATE_SMTP_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NEXT_PRIVATE_SMTP_TRANSPORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NEXT_PRIVATE_SMTP_USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'documenso-db',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -4290,6 +6774,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -4359,6 +6844,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'docuseal',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -4395,6 +6887,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -4491,6 +6984,38 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'DOLI_COMPANY_NAME',
+        required: false,
+        defaultValue: 'MyBigCompany',
+      },
+      {
+        key: 'DOLI_CRON',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'DOLI_INIT_DEMO',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'dolibarr-db',
+      },
+      {
+        key: 'WWW_GROUP_ID',
+        required: false,
+        defaultValue: '1000',
+      },
+      {
+        key: 'WWW_USER_ID',
+        required: false,
+        defaultValue: '1000',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -4526,6 +7051,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -4559,6 +7085,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 8080,
         targetService: 'dozzle',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'viucCvFLlHWvBNOOI6uypuVU',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -4605,6 +7138,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'prefix',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -4656,6 +7190,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -4719,6 +7254,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Europe/London',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -4779,6 +7321,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -4823,6 +7366,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -4947,6 +7491,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'ELASTICSEARCH_SERVICEACCOUNTTOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'TELEMETRY_OPTIN',
+        required: false,
+        defaultValue: 'false',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -4991,6 +7547,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'DATABASE_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ELECTRIC_USAGE_REPORTING',
+        required: false,
+        defaultValue: 'false',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -5027,6 +7595,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -5063,6 +7632,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -5107,6 +7677,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -5261,6 +7832,123 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRES',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'ENTE_DB_HOST',
+        required: false,
+        defaultValue: 'postgres',
+      },
+      {
+        key: 'ENTE_DB_NAME',
+        required: false,
+        defaultValue: 'ente_db',
+      },
+      {
+        key: 'ENTE_DB_PORT',
+        required: false,
+        defaultValue: '5432',
+      },
+      {
+        key: 'ENTE_HTTP_USE_TLS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'ENTE_INTERNAL_ADMIN',
+        required: false,
+        defaultValue: '1580559962386438',
+      },
+      {
+        key: 'ENTE_INTERNAL_DISABLE_REGISTRATION',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'ENTE_SMTP_EMAIL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENTE_SMTP_ENCRYPTION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENTE_SMTP_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENTE_SMTP_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENTE_SMTP_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENTE_SMTP_SENDER_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENTE_SMTP_USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTGRES_USER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PRIMARY_STORAGE_ARE_LOCAL_BUCKETS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'PRIMARY_STORAGE_USE_PATH_STYLE_URLS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'S3_STORAGE_BUCKET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'S3_STORAGE_ENDPOINT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'S3_STORAGE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'S3_STORAGE_REGION',
+        required: false,
+        defaultValue: 'us-east-1',
+      },
+      {
+        key: 'S3_STORAGE_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_DB_NAME',
+        required: false,
+        defaultValue: 'ente_db',
       },
     ],
     publishable: false,
@@ -5431,6 +8119,78 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'ENTE_HTTP_USE_TLS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'ENTE_INTERNAL_ADMIN',
+        required: false,
+        defaultValue: '1580559962386438',
+      },
+      {
+        key: 'ENTE_INTERNAL_DISABLE_REGISTRATION',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'ENTE_SMTP_EMAIL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENTE_SMTP_ENCRYPTION',
+        required: false,
+        defaultValue: 'tls',
+      },
+      {
+        key: 'ENTE_SMTP_HOST',
+        required: false,
+        defaultValue: 'smtp.gmail.com',
+      },
+      {
+        key: 'ENTE_SMTP_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENTE_SMTP_PORT',
+        required: false,
+        defaultValue: '587',
+      },
+      {
+        key: 'ENTE_SMTP_SENDER_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENTE_SMTP_USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MINIO_BROWSER_REDIRECT_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MINIO_CORS_URLS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MINIO_SERVER_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'ente_db',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -5484,6 +8244,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'ADMIN',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -5591,6 +8352,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MARIADB',
       },
     ],
+    userVariables: [
+      {
+        key: 'ESPOCRM_ADMIN_USERNAME',
+        required: false,
+        defaultValue: 'admin',
+      },
+      {
+        key: 'MARIADB_DATABASE',
+        required: false,
+        defaultValue: 'espocrm',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [
@@ -5677,6 +8450,568 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'CACHE_LOCAL_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'CACHE_REDIS_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'CACHE_REDIS_PREFIX_KEY',
+        required: false,
+        defaultValue: 'evolution_v2',
+      },
+      {
+        key: 'CACHE_REDIS_SAVE_INSTANCES',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'CACHE_REDIS_URI',
+        required: false,
+        defaultValue: 'redis://redis:6379/6',
+      },
+      {
+        key: 'CHATWOOT_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'CHATWOOT_IMPORT_PLACEHOLDER_MEDIA_MESSAGE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'CHATWOOT_MESSAGE_DELETE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'CHATWOOT_MESSAGE_READ',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'CONFIG_SESSION_PHONE_CLIENT',
+        required: false,
+        defaultValue: 'Evolution API V2',
+      },
+      {
+        key: 'CONFIG_SESSION_PHONE_NAME',
+        required: false,
+        defaultValue: 'Chrome',
+      },
+      {
+        key: 'DATABASE_CONNECTION_CLIENT_NAME',
+        required: false,
+        defaultValue: 'evolution_v2',
+      },
+      {
+        key: 'DATABASE_PROVIDER',
+        required: false,
+        defaultValue: 'postgresql',
+      },
+      {
+        key: 'DATABASE_SAVE_DATA_CHATS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'DATABASE_SAVE_DATA_CONTACTS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'DATABASE_SAVE_DATA_HISTORIC',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'DATABASE_SAVE_DATA_INSTANCE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'DATABASE_SAVE_DATA_LABELS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'DATABASE_SAVE_DATA_NEW_MESSAGE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'DATABASE_SAVE_MESSAGE_UPDATE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'DB_POSTGRESDB_HOST',
+        required: false,
+        defaultValue: 'postgres',
+      },
+      {
+        key: 'DB_POSTGRESDB_PORT',
+        required: false,
+        defaultValue: '5432',
+      },
+      {
+        key: 'DB_TYPE',
+        required: false,
+        defaultValue: 'postgresdb',
+      },
+      {
+        key: 'DEL_INSTANCE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'DIFY_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'FLOWISE_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'LANGUAGE',
+        required: false,
+        defaultValue: 'en',
+      },
+      {
+        key: 'N8N_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'OPENAI_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'postgres',
+      },
+      {
+        key: 'QRCODE_LIMIT',
+        required: false,
+        defaultValue: '30',
+      },
+      {
+        key: 'RABBITMQ_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_APPLICATION_STARTUP',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_CALL',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_CHATS_DELETE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_CHATS_SET',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_CHATS_UPDATE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_CHATS_UPSERT',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_CONNECTION_UPDATE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_CONTACTS_SET',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_CONTACTS_UPDATE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_CONTACTS_UPSERT',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_GROUP_PARTICIPANTS_UPDATE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_GROUP_UPDATE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_GROUPS_UPSERT',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_INSTANCE_CREATE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_INSTANCE_DELETE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_MESSAGES_DELETE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_MESSAGES_EDITED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_MESSAGES_SET',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_MESSAGES_UPDATE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_MESSAGES_UPSERT',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_PRESENCE_UPDATE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_QRCODE_UPDATED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_SEND_MESSAGE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_TYPEBOT_CHANGE_STATUS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EVENTS_TYPEBOT_START',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_EXCHANGE_NAME',
+        required: false,
+        defaultValue: 'evolution_v2',
+      },
+      {
+        key: 'RABBITMQ_GLOBAL_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RABBITMQ_URI',
+        required: false,
+        defaultValue: 'amqp://admin:admin@rabbitmq:5672/default',
+      },
+      {
+        key: 'S3_ACCESS_KEY',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'S3_BUCKET',
+        required: false,
+        defaultValue: 'evolution',
+      },
+      {
+        key: 'S3_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'S3_ENDPOINT',
+        required: false,
+        defaultValue: 'files.site.com',
+      },
+      {
+        key: 'S3_PORT',
+        required: false,
+        defaultValue: '443',
+      },
+      {
+        key: 'S3_REGION',
+        required: false,
+        defaultValue: 'us-east-1',
+      },
+      {
+        key: 'S3_SECRET_KEY',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'S3_USE_SSL',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'SQS_ACCESS_KEY_ID',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'SQS_ACCOUNT_ID',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'SQS_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'SQS_REGION',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'SQS_SECRET_ACCESS_KEY',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'TYPEBOT_API_VERSION',
+        required: false,
+        defaultValue: 'latest',
+      },
+      {
+        key: 'TYPEBOT_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WA_BUSINESS_LANGUAGE',
+        required: false,
+        defaultValue: 'pt_BR',
+      },
+      {
+        key: 'WA_BUSINESS_TOKEN_WEBHOOK',
+        required: false,
+        defaultValue: 'evolution',
+      },
+      {
+        key: 'WA_BUSINESS_URL',
+        required: false,
+        defaultValue: 'https://graph.facebook.com',
+      },
+      {
+        key: 'WA_BUSINESS_VERSION',
+        required: false,
+        defaultValue: 'v20.0',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_APPLICATION_STARTUP',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_CALL',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_CHATS_DELETE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_CHATS_SET',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_CHATS_UPDATE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_CHATS_UPSERT',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_CONNECTION_UPDATE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_CONTACTS_SET',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_CONTACTS_UPDATE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_CONTACTS_UPSERT',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_ERRORS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_ERRORS_WEBHOOK',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_GROUP_PARTICIPANTS_UPDATE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_GROUPS_UPDATE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_GROUPS_UPSERT',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_LABELS_ASSOCIATION',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_LABELS_EDIT',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_MESSAGES_DELETE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_MESSAGES_EDITED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_MESSAGES_SET',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_MESSAGES_UPDATE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_MESSAGES_UPSERT',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_PRESENCE_UPDATE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_QRCODE_UPDATED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_SEND_MESSAGE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_TYPEBOT_CHANGE_STATUS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'WEBHOOK_EVENTS_TYPEBOT_START',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'WEBHOOK_GLOBAL_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'WEBHOOK_GLOBAL_URL',
+        required: false,
+        defaultValue: "''",
+      },
+      {
+        key: 'WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'WEBSOCKET_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'WEBSOCKET_GLOBAL_EVENTS',
+        required: false,
+        defaultValue: 'false',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [
@@ -5714,6 +9049,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -5747,6 +9083,43 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 4788,
         targetService: 'executor',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'EXECUTOR_ALLOW_LOCAL_NETWORK',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'EXECUTOR_DB_PATH',
+        required: false,
+        defaultValue: '/data/data.db',
+      },
+      {
+        key: 'EXECUTOR_HOST',
+        required: false,
+        defaultValue: '0.0.0.0',
+      },
+      {
+        key: 'EXECUTOR_ORG_NAME',
+        required: false,
+        defaultValue: 'Default',
+      },
+      {
+        key: 'EXECUTOR_ORG_SLUG',
+        required: false,
+        defaultValue: 'default',
+      },
+      {
+        key: 'EXECUTOR_VERSION',
+        required: false,
+        defaultValue: 'latest',
+      },
+      {
+        key: 'PORT',
+        required: false,
+        defaultValue: '4788',
       },
     ],
     publishable: false,
@@ -5812,6 +9185,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRESQL',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'faraday',
       },
     ],
     publishable: false,
@@ -5882,6 +9262,73 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'EMAIL_AWSSES_ACCESS_KEY_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_AWSSES_REGION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_AWSSES_SECRET_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_MAILGUN_API',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_MAILGUN_DOMAIN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_MAILGUN_REGION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_NOREPLY',
+        required: false,
+        defaultValue: 'noreply@example.com',
+      },
+      {
+        key: 'EMAIL_SMTP_ENABLE_STARTTLS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_SMTP_HOST',
+        required: false,
+        defaultValue: 'smtp.mailgun.com',
+      },
+      {
+        key: 'EMAIL_SMTP_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_SMTP_PORT',
+        required: false,
+        defaultValue: '587',
+      },
+      {
+        key: 'EMAIL_SMTP_USERNAME',
+        required: false,
+        defaultValue: 'postmaster@mailgun.com',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'fider',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -5924,6 +9371,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -5967,6 +9415,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 5000,
         targetService: 'fileflows',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'America/Toronto',
       },
     ],
     publishable: false,
@@ -6061,6 +9516,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'CRON_COMMAND',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'firefly',
+      },
+      {
+        key: 'STATIC_CRON_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -6096,6 +9568,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -6149,6 +9622,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'FIZZY',
       },
     ],
+    userVariables: [
+      {
+        key: 'VAPID_PRIVATE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'VAPID_PUBLIC_KEY',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -6185,6 +9670,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -6252,6 +9738,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'FLOWISE',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'DEBUG',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'DISABLE_FLOWISE_TELEMETRY',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'PORT',
+        required: false,
+        defaultValue: '3001',
       },
     ],
     publishable: false,
@@ -6377,6 +9880,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'DEBUG',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'DISABLE_FLOWISE_TELEMETRY',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'PORT',
+        required: false,
+        defaultValue: '3001',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'pg-record-manager',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -6420,6 +9945,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 3000,
         targetService: 'forgejo',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'FORGEJO__migrations__ALLOW_LOCALNETWORKS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'FORGEJO__migrations__ALLOWED_DOMAINS',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -6500,6 +10037,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'FORGEJO__migrations__ALLOW_LOCALNETWORKS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'FORGEJO__migrations__ALLOWED_DOMAINS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'forgejo',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -6578,6 +10132,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'FORGEJO__migrations__ALLOW_LOCALNETWORKS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'FORGEJO__migrations__ALLOWED_DOMAINS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'forgejo',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -6645,6 +10216,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRESQL',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'FORGEJO__migrations__ALLOW_LOCALNETWORKS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'FORGEJO__migrations__ALLOWED_DOMAINS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'forgejo',
       },
     ],
     publishable: false,
@@ -6778,6 +10366,233 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRESQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'AIRTABLE_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ASSET_PREFIX_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AZUREAD_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AZUREAD_CLIENT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AZUREAD_TENANT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DEFAULT_ORGANIZATION_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DEFAULT_ORGANIZATION_ROLE',
+        required: false,
+        defaultValue: 'owner',
+      },
+      {
+        key: 'EMAIL_AUTH_DISABLED',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'EMAIL_VERIFICATION_DISABLED',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'ENTERPRISE_LICENSE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GITHUB_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GITHUB_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOOGLE_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOOGLE_CLIENT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOOGLE_SHEETS_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOOGLE_SHEETS_CLIENT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOOGLE_SHEETS_REDIRECT_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'IMPRINT_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'INVITE_DISABLED',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'MAIL_FROM',
+        required: false,
+        defaultValue: 'test@example.com',
+      },
+      {
+        key: 'MINIO_BROWSER_REDIRECT_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MINIO_SERVER_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NOTION_OAUTH_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NOTION_OAUTH_CLIENT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OIDC_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OIDC_CLIENT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OIDC_DISPLAY_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OIDC_ISSUER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OIDC_SIGNING_ALGORITHM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OPENTELEMETRY_LISTENER_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PASSWORD_RESET_DISABLED',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'formbricks',
+      },
+      {
+        key: 'PRIVACY_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'RATE_LIMITING_DISABLED',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'SHORT_URL_BASE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SLACK_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SLACK_CLIENT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_HOST',
+        required: false,
+        defaultValue: 'test.example.com',
+      },
+      {
+        key: 'SMTP_PASSWORD',
+        required: false,
+        defaultValue: 'test',
+      },
+      {
+        key: 'SMTP_PORT',
+        required: false,
+        defaultValue: '587',
+      },
+      {
+        key: 'SMTP_REJECT_UNAUTHORIZED_TLS',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'SMTP_SECURE_ENABLED',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'SMTP_USER',
+        required: false,
+        defaultValue: 'test',
+      },
+      {
+        key: 'TERMS_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'UNSPLASH_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -6811,6 +10626,93 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 30000,
         targetService: 'foundryvtt',
         resolution: 'port',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'FOUNDRY_ADMIN',
+        required: false,
+        defaultValue: 'atropos',
+      },
+      {
+        key: 'FOUNDRY_AWS_CONFIG',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'FOUNDRY_CSS_THEME',
+        required: false,
+        defaultValue: 'foundry',
+      },
+      {
+        key: 'FOUNDRY_DATA',
+        required: false,
+        defaultValue: '/data/foundryvtt',
+      },
+      {
+        key: 'FOUNDRY_HOSTNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'FOUNDRY_LANGUAGE',
+        required: false,
+        defaultValue: 'en.core',
+      },
+      {
+        key: 'FOUNDRY_LICENSE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'FOUNDRY_MINIFY_STATIC_FILES',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'FOUNDRY_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'FOUNDRY_PROXY_PORT',
+        required: false,
+        defaultValue: '80',
+      },
+      {
+        key: 'FOUNDRY_PROXY_SSL',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'FOUNDRY_RELEASE_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'FOUNDRY_ROUTE_PREFIX',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'FOUNDRY_TELEMETRY',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'FOUNDRY_USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'FOUNDRY_WORLD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'TIMEZONE',
+        required: false,
+        defaultValue: 'UTC',
       },
     ],
     publishable: false,
@@ -6900,6 +10802,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MARIADB',
       },
     ],
+    userVariables: [
+      {
+        key: 'ADMIN_EMAIL',
+        required: false,
+        defaultValue: 'admin@example.com',
+      },
+      {
+        key: 'DISPLAY_ERRORS',
+        required: false,
+        defaultValue: 'FALSE',
+      },
+      {
+        key: 'MARIADB_DATABASE',
+        required: false,
+        defaultValue: 'freescout',
+      },
+      {
+        key: 'TIMEZONE',
+        required: false,
+        defaultValue: 'UTC',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -6933,6 +10857,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 80,
         targetService: 'freshrss',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'CRON_MIN',
+        required: false,
+        defaultValue: '1,31',
       },
     ],
     publishable: false,
@@ -7003,6 +10934,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MARIADB',
       },
     ],
+    userVariables: [
+      {
+        key: 'CRON_MIN',
+        required: false,
+        defaultValue: '1,31',
+      },
+      {
+        key: 'MARIADB_DATABASE',
+        required: false,
+        defaultValue: 'freshrss',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -7071,6 +11014,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'CRON_MIN',
+        required: false,
+        defaultValue: '1,31',
+      },
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'freshrss',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -7130,6 +11085,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRESQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'CRON_MIN',
+        required: false,
+        defaultValue: '1,31',
+      },
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'freshrss',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -7182,6 +11149,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 32,
         },
         identifier: 'GARAGEMETRICS',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'GARAGE_ADMIN_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GARAGE_S3_API_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GARAGE_WEB_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'RUST_LOG',
+        required: false,
+        defaultValue: 'garage=info',
       },
     ],
     publishable: false,
@@ -7285,6 +11274,263 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'AWS_ACCESS_KEY_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_REGION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_S3_ACCELERATE_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_S3_ACL',
+        required: false,
+        defaultValue: 'private',
+      },
+      {
+        key: 'AWS_S3_FORCE_PATH_STYLE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'AWS_S3_UPLOAD_BUCKET_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_S3_UPLOAD_BUCKET_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_SECRET_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AZURE_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AZURE_CLIENT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AZURE_RESOURCE_APP_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DISCORD_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DISCORD_CLIENT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DISCORD_SERVER_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DISCORD_SERVER_ROLES',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'FILE_STORAGE',
+        required: false,
+        defaultValue: 'local',
+      },
+      {
+        key: 'FILE_STORAGE_IMPORT_MAX_SIZE',
+        required: false,
+        defaultValue: '100',
+      },
+      {
+        key: 'FILE_STORAGE_LOCAL_ROOT_DIR',
+        required: false,
+        defaultValue: '/var/lib/outline/data',
+      },
+      {
+        key: 'FILE_STORAGE_UPLOAD_MAX_SIZE',
+        required: false,
+        defaultValue: '2000',
+      },
+      {
+        key: 'FILE_STORAGE_WORKSPACE_IMPORT_MAX_SIZE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'FORCE_HTTPS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'GITHUB_APP_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GITHUB_APP_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GITHUB_APP_PRIVATE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GITHUB_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GITHUB_CLIENT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOOGLE_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOOGLE_CLIENT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OIDC_AUTH_URI',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OIDC_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OIDC_CLIENT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OIDC_DISPLAY_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OIDC_LOGOUT_URI',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OIDC_SCOPES',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OIDC_TOKEN_URI',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OIDC_USERINFO_URI',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OIDC_USERNAME_CLAIM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OUTLINE_PORT',
+        required: false,
+        defaultValue: '3000',
+      },
+      {
+        key: 'PGSSLMODE',
+        required: false,
+        defaultValue: 'disable',
+      },
+      {
+        key: 'POSTGRES_DATABASE',
+        required: false,
+        defaultValue: 'outline',
+      },
+      {
+        key: 'SLACK_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SLACK_CLIENT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_FROM_EMAIL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_REPLY_EMAIL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_SECURE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_TLS_CIPHERS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -7362,6 +11608,43 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'MAIL_OPTIONS_AUTH_PASS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_OPTIONS_AUTH_USER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_OPTIONS_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_OPTIONS_PORT',
+        required: false,
+        defaultValue: '465',
+      },
+      {
+        key: 'MAIL_OPTIONS_SECURE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'MAIL_OPTIONS_SERVICE',
+        required: false,
+        defaultValue: 'Mailgun',
+      },
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'ghost',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -7398,6 +11681,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -7423,6 +11707,33 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
       },
     ],
     variables: [],
+    userVariables: [
+      {
+        key: 'GITEA_INSTANCE_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GITEA_RUNNER_LABELS',
+        required: false,
+        defaultValue: 'ubuntu-latest:docker://node:22',
+      },
+      {
+        key: 'GITEA_RUNNER_NAME',
+        required: false,
+        defaultValue: 'gitea-runner',
+      },
+      {
+        key: 'GITEA_RUNNER_REGISTRATION_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GITEA_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -7490,6 +11801,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'MYSQL',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'gitea',
       },
     ],
     publishable: false,
@@ -7561,6 +11879,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'gitea',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -7621,6 +11946,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRESQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'gitea',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -7646,6 +11978,43 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
       },
     ],
     variables: [],
+    userVariables: [
+      {
+        key: 'ACCESS_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'LABELS',
+        required: false,
+        defaultValue: 'default',
+      },
+      {
+        key: 'ORG_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'REPO_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'RUNNER_NAME_PREFIX',
+        required: false,
+        defaultValue: 'coolify-runner',
+      },
+      {
+        key: 'RUNNER_NAME_SUFFIX',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'RUNNER_SCOPE',
+        required: false,
+        defaultValue: 'repo',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -7722,6 +12091,68 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'GITLAB_EMAIL_FROM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GITLAB_EMAIL_REPLY_TO',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GITLAB_SMTP_ADDRESS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GITLAB_SMTP_DOMAIN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GITLAB_SMTP_ENABLE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'GITLAB_SMTP_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GITLAB_SMTP_PORT',
+        required: false,
+        defaultValue: '587',
+      },
+      {
+        key: 'GITLAB_SMTP_TLS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'GITLAB_SMTP_USER_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GITLAB_STARTTLS_AUTO',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'GITLAB_TIMEZONE',
+        required: false,
+        defaultValue: 'UTC',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'UTC',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -7757,6 +12188,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -7792,6 +12224,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -7887,6 +12320,33 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRESQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'CELERY_WORKER_AUTOSCALE',
+        required: false,
+        defaultValue: '1,3',
+      },
+      {
+        key: 'CELERY_WORKER_MAX_TASKS_PER_CHILD',
+        required: false,
+        defaultValue: '10000',
+      },
+      {
+        key: 'DEFAULT_FROM_EMAIL',
+        required: false,
+        defaultValue: 'test@example.com',
+      },
+      {
+        key: 'EMAIL_URL',
+        required: false,
+        defaultValue: 'consolemail://',
+      },
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'glitchtip',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [
@@ -7959,6 +12419,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'glpi-db',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -7994,6 +12461,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -8047,6 +12515,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'GOTENBERG',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -8089,6 +12558,48 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 80,
         targetService: 'gotify',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'GOTIFY_DATABASE_CONNECTION',
+        required: false,
+        defaultValue: 'data/gotify.db',
+      },
+      {
+        key: 'GOTIFY_DATABASE_DIALECT',
+        required: false,
+        defaultValue: 'sqlite3',
+      },
+      {
+        key: 'GOTIFY_PASSSTRENGTH',
+        required: false,
+        defaultValue: '10',
+      },
+      {
+        key: 'GOTIFY_PLUGINSDIR',
+        required: false,
+        defaultValue: 'data/plugins',
+      },
+      {
+        key: 'GOTIFY_REGISTRATION',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'GOTIFY_SERVER_PORT',
+        required: false,
+        defaultValue: '80',
+      },
+      {
+        key: 'GOTIFY_UPLOADEDIMAGESDIR',
+        required: false,
+        defaultValue: 'data/images',
+      },
+      {
+        key: 'GOTIFY_USERNAME',
+        required: false,
+        defaultValue: 'admin',
       },
     ],
     publishable: false,
@@ -8142,6 +12653,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'GOWA',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'APP_ACCOUNT_VALIDATION',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'APP_DEBUG',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'WHATSAPP_WEBHOOK',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'WHATSAPP_WEBHOOK_SECRET',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -8206,6 +12739,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -8292,6 +12826,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'grafana',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -8359,6 +12900,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'MARIADB',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'GRIMMORY_GROUP_ID',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'GRIMMORY_USER_ID',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'MARIADB_DATABASE',
+        required: false,
+        defaultValue: 'grimmory-db',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'UTC',
       },
     ],
     publishable: false,
@@ -8454,6 +13017,139 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'ALLOWED_WEBHOOK_DOMAINS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'COMMENTS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'CONTACT_SUPPORT_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'COOKIE_MAX_AGE',
+        required: false,
+        defaultValue: '86400000',
+      },
+      {
+        key: 'DEFAULT_EMAIL',
+        required: false,
+        defaultValue: '?',
+      },
+      {
+        key: 'FORCE_LOGIN',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'FREE_COACHING_CALL_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'HIDE_UI_ELEMENTS',
+        required: false,
+        defaultValue: 'billing,sendToDrive,supportGrist,multiAccounts,tutorials',
+      },
+      {
+        key: 'HOME_INCLUDE_STATIC',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'OIDC_IDP_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OIDC_IDP_CLIENT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OIDC_IDP_ISSUER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OIDC_IDP_SCOPES',
+        required: false,
+        defaultValue: 'openid profile email',
+      },
+      {
+        key: 'OIDC_IDP_SKIP_END_SESSION_ENDPOINT',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'ORG_IN_PATH',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'PAGE_TITLE_SUFFIX',
+        required: false,
+        defaultValue: ' - Suffix',
+      },
+      {
+        key: 'POSTGRES_DATABASE',
+        required: false,
+        defaultValue: 'grist-db',
+      },
+      {
+        key: 'REDIS_URL',
+        required: false,
+        defaultValue: 'redis://redis:6379',
+      },
+      {
+        key: 'SANDBOX_FLAVOR',
+        required: false,
+        defaultValue: 'gvisor',
+      },
+      {
+        key: 'SUPPORT_ANON',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'TYPEORM_HOST',
+        required: false,
+        defaultValue: 'postgres',
+      },
+      {
+        key: 'TYPEORM_LOGGING',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'TYPEORM_PORT',
+        required: false,
+        defaultValue: '5432',
+      },
+      {
+        key: 'TYPEORM_TYPE',
+        required: false,
+        defaultValue: 'postgres',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'UTC',
+      },
+      {
+        key: 'UI_FEATURES',
+        required: false,
+        defaultValue:
+          'helpCenter,billing,templates,createSite,multiSite,sendToDrive,tutorials,supportGrist',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -8489,6 +13185,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -8600,6 +13297,48 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'RABBITMQ',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'hatchet',
+      },
+      {
+        key: 'RABBITMQ_PORT',
+        required: false,
+        defaultValue: '5672',
+      },
+      {
+        key: 'SERVER_AUTH_COOKIE_DOMAIN',
+        required: false,
+        defaultValue: 'localhost:8080',
+      },
+      {
+        key: 'SERVER_AUTH_COOKIE_INSECURE',
+        required: false,
+        defaultValue: 't',
+      },
+      {
+        key: 'SERVER_GRPC_BIND_ADDRESS',
+        required: false,
+        defaultValue: '0.0.0.0',
+      },
+      {
+        key: 'SERVER_GRPC_BROADCAST_ADDRESS',
+        required: false,
+        defaultValue: 'localhost:7077',
+      },
+      {
+        key: 'SERVER_GRPC_INSECURE',
+        required: false,
+        defaultValue: 't',
+      },
+      {
+        key: 'SERVER_INTERNAL_CLIENT_INTERNAL_GRPC_BROADCAST_ADDRESS',
+        required: false,
+        defaultValue: 'hatchet-engine:7077',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [
@@ -8656,6 +13395,63 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'ALLOWED_HOSTS',
+        required: false,
+        defaultValue: '*',
+      },
+      {
+        key: 'DEBUG',
+        required: false,
+        defaultValue: 'False',
+      },
+      {
+        key: 'DEFAULT_FROM_EMAIL',
+        required: false,
+        defaultValue: 'fixme-email-address-here',
+      },
+      {
+        key: 'EMAIL_HOST',
+        required: false,
+        defaultValue: 'my-smtp-server-here.com',
+      },
+      {
+        key: 'EMAIL_HOST_PASSWORD',
+        required: false,
+        defaultValue: 'mypassword',
+      },
+      {
+        key: 'EMAIL_HOST_USER',
+        required: false,
+        defaultValue: 'my_username',
+      },
+      {
+        key: 'EMAIL_PORT',
+        required: false,
+        defaultValue: '465',
+      },
+      {
+        key: 'EMAIL_USE_SSL',
+        required: false,
+        defaultValue: 'True',
+      },
+      {
+        key: 'EMAIL_USE_TLS',
+        required: false,
+        defaultValue: 'False',
+      },
+      {
+        key: 'REGISTRATION_OPEN',
+        required: false,
+        defaultValue: 'True',
+      },
+      {
+        key: 'SECRET_KEY',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -8691,6 +13487,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -8741,6 +13538,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 8787,
         targetService: 'hermes-webui',
         resolution: 'prefix',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'ANTHROPIC_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOOGLE_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OPENAI_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OPENROUTER_API_KEY',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -8827,6 +13646,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -8871,6 +13691,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -8915,6 +13736,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'DISABLE_JEMALLOC',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'UTC',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -8948,6 +13781,53 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 7745,
         targetService: 'homebox',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'HBOX_LOG_FORMAT',
+        required: false,
+        defaultValue: 'text',
+      },
+      {
+        key: 'HBOX_LOG_LEVEL',
+        required: false,
+        defaultValue: 'info',
+      },
+      {
+        key: 'HBOX_MAILER_FROM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'HBOX_MAILER_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'HBOX_MAILER_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'HBOX_MAILER_PORT',
+        required: false,
+        defaultValue: '587',
+      },
+      {
+        key: 'HBOX_MAILER_USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'HBOX_OPTIONS_ALLOW_REGISTRATION',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'HBOX_WEB_MAX_UPLOAD_SIZE',
+        required: false,
+        defaultValue: '10',
       },
     ],
     publishable: false,
@@ -8995,6 +13875,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -9087,6 +13968,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'MAILER_USE_CUSTOM_CONFIGS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'hoppscotch',
+      },
+      {
+        key: 'VITE_ALLOWED_AUTH_PROVIDERS',
+        required: false,
+        defaultValue: 'GOOGLE,GITHUB,MICROSOFT,EMAIL',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -9121,6 +14019,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 5000,
         targetService: 'imgcompress',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'DISABLE_LOGO',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'DISABLE_STORAGE_MANAGEMENT',
+        required: false,
+        defaultValue: 'false',
       },
     ],
     publishable: false,
@@ -9203,6 +14113,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRES',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'DB_DATABASE_NAME',
+        required: false,
+        defaultValue: 'immich',
+      },
+      {
+        key: 'DB_STORAGE_TYPE',
+        required: false,
+        defaultValue: 'SSD',
+      },
+      {
+        key: 'IMMICH_VERSION',
+        required: false,
+        defaultValue: 'release',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Etc/UTC',
       },
     ],
     publishable: false,
@@ -9301,6 +14233,78 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'ALLOW_EMPTY_PASSWORD',
+        required: false,
+        defaultValue: 'yes',
+      },
+      {
+        key: 'INF_APP_CONNECTION_GITHUB_APP_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'INF_APP_CONNECTION_GITHUB_APP_CLIENT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'INF_APP_CONNECTION_GITHUB_APP_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'INF_APP_CONNECTION_GITHUB_APP_PRIVATE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'INF_APP_CONNECTION_GITHUB_APP_SLUG',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NODE_ENV',
+        required: false,
+        defaultValue: 'production',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'infisical',
+      },
+      {
+        key: 'SMTP_FROM_ADDRESS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_FROM_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -9361,6 +14365,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'INFLUXDB',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'SERVICE_BUCKET_INFLUXDB',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_ORG_INFLUXDB',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -9437,6 +14453,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -9538,6 +14555,168 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MARIADB',
       },
     ],
+    userVariables: [
+      {
+        key: 'APP_DEBUG',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'APP_ENV',
+        required: false,
+        defaultValue: 'production',
+      },
+      {
+        key: 'APP_NAME',
+        required: false,
+        defaultValue: '"Invoice Ninja"',
+      },
+      {
+        key: 'AWS_ACCESS_KEY_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_BUCKET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_DEFAULT_REGION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_ENDPOINT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_SECRET_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DB_DATABASE',
+        required: false,
+        defaultValue: 'invoiceninja',
+      },
+      {
+        key: 'DB_HOST',
+        required: false,
+        defaultValue: 'mariadb',
+      },
+      {
+        key: 'DB_PORT',
+        required: false,
+        defaultValue: '3306',
+      },
+      {
+        key: 'IN_USER_EMAIL',
+        required: false,
+        defaultValue: 'admin@example.com',
+      },
+      {
+        key: 'LICENSE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_ENCRYPTION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_FROM_ADDRESS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_FROM_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_MAILER',
+        required: false,
+        defaultValue: 'log',
+      },
+      {
+        key: 'MAIL_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NORDIGEN_SECRET_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NORDIGEN_SECRET_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PDF_GENERATOR',
+        required: false,
+        defaultValue: 'hosted_ninja',
+      },
+      {
+        key: 'PHANTOMJS_PDF_GENERATION',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'QUEUE_CONNECTION',
+        required: false,
+        defaultValue: 'redis',
+      },
+      {
+        key: 'REDIS_HOST',
+        required: false,
+        defaultValue: 'redis',
+      },
+      {
+        key: 'REDIS_PORT',
+        required: false,
+        defaultValue: '6379',
+      },
+      {
+        key: 'REQUIRE_HTTPS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'SCOUT_DRIVER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'TRUSTED_PROXIES',
+        required: false,
+        defaultValue: '*',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -9573,6 +14752,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'prefix',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -9615,6 +14795,48 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 3456,
         targetService: 'jean',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'JEAN_ALLOW_NATIVE_OPEN',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'JEAN_ALLOW_UNSAFE_NO_TOKEN',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'JEAN_ALLOWED_ORIGINS',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'JEAN_HEADLESS',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'JEAN_HOST',
+        required: false,
+        defaultValue: '0.0.0.0',
+      },
+      {
+        key: 'JEAN_NO_TOKEN',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'JEAN_PORT',
+        required: false,
+        defaultValue: '3456',
+      },
+      {
+        key: 'JEAN_VERSION',
+        required: false,
+        defaultValue: 'latest',
       },
     ],
     publishable: false,
@@ -9661,6 +14883,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -9697,6 +14920,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -9768,6 +14992,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'prefix',
       },
     ],
+    userVariables: [
+      {
+        key: 'JVB_ADVERTISE_IPS',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'JVB_STUN_SERVERS',
+        required: false,
+        defaultValue: 'stun.l.google.com:19302',
+      },
+      {
+        key: 'LOG_LEVEL',
+        required: false,
+        defaultValue: 'info',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'UTC',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -9835,6 +15081,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'JOOMLA',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'joomla-db',
       },
     ],
     publishable: false,
@@ -9905,6 +15158,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -9941,6 +15195,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'prefix',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -10011,6 +15266,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: null,
         targetService: null,
         resolution: 'unresolved',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'MEILI_NO_ANALYTICS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'SERVICE_DISABLE_SIGNUPS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'SERVICE_OPENAI_API_KEY',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -10093,6 +15365,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'ADMIN',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'KC_HEALTH_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'KC_HTTP_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'KC_PROXY_HEADERS',
+        required: false,
+        defaultValue: 'xforwarded',
+      },
+      {
+        key: 'TIMEZONE',
+        required: false,
+        defaultValue: 'UTC',
       },
     ],
     publishable: false,
@@ -10199,6 +15493,33 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'DATABASE',
       },
     ],
+    userVariables: [
+      {
+        key: 'KC_HEALTH_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'KC_HTTP_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'KC_PROXY_HEADERS',
+        required: false,
+        defaultValue: 'xforwarded',
+      },
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'keycloak',
+      },
+      {
+        key: 'TIMEZONE',
+        required: false,
+        defaultValue: 'UTC',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -10285,6 +15606,33 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'ADMINMAIL',
+        required: false,
+        defaultValue: 'admin@kimai.local',
+      },
+      {
+        key: 'MAILER_FROM',
+        required: false,
+        defaultValue: 'kimai@example.com',
+      },
+      {
+        key: 'MAILER_URL',
+        required: false,
+        defaultValue: 'null://null',
+      },
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'kimai',
+      },
+      {
+        key: 'TRUSTED_HOSTS',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -10342,6 +15690,38 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 7512,
         targetService: 'kuzzle',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'DEBUG',
+        required: false,
+        defaultValue: 'kuzzle:*,-kuzzle:network:protocols:websocket,-kuzzle:events',
+      },
+      {
+        key: 'DEBUG_COLORS',
+        required: false,
+        defaultValue: 'on',
+      },
+      {
+        key: 'DEBUG_DEPTH',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'DEBUG_EXPAND',
+        required: false,
+        defaultValue: 'off',
+      },
+      {
+        key: 'DEBUG_MAX_ARRAY',
+        required: false,
+        defaultValue: '100',
+      },
+      {
+        key: 'DEBUG_SHOW_HIDDEN',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -10437,6 +15817,43 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'DATA_UPLOAD_MAX_NUMBER_FILES',
+        required: false,
+        defaultValue: '10000',
+      },
+      {
+        key: 'DJANGO_DB',
+        required: false,
+        defaultValue: 'default',
+      },
+      {
+        key: 'EXPERIMENTAL_FEATURES',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'LABEL_STUDIO_DISABLE_SIGNUP_WITHOUT_LINK',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'LABEL_STUDIO_USERNAME',
+        required: false,
+        defaultValue: 'admin@example.com',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'labelstudio',
+      },
+      {
+        key: 'SSRF_PROTECTION_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -10523,6 +15940,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRES',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'LANGFLOW_AUTO_LOGIN',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'langflow-db',
       },
     ],
     publishable: false,
@@ -10615,6 +16044,33 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'MYSQLDB',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'DB_NAME',
+        required: false,
+        defaultValue: 'leantime-db',
+      },
+      {
+        key: 'REDIS_PORT',
+        required: false,
+        defaultValue: '6379',
+      },
+      {
+        key: 'REDIS_SCHEME',
+        required: false,
+        defaultValue: 'tcp',
+      },
+      {
+        key: 'SESSION_EXPIRATION',
+        required: false,
+        defaultValue: '28800',
+      },
+      {
+        key: 'USE_REDIS',
+        required: false,
+        defaultValue: 'true',
       },
     ],
     publishable: false,
@@ -10778,6 +16234,83 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'ALLOW_EMAIL_LOGIN',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'ALLOW_PASSWORD_RESET',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'ALLOW_REGISTRATION',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'ALLOW_SOCIAL_LOGIN',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'ALLOW_SOCIAL_REGISTRATION',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'ALLOW_UNVERIFIED_EMAIL_LOGIN',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'APP_TITLE',
+        required: false,
+        defaultValue: 'LibreChat',
+      },
+      {
+        key: 'DEBUG_LOGGING',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'DEBUG_OPENAI',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'MEILI_NO_ANALYTICS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'NO_INDEX',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'SERVICE_ANTHROPIC_API_KEY',
+        required: false,
+        defaultValue: 'user_provided',
+      },
+      {
+        key: 'SERVICE_ASSISTANTS_API_KEY',
+        required: false,
+        defaultValue: 'user_provided',
+      },
+      {
+        key: 'SERVICE_GOOGLE_API_KEY',
+        required: false,
+        defaultValue: 'user_provided',
+      },
+      {
+        key: 'SERVICE_OPENAI_API_KEY',
+        required: false,
+        defaultValue: 'user_provided',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -10811,6 +16344,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 3000,
         targetService: 'libreoffice',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'PGID',
+        required: false,
+        defaultValue: '1000',
+      },
+      {
+        key: 'PUID',
+        required: false,
+        defaultValue: '1000',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Etc/UTC',
       },
     ],
     publishable: false,
@@ -10848,6 +16398,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -10881,6 +16432,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 5000,
         targetService: 'libretranslate',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'LT_LOAD_ONLY',
+        required: false,
+        defaultValue: 'en,es,fr,de,ja',
+      },
+      {
+        key: 'LT_SSL',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'LT_UPDATE_MODELS',
+        required: false,
+        defaultValue: 'true',
       },
     ],
     publishable: false,
@@ -10967,6 +16535,58 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'LIMESURVEY_ADMIN_EMAIL',
+        required: false,
+        defaultValue: 'admin@example.com',
+      },
+      {
+        key: 'LIMESURVEY_ADMIN_NAME',
+        required: false,
+        defaultValue: 'Admin',
+      },
+      {
+        key: 'LIMESURVEY_ADMIN_USER',
+        required: false,
+        defaultValue: 'admin',
+      },
+      {
+        key: 'LIMESURVEY_FROM_EMAIL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'LIMESURVEY_SMTP_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'LIMESURVEY_SMTP_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'LIMESURVEY_SMTP_SSL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'LIMESURVEY_SMTP_USER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'limesurvey-db',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'America/Jamaica',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -11020,6 +16640,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'LINKDING',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -11074,6 +16695,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'LINKDING',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -11139,6 +16761,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -11248,6 +16871,68 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'UI',
       },
     ],
+    userVariables: [
+      {
+        key: 'ANTHROPIC_API_BASE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ANTHROPIC_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'LITELLM_LOG',
+        required: false,
+        defaultValue: 'ERROR',
+      },
+      {
+        key: 'LITELLM_MODE',
+        required: false,
+        defaultValue: 'PRODUCTION',
+      },
+      {
+        key: 'OPENAI_API_BASE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OPENAI_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'litellm',
+      },
+      {
+        key: 'REDIS_HOST',
+        required: false,
+        defaultValue: 'redis',
+      },
+      {
+        key: 'REDIS_PORT',
+        required: false,
+        defaultValue: '6379',
+      },
+      {
+        key: 'STORE_MODEL_IN_DB',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'VOYAGE_API_BASE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'VOYAGE_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -11291,6 +16976,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 3210,
         targetService: 'lobe-chat',
         resolution: 'prefix',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'OPENAI_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OPENAI_BASE_URL',
+        required: false,
+        defaultValue: 'https://api.openai.com/v1',
       },
     ],
     publishable: false,
@@ -11353,6 +17050,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'LOGTO_ADMIN_ENDPOINT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'LOGTO_ENDPOINT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'logto',
+      },
+      {
+        key: 'TAG',
+        required: false,
+        defaultValue: 'latest',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -11407,6 +17126,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'LOWCODER_EMAIL_SIGNUP_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -11442,6 +17168,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'prefix',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -11477,6 +17204,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -11522,6 +17250,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -11589,6 +17318,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRES',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'martin-db',
       },
     ],
     publishable: false,
@@ -11678,6 +17414,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRESQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'ENABLE_REGISTRATION',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'synapse-db',
+      },
+      {
+        key: 'SYNAPSE_REPORT_STATS',
+        required: false,
+        defaultValue: 'no',
+      },
+      {
+        key: 'SYNAPSE_SERVER_NAME',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -11739,6 +17497,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'ADMIN',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'ENABLE_REGISTRATION',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'SYNAPSE_REPORT_STATS',
+        required: false,
+        defaultValue: 'no',
+      },
+      {
+        key: 'SYNAPSE_SERVER_NAME',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -11809,6 +17584,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'mattermost',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'UTC',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -11842,6 +17629,38 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 9000,
         targetService: 'mealie',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'ALLOW_SIGNUP',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'MAX_WORKERS',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'PGID',
+        required: false,
+        defaultValue: '1000',
+      },
+      {
+        key: 'PUID',
+        required: false,
+        defaultValue: '1000',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Europe/Berlin',
+      },
+      {
+        key: 'WEB_CONCURRENCY',
+        required: false,
+        defaultValue: '1',
       },
     ],
     publishable: false,
@@ -11880,6 +17699,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -11924,6 +17744,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'MEILI_ENV',
+        required: false,
+        defaultValue: 'production',
+      },
+      {
+        key: 'MEILI_NO_ANALYTICS',
+        required: false,
+        defaultValue: 'true',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -11960,6 +17792,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -12018,6 +17851,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRESQL',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'metabase',
       },
     ],
     publishable: false,
@@ -12097,6 +17937,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'metamcp_db',
+      },
+      {
+        key: 'POSTGRES_HOST',
+        required: false,
+        defaultValue: 'postgres',
+      },
+      {
+        key: 'POSTGRES_PORT',
+        required: false,
+        defaultValue: '5432',
+      },
+      {
+        key: 'TRANSFORM_LOCALHOST_TO_DOCKER_INTERNAL',
+        required: false,
+        defaultValue: 'true',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [
@@ -12136,6 +17998,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -12205,6 +18068,58 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'FLASK_DEBUG',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'LANGFUSE_DEBUG',
+        required: false,
+        defaultValue: 'False',
+      },
+      {
+        key: 'LANGFUSE_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'LANGFUSE_PUBLIC_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'LANGFUSE_RELEASE',
+        required: false,
+        defaultValue: 'local',
+      },
+      {
+        key: 'LANGFUSE_SAMPLE_RATE',
+        required: false,
+        defaultValue: '1.0',
+      },
+      {
+        key: 'LANGFUSE_SECRET_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'LANGFUSE_TIMEOUT',
+        required: false,
+        defaultValue: '10',
+      },
+      {
+        key: 'OPENAI_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'mindsdb-db',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [
@@ -12240,6 +18155,153 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 32,
         },
         identifier: 'RCON',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'MINECRAFT_ALLOW_NETHER',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'MINECRAFT_ANNOUNCE_PLAYER_ACHIEVEMENTS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'MINECRAFT_DIFFICULTY',
+        required: false,
+        defaultValue: 'normal',
+      },
+      {
+        key: 'MINECRAFT_ENABLE_AUTOPAUSE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'MINECRAFT_ENABLE_COMMAND_BLOCK',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'MINECRAFT_FORCE_GAMEMODE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'MINECRAFT_GAME_MODE',
+        required: false,
+        defaultValue: 'survival',
+      },
+      {
+        key: 'MINECRAFT_GENERATE_STRUCTURES',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'MINECRAFT_GUI',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'MINECRAFT_HARDCORE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'MINECRAFT_INIT_MEMORY',
+        required: false,
+        defaultValue: '256M',
+      },
+      {
+        key: 'MINECRAFT_MAX_BUILD_HEIGHT',
+        required: false,
+        defaultValue: '256',
+      },
+      {
+        key: 'MINECRAFT_MAX_MEMORY',
+        required: false,
+        defaultValue: '1G',
+      },
+      {
+        key: 'MINECRAFT_MAX_PLAYERS',
+        required: false,
+        defaultValue: '10',
+      },
+      {
+        key: 'MINECRAFT_MAX_TICK_TIME',
+        required: false,
+        defaultValue: '60000',
+      },
+      {
+        key: 'MINECRAFT_MAX_WORLD_SIZE',
+        required: false,
+        defaultValue: '10000',
+      },
+      {
+        key: 'MINECRAFT_MOTD',
+        required: false,
+        defaultValue: 'Minecraft Server powered by §aCoolify§r',
+      },
+      {
+        key: 'MINECRAFT_ONLINE_MODE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'MINECRAFT_PLAYER_IDLE_TIMEOUT',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'MINECRAFT_PVP',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'MINECRAFT_SERVER_NAME',
+        required: false,
+        defaultValue: 'Minecraft Server',
+      },
+      {
+        key: 'MINECRAFT_SNOOPER_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'MINECRAFT_SPAWN_ANIMALS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'MINECRAFT_SPAWN_MONSTERS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'MINECRAFT_SPAWN_NPCS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'MINECRAFT_TYPE',
+        required: false,
+        defaultValue: 'VANILLA',
+      },
+      {
+        key: 'MINECRAFT_VERSION',
+        required: false,
+        defaultValue: 'latest',
+      },
+      {
+        key: 'MINECRAFT_VIEW_DISTANCE',
+        required: false,
+        defaultValue: '10',
+      },
+      {
+        key: 'PORT',
+        required: false,
+        defaultValue: '25565',
       },
     ],
     publishable: false,
@@ -12317,6 +18379,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRES',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'CREATE_ADMIN',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'PORT',
+        required: false,
+        defaultValue: '8080',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'miniflux-db',
+      },
+      {
+        key: 'RUN_MIGRATIONS',
+        required: false,
+        defaultValue: '1',
       },
     ],
     publishable: false,
@@ -12403,6 +18487,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'mixpost_db',
+      },
+      {
+        key: 'SSL_EMAIL',
+        required: false,
+        defaultValue: 'user@example.com',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -12481,6 +18577,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MARIADB',
       },
     ],
+    userVariables: [
+      {
+        key: 'MOODLE_SITE_NAME',
+        required: false,
+        defaultValue: 'New Site',
+      },
+      {
+        key: 'MOODLE_USERNAME',
+        required: false,
+        defaultValue: 'user',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -12533,6 +18641,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'MOSQUITTO',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'ALLOW_ANONYMOUS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'REQUIRE_CERTIFICATE',
+        required: false,
+        defaultValue: 'false',
       },
     ],
     publishable: false,
@@ -12601,6 +18721,83 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 5678,
         targetService: 'n8n',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'DB_SQLITE_POOL_SIZE',
+        required: false,
+        defaultValue: '2',
+      },
+      {
+        key: 'GENERIC_TIMEZONE',
+        required: false,
+        defaultValue: 'UTC',
+      },
+      {
+        key: 'N8N_BLOCK_ENV_ACCESS_IN_NODE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'N8N_GIT_NODE_DISABLE_BARE_REPOS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'N8N_NATIVE_PYTHON_RUNNER',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'N8N_PROTOCOL',
+        required: false,
+        defaultValue: 'https',
+      },
+      {
+        key: 'N8N_PROXY_HOPS',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'N8N_RUNNERS_AUTO_SHUTDOWN_TIMEOUT',
+        required: false,
+        defaultValue: '15',
+      },
+      {
+        key: 'N8N_RUNNERS_BROKER_LISTEN_ADDRESS',
+        required: false,
+        defaultValue: '0.0.0.0',
+      },
+      {
+        key: 'N8N_RUNNERS_BROKER_PORT',
+        required: false,
+        defaultValue: '5679',
+      },
+      {
+        key: 'N8N_RUNNERS_MAX_CONCURRENCY',
+        required: false,
+        defaultValue: '5',
+      },
+      {
+        key: 'N8N_RUNNERS_TASK_BROKER_URI',
+        required: false,
+        defaultValue: 'http://n8n:5679',
+      },
+      {
+        key: 'N8N_SKIP_AUTH_ON_OAUTH_CALLBACK',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'UTC',
       },
     ],
     publishable: false,
@@ -12718,6 +18915,83 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'GENERIC_TIMEZONE',
+        required: false,
+        defaultValue: 'UTC',
+      },
+      {
+        key: 'N8N_BLOCK_ENV_ACCESS_IN_NODE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'N8N_GIT_NODE_DISABLE_BARE_REPOS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'N8N_NATIVE_PYTHON_RUNNER',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'N8N_PROTOCOL',
+        required: false,
+        defaultValue: 'https',
+      },
+      {
+        key: 'N8N_PROXY_HOPS',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'N8N_RUNNERS_AUTO_SHUTDOWN_TIMEOUT',
+        required: false,
+        defaultValue: '15',
+      },
+      {
+        key: 'N8N_RUNNERS_BROKER_LISTEN_ADDRESS',
+        required: false,
+        defaultValue: '0.0.0.0',
+      },
+      {
+        key: 'N8N_RUNNERS_BROKER_PORT',
+        required: false,
+        defaultValue: '5679',
+      },
+      {
+        key: 'N8N_RUNNERS_MAX_CONCURRENCY',
+        required: false,
+        defaultValue: '5',
+      },
+      {
+        key: 'N8N_RUNNERS_TASK_BROKER_URI',
+        required: false,
+        defaultValue: 'http://n8n-worker:5679',
+      },
+      {
+        key: 'N8N_SKIP_AUTH_ON_OAUTH_CALLBACK',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'n8n',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'UTC',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -12801,6 +19075,83 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'GENERIC_TIMEZONE',
+        required: false,
+        defaultValue: 'UTC',
+      },
+      {
+        key: 'N8N_BLOCK_ENV_ACCESS_IN_NODE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'N8N_GIT_NODE_DISABLE_BARE_REPOS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'N8N_NATIVE_PYTHON_RUNNER',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'N8N_PROTOCOL',
+        required: false,
+        defaultValue: 'https',
+      },
+      {
+        key: 'N8N_PROXY_HOPS',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'N8N_RUNNERS_AUTO_SHUTDOWN_TIMEOUT',
+        required: false,
+        defaultValue: '15',
+      },
+      {
+        key: 'N8N_RUNNERS_BROKER_LISTEN_ADDRESS',
+        required: false,
+        defaultValue: '0.0.0.0',
+      },
+      {
+        key: 'N8N_RUNNERS_BROKER_PORT',
+        required: false,
+        defaultValue: '5679',
+      },
+      {
+        key: 'N8N_RUNNERS_MAX_CONCURRENCY',
+        required: false,
+        defaultValue: '5',
+      },
+      {
+        key: 'N8N_RUNNERS_TASK_BROKER_URI',
+        required: false,
+        defaultValue: 'http://n8n:5679',
+      },
+      {
+        key: 'N8N_SKIP_AUTH_ON_OAUTH_CALLBACK',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'n8n',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'UTC',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -12844,6 +19195,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 4533,
         targetService: 'navidrome',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'ND_ENABLEINSIGHTSCOLLECTOR',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'ND_LOGLEVEL',
+        required: false,
+        defaultValue: 'info',
+      },
+      {
+        key: 'ND_SCANSCHEDULE',
+        required: false,
+        defaultValue: '1h',
+      },
+      {
+        key: 'ND_SESSIONTIMEOUT',
+        required: false,
+        defaultValue: '24h',
       },
     ],
     publishable: false,
@@ -12915,6 +19288,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRESQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'postgres',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [
@@ -12943,6 +19323,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
       },
     ],
     variables: [],
+    userVariables: [
+      {
+        key: 'NB_ENABLE_EXPERIMENTAL_LAZY_CONN',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'NB_ENABLE_ROSENPASS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'NB_SETUP_KEY',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -13018,6 +19415,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'ERROR_LOG_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'POSTGRES_DATABASE',
+        required: false,
+        defaultValue: 'newapi',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Asia/Shanghai',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -13044,6 +19458,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
       },
     ],
     variables: [],
+    userVariables: [
+      {
+        key: 'NEWT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NEWT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PANGOLIN_ENDPOINT',
+        required: false,
+        defaultValue: 'https://pangolin.domain.tld',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -13085,6 +19516,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'prefix',
       },
     ],
+    userVariables: [
+      {
+        key: 'ALLOWED_REMOTE_DOMAINS',
+        required: false,
+        defaultValue: '*',
+      },
+      {
+        key: 'IMGPROXY_URL',
+        required: false,
+        defaultValue: 'http://imgproxy:8080',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -13119,6 +19562,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 80,
         targetService: 'nextcloud',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Europe/Madrid',
       },
     ],
     publishable: false,
@@ -13196,6 +19646,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MARIADB',
       },
     ],
+    userVariables: [
+      {
+        key: 'MARIADB_DATABASE',
+        required: false,
+        defaultValue: 'nextcloud',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Europe/Paris',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -13271,6 +19733,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'nextcloud',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Europe/Paris',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -13337,6 +19811,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'nextcloud',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Europe/Paris',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -13371,6 +19857,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 8081,
         targetService: 'nexus',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'NEXUS_SECURITY_RANDOMPASSWORD',
+        required: false,
+        defaultValue: 'false',
       },
     ],
     publishable: false,
@@ -13409,6 +19902,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -13463,6 +19957,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -13541,6 +20036,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRESQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'nitropage',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -13609,6 +20111,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'nocobase-db',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -13645,6 +20154,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -13704,6 +20214,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -13747,6 +20258,118 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 80,
         targetService: 'ntfy',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'NTFY_ATTACHMENT_EXPIRY_DURATION',
+        required: false,
+        defaultValue: '24h',
+      },
+      {
+        key: 'NTFY_ATTACHMENT_FILE_SIZE_LIMIT',
+        required: false,
+        defaultValue: '10M',
+      },
+      {
+        key: 'NTFY_ATTACHMENT_TOTAL_SIZE_LIMIT',
+        required: false,
+        defaultValue: '1G',
+      },
+      {
+        key: 'NTFY_AUTH_DEFAULT_ACCESS',
+        required: false,
+        defaultValue: 'read-write',
+      },
+      {
+        key: 'NTFY_BEHIND_PROXY',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'NTFY_CACHE_DURATION',
+        required: false,
+        defaultValue: '24h',
+      },
+      {
+        key: 'NTFY_ENABLE_LOGIN',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'NTFY_ENABLE_SIGNUP',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'NTFY_KEEPALIVE_INTERVAL',
+        required: false,
+        defaultValue: '5m',
+      },
+      {
+        key: 'NTFY_MANAGER_INTERVAL',
+        required: false,
+        defaultValue: '5m',
+      },
+      {
+        key: 'NTFY_SMTP_SENDER_ADDR',
+        required: false,
+        defaultValue: 'smtp.your-domain.de',
+      },
+      {
+        key: 'NTFY_SMTP_SENDER_FROM',
+        required: false,
+        defaultValue: 'no-reply@de',
+      },
+      {
+        key: 'NTFY_SMTP_SENDER_PASS',
+        required: false,
+        defaultValue: 'password',
+      },
+      {
+        key: 'NTFY_SMTP_SENDER_USER',
+        required: false,
+        defaultValue: 'no-reply@de',
+      },
+      {
+        key: 'NTFY_VISITOR_ATTACHMENT_DAILY_BANDWIDTH_LIMIT',
+        required: false,
+        defaultValue: '1G',
+      },
+      {
+        key: 'NTFY_VISITOR_MESSAGE_DAILY_LIMIT',
+        required: false,
+        defaultValue: '100',
+      },
+      {
+        key: 'NTFY_WEB_PUSH_EMAIL_ADDRESS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NTFY_WEB_PUSH_PRIVATE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NTFY_WEB_PUSH_PUBLIC_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'UTC',
+      },
+      {
+        key: 'UPSTREAM_ACCESS_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'UPSTREAM_BASE_URL',
+        required: false,
+        defaultValue: 'https://ntfy.sh',
       },
     ],
     publishable: false,
@@ -13836,6 +20459,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'OBSERVIUMADMIN',
       },
     ],
+    userVariables: [
+      {
+        key: 'MARIADB_DATABASE',
+        required: false,
+        defaultValue: 'observium-db',
+      },
+      {
+        key: 'OBSERVIUM_DB_NAME',
+        required: false,
+        defaultValue: 'observium-db',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -13888,6 +20523,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'COUCHDB',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'MAX_DOCUMENT_SIZE',
+        required: false,
+        defaultValue: '52428800',
+      },
+      {
+        key: 'MAX_HTTP_REQUEST_SIZE',
+        required: false,
+        defaultValue: '67108864',
       },
     ],
     publishable: false,
@@ -13959,6 +20606,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -14001,6 +20649,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'prefix',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -14043,6 +20692,43 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 80,
         targetService: 'campfire',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'DISABLE_SSL',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'SENTRY_DSN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SKIP_TELEMETRY',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'SSL_DOMAIN',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'TAG',
+        required: false,
+        defaultValue: 'main',
+      },
+      {
+        key: 'VAPID_PRIVATE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'VAPID_PUBLIC_KEY',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -14144,6 +20830,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'ONEDEV',
       },
     ],
+    userVariables: [
+      {
+        key: 'ONEDEV_EMAIL',
+        required: false,
+        defaultValue: 'mail@example.com',
+      },
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'onedev',
+      },
+      {
+        key: 'SSH_ROOT_URL',
+        required: false,
+        defaultValue: 'ssh://changeme:22',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -14202,6 +20905,33 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 3000,
         targetService: 'onetimesecret',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'AUTH_AUTOVERIFY',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'AUTH_SIGNUP',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'COLONEL',
+        required: false,
+        defaultValue: 'admin@example.com',
+      },
+      {
+        key: 'HOST',
+        required: false,
+        defaultValue: 'localhost',
+      },
+      {
+        key: 'SSL',
+        required: false,
+        defaultValue: 'false',
       },
     ],
     publishable: false,
@@ -14321,6 +21051,93 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'BODY_SIZE_LIMIT',
+        required: false,
+        defaultValue: '100M',
+      },
+      {
+        key: 'JWT_EXPIRES_IN',
+        required: false,
+        defaultValue: '7d',
+      },
+      {
+        key: 'NODE_ENV',
+        required: false,
+        defaultValue: 'production',
+      },
+      {
+        key: 'PORT_BACKEND',
+        required: false,
+        defaultValue: '4000',
+      },
+      {
+        key: 'PORT_FRONTEND',
+        required: false,
+        defaultValue: '3000',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'open_archive',
+      },
+      {
+        key: 'RATE_LIMIT_MAX_REQUESTS',
+        required: false,
+        defaultValue: '100',
+      },
+      {
+        key: 'RATE_LIMIT_WINDOW_MS',
+        required: false,
+        defaultValue: '60000',
+      },
+      {
+        key: 'STORAGE_LOCAL_ROOT_PATH',
+        required: false,
+        defaultValue: '/var/data/open-archiver',
+      },
+      {
+        key: 'STORAGE_S3_ACCESS_KEY_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'STORAGE_S3_BUCKET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'STORAGE_S3_ENDPOINT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'STORAGE_S3_FORCE_PATH_STYLE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'STORAGE_S3_REGION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'STORAGE_S3_SECRET_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'STORAGE_TYPE',
+        required: false,
+        defaultValue: 'local',
+      },
+      {
+        key: 'SYNC_FREQUENCY',
+        required: false,
+        defaultValue: '* * * * *',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -14356,6 +21173,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'prefix',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -14424,6 +21242,218 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'OPENCLAW',
       },
     ],
+    userVariables: [
+      {
+        key: 'AI_GATEWAY_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ANTHROPIC_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_ACCESS_KEY_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_REGION',
+        required: false,
+        defaultValue: 'us-east-1',
+      },
+      {
+        key: 'AWS_SECRET_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_SESSION_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BEDROCK_PROVIDER_FILTER',
+        required: false,
+        defaultValue: 'anthropic',
+      },
+      {
+        key: 'BROWSER_DEFAULT_PROFILE',
+        required: false,
+        defaultValue: 'openclaw',
+      },
+      {
+        key: 'BROWSER_EVALUATE_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'BROWSER_REMOTE_HANDSHAKE_TIMEOUT_MS',
+        required: false,
+        defaultValue: '3000',
+      },
+      {
+        key: 'BROWSER_REMOTE_TIMEOUT_MS',
+        required: false,
+        defaultValue: '1500',
+      },
+      {
+        key: 'BROWSER_SNAPSHOT_MODE',
+        required: false,
+        defaultValue: 'efficient',
+      },
+      {
+        key: 'CEREBRAS_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'COPILOT_GITHUB_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DEEPGRAM_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DISCORD_BOT_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GEMINI_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GROQ_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'HOOKS_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'HOOKS_PATH',
+        required: false,
+        defaultValue: '/hooks',
+      },
+      {
+        key: 'KIMI_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'KIMI_BASE_URL',
+        required: false,
+        defaultValue: 'https://api.moonshot.ai/anthropic',
+      },
+      {
+        key: 'MINIMAX_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MISTRAL_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MOONSHOT_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MOONSHOT_BASE_URL',
+        required: false,
+        defaultValue: 'https://api.moonshot.ai/v1',
+      },
+      {
+        key: 'OLLAMA_BASE_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OPENAI_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OPENCLAW_DOCKER_APT_PACKAGES',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OPENCLAW_GATEWAY_BIND',
+        required: false,
+        defaultValue: 'loopback',
+      },
+      {
+        key: 'OPENCLAW_PRIMARY_MODEL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OPENCODE_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OPENROUTER_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SLACK_APP_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SLACK_BOT_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SYNTHETIC_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'TELEGRAM_BOT_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'VENICE_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'WHATSAPP_ENABLED',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'XAI_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'XIAOMI_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ZAI_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -14478,6 +21508,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 5080,
         targetService: 'openobserve',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'ZO_COOKIE_SECURE_ONLY',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'ZO_ROOT_USER_EMAIL',
+        required: false,
+        defaultValue: 'root@example.com',
+      },
+      {
+        key: 'ZO_TELEMETRY',
+        required: false,
+        defaultValue: 'false',
       },
     ],
     publishable: false,
@@ -14606,6 +21653,38 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRES',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'DISABLE_BULLBOARD',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'OPENPANEL_ALLOW_INVITATION',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'OPENPANEL_ALLOW_REGISTRATION',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'OPENPANEL_EMAIL_SENDER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OPENPANEL_POSTGRES_DB',
+        required: false,
+        defaultValue: 'openpanel-db',
+      },
+      {
+        key: 'RESEND_API_KEY',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -14749,6 +21828,198 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRESQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'api_uri',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'APP_DEBUG',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'args',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_ACCESS_KEY_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_BUCKET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_DEFAULT_REGION',
+        required: false,
+        defaultValue: 'us-east-1',
+      },
+      {
+        key: 'AWS_SECRET_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'FILESYSTEM_DRIVER',
+        required: false,
+        defaultValue: 'local',
+      },
+      {
+        key: 'H_CAPTCHA_SECRET_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'H_CAPTCHA_SITE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'host',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'http_upgrade',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'is_args',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'JWT_SKIP_IP_UA_VALIDATION',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'JWT_TTL',
+        required: false,
+        defaultValue: '1440',
+      },
+      {
+        key: 'LOG_LEVEL',
+        required: false,
+        defaultValue: 'debug',
+      },
+      {
+        key: 'MAIL_ENCRYPTION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_FROM_ADDRESS',
+        required: false,
+        defaultValue: 'your@email.com',
+      },
+      {
+        key: 'MAIL_FROM_NAME',
+        required: false,
+        defaultValue: 'OpnForm',
+      },
+      {
+        key: 'MAIL_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_MAILER',
+        required: false,
+        defaultValue: 'log',
+      },
+      {
+        key: 'MAIL_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAIL_USERNAME',
+        required: false,
+        defaultValue: 'your@email.com',
+      },
+      {
+        key: 'NUXT_PUBLIC_LICENSE_API_ENDPOINT',
+        required: false,
+        defaultValue: 'https://api.opnform.com',
+      },
+      {
+        key: 'OPEN_AI_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'original_uri',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'opnform',
+      },
+      {
+        key: 'PUBLIC_UPLOADS_RATE_LIMIT_PER_HOUR',
+        required: false,
+        defaultValue: '300',
+      },
+      {
+        key: 'PUBLIC_UPLOADS_RATE_LIMIT_PER_MINUTE',
+        required: false,
+        defaultValue: '30',
+      },
+      {
+        key: 'RE_CAPTCHA_SECRET_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'RE_CAPTCHA_SITE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'remote_addr',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'server_port',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SHOW_OFFICIAL_TEMPLATES',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'TELEGRAM_BOT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'TELEGRAM_BOT_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'uri',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -14817,6 +22088,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'orangehrm-db',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -14850,6 +22128,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 80,
         targetService: 'organizr',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'branch',
+        required: false,
+        defaultValue: 'v2-master',
       },
     ],
     publishable: false,
@@ -14956,6 +22241,33 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'OSTICKETADMIN',
       },
     ],
+    userVariables: [
+      {
+        key: 'CRON_INTERVAL',
+        required: false,
+        defaultValue: '10',
+      },
+      {
+        key: 'OSTICKET_ADMIN_EMAIL',
+        required: false,
+        defaultValue: 'admin@example.com',
+      },
+      {
+        key: 'OSTICKET_DATABASE',
+        required: false,
+        defaultValue: 'osticket-db',
+      },
+      {
+        key: 'OSTICKET_FIRSTNAME',
+        required: false,
+        defaultValue: 'Admin',
+      },
+      {
+        key: 'OSTICKET_LASTNAME',
+        required: false,
+        defaultValue: 'istrator',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -14990,6 +22302,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 5055,
         targetService: 'overseerr',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'America/Toronto',
       },
     ],
     publishable: false,
@@ -15094,6 +22413,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'OWNCLOUD',
       },
     ],
+    userVariables: [
+      {
+        key: 'DB_NAME',
+        required: false,
+        defaultValue: 'owncloud',
+      },
+      {
+        key: 'MYSQL_UTF8MB4',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'REDIS_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -15130,6 +22466,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -15155,6 +22492,598 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
       },
     ],
     variables: [],
+    userVariables: [
+      {
+        key: 'ACTIVE_UNKO',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ADMIN_PASSWORD',
+        required: false,
+        defaultValue: 'adminPassword',
+      },
+      {
+        key: 'ALLOW_GLOBAL_PALBOX_EXPORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ALLOW_GLOBAL_PALBOX_IMPORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTO_PAUSE_DEBUG',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTO_PAUSE_ENABLED',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTO_PAUSE_LOG',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTO_PAUSE_TIMEOUT_EST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTO_REBOOT_CRON_EXPRESSION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTO_REBOOT_ENABLED',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTO_REBOOT_EVEN_IF_PLAYERS_ONLINE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTO_REBOOT_WARN_MINUTES',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTO_RESET_GUILD_NO_ONLINE_PLAYERS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTO_RESET_GUILD_TIME_NO_ONLINE_PLAYERS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTO_SAVE_SPAN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTO_UPDATE_CRON_EXPRESSION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTO_UPDATE_ENABLED',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTO_UPDATE_WARN_MINUTES',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BACKUP_CRON_EXPRESSION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BACKUP_ENABLED',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BAN_LIST_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BASE_CAMP_MAX_NUM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BASE_CAMP_MAX_NUM_IN_GUILD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BASE_CAMP_WORKER_MAX_NUM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BOX64_DYNAREC_BIGBLOCK',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'BOX64_DYNAREC_FASTNAN',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'BOX64_DYNAREC_FASTROUND',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'BOX64_DYNAREC_SAFEFLAGS',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'BOX64_DYNAREC_STRONGMEM',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'BOX64_DYNAREC_X87DOUBLE',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'BUILD_AREA_LIMIT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BUILD_OBJECT_DAMAGE_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BUILD_OBJECT_DETERIORATION_DAMAGE_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BUILD_OBJECT_HP_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CAN_PICKUP_OTHER_GUILD_DEATH_PENALTY_DROP',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'COLLECTION_DROP_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'COLLECTION_OBJECT_HP_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'COLLECTION_OBJECT_RESPAWN_SPEED_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'COMMUNITY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'COOP_PLAYER_MAX_NUM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CROSSPLAY_PLATFORMS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DAYTIME_SPEEDRATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DEATH_PENALTY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DELETE_OLD_BACKUPS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DIFFICULTY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DROP_ITEM_ALIVE_MAX_HOURS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DROP_ITEM_MAX_NUM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DROP_ITEM_MAX_NUM_UNKO',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENABLE_AIM_ASSIST_KEYBOARD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENABLE_AIM_ASSIST_PAD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENABLE_DEFENSE_OTHER_GUILD_PLAYER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENABLE_FAST_TRAVEL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENABLE_FRIENDLY_FIRE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENABLE_INVADER_ENEMY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENABLE_NON_LOGIN_PENALTY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENABLE_PLAYER_LOGGING',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENABLE_PLAYER_TO_PLAYER_DAMAGE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENABLE_PREDATOR_BOSS_PAL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ENEMY_DROP_ITEM_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EQUIPMENT_DURABILITY_DAMAGE_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EXIST_PLAYER_AFTER_LOGOUT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EXP_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GUILD_PLAYER_MAX_NUM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'HARDCORE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'INSTALL_BETA_INSIDER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'INVISIBLE_OTHER_GUILD_BASE_CAMP_AREA_FX',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'IS_MULTIPLAY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'IS_PVP',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'IS_START_LOCATION_SELECT_BY_MAP',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ITEM_CONTAINER_FORCE_MARK_DIRTY_INTERVAL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ITEM_WEIGHT_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAX_BUILDING_LIMIT_NUM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MULTITHREADING',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NIGHTTIME_SPEEDRATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OLD_BACKUP_DAYS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PAL_AUTO_HP_REGEN_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PAL_AUTO_HP_REGEN_RATE_IN_SLEEP',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PAL_CAPTURE_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PAL_DAMAGE_RATE_ATTACK',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PAL_DAMAGE_RATE_DEFENSE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PAL_EGG_DEFAULT_HATCHING_TIME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PAL_LOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PAL_SPAWN_NUM_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PAL_STAMINA_DECREASE_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PAL_STOMACH_DECREASE_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PGID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PLAYER_AUTO_HP_REGEN_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PLAYER_AUTO_HP_REGEN_RATE_IN_SLEEP',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PLAYER_DAMAGE_RATE_ATTACK',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PLAYER_DAMAGE_RATE_DEFENSE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PLAYER_LOGGING_POLL_PERIOD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PLAYER_STAMINA_DECREASE_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PLAYER_STOMACH_DECREASE_RATE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PLAYERS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PUBLIC_IP',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'PUBLIC_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PUID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'QUERY_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'RANDOMIZER_SEED',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'RANDOMIZER_TYPE',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'RCON_ENABLED',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'RCON_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'REGION',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'REST_API_ENABLED',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'REST_API_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVER_DESCRIPTION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVER_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVER_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVER_REPLICATE_PAWN_CULL_DISTANCE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVER_REPLICATE_PAWN_CULL_DISTANCE_IN_BASE_CAMP',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SHOW_PLAYER_LIST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'TZ',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'UPDATE_ON_BOOT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'USE_BACKUP_SAVE_DATA',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'USE_DEPOT_DOWNLOADER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'USEAUTH',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'WORK_SPEED_RATE',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: ['No slogan in upstream metadata'],
@@ -15233,6 +23162,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'PAPERLESS',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -15300,6 +23230,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'PASSBOLT',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'MYSQL_DB',
+        required: false,
+        defaultValue: 'passbolt-db',
       },
     ],
     publishable: false,
@@ -15403,6 +23340,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'paymenter-db',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -15504,6 +23448,68 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRES',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'PENPOT_BACKEND_FLAGS',
+        required: false,
+        defaultValue: 'enable-login-with-password enable-smtp',
+      },
+      {
+        key: 'PENPOT_FRONTEND_FLAGS',
+        required: false,
+        defaultValue: 'enable-login-with-password',
+      },
+      {
+        key: 'PENPOT_SMTP_DEFAULT_FROM',
+        required: false,
+        defaultValue: 'no-reply@example.com',
+      },
+      {
+        key: 'PENPOT_SMTP_DEFAULT_REPLY_TO',
+        required: false,
+        defaultValue: 'no-reply@example.com',
+      },
+      {
+        key: 'PENPOT_SMTP_HOST',
+        required: false,
+        defaultValue: 'mailpit',
+      },
+      {
+        key: 'PENPOT_SMTP_PASSWORD',
+        required: false,
+        defaultValue: 'penpot',
+      },
+      {
+        key: 'PENPOT_SMTP_PORT',
+        required: false,
+        defaultValue: '1025',
+      },
+      {
+        key: 'PENPOT_SMTP_SSL',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'PENPOT_SMTP_TLS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'PENPOT_SMTP_USERNAME',
+        required: false,
+        defaultValue: 'penpot',
+      },
+      {
+        key: 'PENPOT_TELEMETRY_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'penpot',
       },
     ],
     publishable: false,
@@ -15639,6 +23645,63 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'PENPOT_BACKEND_FLAGS',
+        required: false,
+        defaultValue: 'enable-login-with-password',
+      },
+      {
+        key: 'PENPOT_SMTP_DEFAULT_FROM',
+        required: false,
+        defaultValue: 'no-reply@example.com',
+      },
+      {
+        key: 'PENPOT_SMTP_DEFAULT_REPLY_TO',
+        required: false,
+        defaultValue: 'no-reply@example.com',
+      },
+      {
+        key: 'PENPOT_SMTP_HOST',
+        required: false,
+        defaultValue: 'mailpit',
+      },
+      {
+        key: 'PENPOT_SMTP_PASSWORD',
+        required: false,
+        defaultValue: 'penpot',
+      },
+      {
+        key: 'PENPOT_SMTP_PORT',
+        required: false,
+        defaultValue: '1025',
+      },
+      {
+        key: 'PENPOT_SMTP_SSL',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'PENPOT_SMTP_TLS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'PENPOT_SMTP_USERNAME',
+        required: false,
+        defaultValue: 'penpot',
+      },
+      {
+        key: 'PENPOT_TELEMETRY_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'penpot',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -15673,6 +23736,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: null,
         targetService: 'pgadmin',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'PGADMIN_DEFAULT_EMAIL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PGADMIN_DEFAULT_PASSWORD',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -15743,6 +23818,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'pgbackweb-db',
+      },
+      {
+        key: 'TIME_ZONE',
+        required: false,
+        defaultValue: 'UTC',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -15779,6 +23866,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -15821,6 +23909,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 80,
         targetService: 'pihole',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'FTLCONF_dns_listeningMode',
+        required: false,
+        defaultValue: 'all',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Europe/London',
       },
     ],
     publishable: false,
@@ -16014,6 +24114,98 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'RABBITMQ',
       },
     ],
+    userVariables: [
+      {
+        key: 'API_BASE_URL',
+        required: false,
+        defaultValue: 'http://api:8000',
+      },
+      {
+        key: 'API_KEY_RATE_LIMIT',
+        required: false,
+        defaultValue: '60/minute',
+      },
+      {
+        key: 'APP_RELEASE',
+        required: false,
+        defaultValue: 'v1.3.0',
+      },
+      {
+        key: 'AWS_REGION',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'AWS_S3_BUCKET_NAME',
+        required: false,
+        defaultValue: 'uploads',
+      },
+      {
+        key: 'AWS_S3_ENDPOINT_URL',
+        required: false,
+        defaultValue: 'http://plane-minio:9000',
+      },
+      {
+        key: 'CORS_ALLOWED_ORIGINS',
+        required: false,
+        defaultValue: 'http://localhost',
+      },
+      {
+        key: 'DEBUG',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'FILE_SIZE_LIMIT',
+        required: false,
+        defaultValue: '5242880',
+      },
+      {
+        key: 'GUNICORN_WORKERS',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'MINIO_ENDPOINT_SSL',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'RABBITMQ_PORT',
+        required: false,
+        defaultValue: '5672',
+      },
+      {
+        key: 'RABBITMQ_VHOST',
+        required: false,
+        defaultValue: 'plane',
+      },
+      {
+        key: 'REDIS_HOST',
+        required: false,
+        defaultValue: 'plane-redis',
+      },
+      {
+        key: 'REDIS_PORT',
+        required: false,
+        defaultValue: '6379',
+      },
+      {
+        key: 'REDIS_URL',
+        required: false,
+        defaultValue: 'redis://plane-redis:6379/',
+      },
+      {
+        key: 'SITE_ADDRESS',
+        required: false,
+        defaultValue: ':80',
+      },
+      {
+        key: 'USE_MINIO',
+        required: false,
+        defaultValue: '1',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [
@@ -16059,6 +24251,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 32400,
         targetService: 'plex',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'PLEX_CLAIM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'America/Toronto',
       },
     ],
     publishable: false,
@@ -16144,6 +24348,38 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'AWS_ACCESS_KEY_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_REGION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_SECRET_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_SES_CONFIGURATION_SET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DISABLE_SIGNUPS',
+        required: false,
+        defaultValue: 'False',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'plunk-db',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -16186,6 +24422,78 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 1411,
         targetService: 'pocket-id',
         resolution: 'prefix',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'EMAIL_API_KEY_EXPIRATION_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'EMAIL_LOGIN_NOTIFICATION_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'EMAIL_ONE_TIME_ACCESS_AS_ADMIN_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'MAXMIND_LICENSE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PGID',
+        required: false,
+        defaultValue: '1000',
+      },
+      {
+        key: 'PUID',
+        required: false,
+        defaultValue: '1000',
+      },
+      {
+        key: 'SMTP_FROM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_PORT',
+        required: false,
+        defaultValue: '587',
+      },
+      {
+        key: 'SMTP_SKIP_CERT_VERIFY',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'SMTP_TLS',
+        required: false,
+        defaultValue: 'starttls',
+      },
+      {
+        key: 'SMTP_USER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'TRUST_PROXY',
+        required: false,
+        defaultValue: 'true',
       },
     ],
     publishable: false,
@@ -16275,6 +24583,88 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRESQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'EMAIL_API_KEY_EXPIRATION_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'EMAIL_LOGIN_NOTIFICATION_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'EMAIL_ONE_TIME_ACCESS_AS_ADMIN_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'KEYS_STORAGE',
+        required: false,
+        defaultValue: 'database',
+      },
+      {
+        key: 'MAXMIND_LICENSE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PGID',
+        required: false,
+        defaultValue: '1000',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'pocketid',
+      },
+      {
+        key: 'PUID',
+        required: false,
+        defaultValue: '1000',
+      },
+      {
+        key: 'SMTP_FROM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_PORT',
+        required: false,
+        defaultValue: '587',
+      },
+      {
+        key: 'SMTP_SKIP_CERT_VERIFY',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'SMTP_TLS',
+        required: false,
+        defaultValue: 'starttls',
+      },
+      {
+        key: 'SMTP_USER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'TRUST_PROXY',
+        required: false,
+        defaultValue: 'true',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -16310,6 +24700,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -16345,6 +24736,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -16426,6 +24818,293 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 5000,
         targetService: 'postiz',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'CLOUDFLARE_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CLOUDFLARE_ACCOUNT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CLOUDFLARE_BUCKET_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CLOUDFLARE_BUCKETNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CLOUDFLARE_REGION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'CLOUDFLARE_SECRET_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_FROM_ADDRESS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_FROM_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_PROVIDER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'FEE_AMOUNT',
+        required: false,
+        defaultValue: '0.05',
+      },
+      {
+        key: 'INSTAGRAM_APP_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'INSTAGRAM_APP_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NEXT_PUBLIC_DISCORD_SUPPORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NEXT_PUBLIC_POLOTNO',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NEXT_PUBLIC_UPLOAD_DIRECTORY',
+        required: false,
+        defaultValue: '/uploads',
+      },
+      {
+        key: 'NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NOT_SECURED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'NX_ADD_PLUGINS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'postiz-db',
+      },
+      {
+        key: 'RESEND_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_BEEHIIVE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_BEEHIIVE_PUBID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_DISCORD_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_DISCORD_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_DISCORD_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_DRIBBLE_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_DRIBBLE_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_FACEBOOK_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_FACEBOOK_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_GITHUB_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_GITHUB_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_LINKEDIN_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_LINKEDIN_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_MASTODON_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_MASTODON_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_OPENAI_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_PINTEREST_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_PINTEREST_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_REDDIT_API',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_REDDIT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_SLACK_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_SLACK_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_THREADS_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_THREADS_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_TIKTOK_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_TIKTOK_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_X_API',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_X_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_YOUTUBE_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_YOUTUBE_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SLACK_SIGNING_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'STORAGE_PROVIDER',
+        required: false,
+        defaultValue: 'local',
+      },
+      {
+        key: 'STRIPE_PUBLISHABLE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'STRIPE_SECRET_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'STRIPE_SIGNING_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'STRIPE_SIGNING_KEY_CONNECT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'UPLOAD_DIRECTORY',
+        required: false,
+        defaultValue: '/uploads',
       },
     ],
     publishable: false,
@@ -16521,6 +25200,43 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'DEFAULT_POOL_LIMIT',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'DEFAULT_POOL_NAME',
+        required: false,
+        defaultValue: 'default',
+      },
+      {
+        key: 'DEFAULT_WORKER_NAME',
+        required: false,
+        defaultValue: 'worker1',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'prefect',
+      },
+      {
+        key: 'PREFECT_EXPERIMENTAL_ENABLE_SCHEDULE_CONCURRENCY',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'PREFECT_EXPERIMENTAL_WARN',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'PREFECT_RUNNER_SERVER_ENABLE',
+        required: false,
+        defaultValue: 'false',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -16557,6 +25273,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -16602,6 +25319,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'America/Toronto',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -16644,6 +25368,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 9159,
         targetService: 'proxyscotch',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'ALLOWED_ORIGINS',
+        required: false,
+        defaultValue: '*',
+      },
+      {
+        key: 'BANNED_DESTS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BANNED_OUTPUTS',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -16724,6 +25465,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'cells',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -16773,6 +25521,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 8080,
         targetService: 'qbit',
         resolution: 'prefix',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'RELEASE_TYPE',
+        required: false,
+        defaultValue: 'stable',
+      },
+      {
+        key: 'UPDATE_VT_CRON',
+        required: false,
+        defaultValue: '"0 * * * *"',
+      },
+      {
+        key: 'WEBUI_PORT',
+        required: false,
+        defaultValue: '8080',
       },
     ],
     publishable: false,
@@ -16828,6 +25593,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -16891,6 +25657,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'RABBITMQ',
       },
     ],
+    userVariables: [
+      {
+        key: 'PORT',
+        required: false,
+        defaultValue: '5672',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -16933,6 +25706,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 7878,
         targetService: 'radarr',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'America/Toronto',
       },
     ],
     publishable: false,
@@ -17011,6 +25791,48 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRES',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'ALLOWED_EMAILS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'rallly',
+      },
+      {
+        key: 'SMTP_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_PWD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_SECURE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'SMTP_USER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SUPPORT_EMAIL',
+        required: false,
+        defaultValue: 'support@example.com',
       },
     ],
     publishable: false,
@@ -17153,6 +25975,33 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'MINIO_BROWSER_REDIRECT_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MINIO_SERVER_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'postgres',
+      },
+      {
+        key: 'SERVICE_DISABLE_EMAIL_AUTH',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'SERVICE_DISABLE_SIGNUPS',
+        required: false,
+        defaultValue: 'false',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -17187,6 +26036,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: null,
         targetService: 'readeck',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'READECK_USE_X_FORWARDED',
+        required: false,
+        defaultValue: 'true',
       },
     ],
     publishable: false,
@@ -17234,6 +26090,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'RI_FILES_LOGGER',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'RI_LOG_LEVEL',
+        required: false,
+        defaultValue: 'info',
+      },
+      {
+        key: 'RI_STDOUT_LOGGER',
+        required: false,
+        defaultValue: 'true',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -17267,6 +26140,113 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 8080,
         targetService: 'redlib',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'REDLIB_BANNER',
+        required: false,
+        defaultValue: '""',
+      },
+      {
+        key: 'REDLIB_DEFAULT_AUTOPLAY_VIDEOS',
+        required: false,
+        defaultValue: 'off',
+      },
+      {
+        key: 'REDLIB_DEFAULT_BLUR_NSFW',
+        required: false,
+        defaultValue: 'off',
+      },
+      {
+        key: 'REDLIB_DEFAULT_BLUR_SPOILER',
+        required: false,
+        defaultValue: 'off',
+      },
+      {
+        key: 'REDLIB_DEFAULT_COMMENT_SORT',
+        required: false,
+        defaultValue: 'confidence',
+      },
+      {
+        key: 'REDLIB_DEFAULT_DISABLE_VISIT_REDDIT_CONFIRMATION',
+        required: false,
+        defaultValue: 'off',
+      },
+      {
+        key: 'REDLIB_DEFAULT_FIXED_NAVBAR',
+        required: false,
+        defaultValue: 'on',
+      },
+      {
+        key: 'REDLIB_DEFAULT_FRONT_PAGE',
+        required: false,
+        defaultValue: 'worldnews',
+      },
+      {
+        key: 'REDLIB_DEFAULT_HIDE_AWARDS',
+        required: false,
+        defaultValue: 'off',
+      },
+      {
+        key: 'REDLIB_DEFAULT_HIDE_HLS_NOTIFICATION',
+        required: false,
+        defaultValue: 'off',
+      },
+      {
+        key: 'REDLIB_DEFAULT_HIDE_SCORE',
+        required: false,
+        defaultValue: 'off',
+      },
+      {
+        key: 'REDLIB_DEFAULT_HIDE_SIDEBAR_AND_SUMMARY',
+        required: false,
+        defaultValue: 'off',
+      },
+      {
+        key: 'REDLIB_DEFAULT_LAYOUT',
+        required: false,
+        defaultValue: 'card',
+      },
+      {
+        key: 'REDLIB_DEFAULT_POST_SORT',
+        required: false,
+        defaultValue: 'hot',
+      },
+      {
+        key: 'REDLIB_DEFAULT_SHOW_NSFW',
+        required: false,
+        defaultValue: 'off',
+      },
+      {
+        key: 'REDLIB_DEFAULT_SUBSCRIPTIONS',
+        required: false,
+        defaultValue: '""',
+      },
+      {
+        key: 'REDLIB_DEFAULT_USE_HLS',
+        required: false,
+        defaultValue: 'off',
+      },
+      {
+        key: 'REDLIB_DEFAULT_WIDE',
+        required: false,
+        defaultValue: 'off',
+      },
+      {
+        key: 'REDLIB_PUSHSHIFT_FRONTEND',
+        required: false,
+        defaultValue: 'undelete.pullpush.io',
+      },
+      {
+        key: 'REDLIB_ROBOTS_DISABLE_INDEXING',
+        required: false,
+        defaultValue: 'off',
+      },
+      {
+        key: 'REDLIB_SFW_ONLY',
+        required: false,
+        defaultValue: 'off',
       },
     ],
     publishable: false,
@@ -17337,6 +26317,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRES_DATABASE',
+        required: false,
+        defaultValue: 'redmine-db',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -17381,6 +26368,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'prefix',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -17430,6 +26418,38 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 3000,
         targetService: 'rocketchat',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'MAIL_URL',
+        required: false,
+        defaultValue: 'test@example.com',
+      },
+      {
+        key: 'MONGODB_ADVERTISED_HOSTNAME',
+        required: false,
+        defaultValue: 'mongodb',
+      },
+      {
+        key: 'MONGODB_DATABASE',
+        required: false,
+        defaultValue: 'rocketchat',
+      },
+      {
+        key: 'MONGODB_INITIAL_PRIMARY_PORT_NUMBER',
+        required: false,
+        defaultValue: '27017',
+      },
+      {
+        key: 'MONGODB_REPLICA_SET_NAME',
+        required: false,
+        defaultValue: 'rs0',
+      },
+      {
+        key: 'REG_TOKEN',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -17521,6 +26541,38 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'CLICKHOUSE_DB',
+        required: false,
+        defaultValue: 'analytics',
+      },
+      {
+        key: 'CLICKHOUSE_USER',
+        required: false,
+        defaultValue: 'default',
+      },
+      {
+        key: 'DISABLE_SIGNUP',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'DISABLE_TELEMETRY',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'analytics',
+      },
+      {
+        key: 'POSTGRES_USER',
+        required: false,
+        defaultValue: 'frog',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -17590,6 +26642,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'ryot-db',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Europe/Amsterdam',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -17615,6 +26679,88 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
       },
     ],
     variables: [],
+    userVariables: [
+      {
+        key: 'AUTOSAVE_NUM',
+        required: false,
+        defaultValue: '5',
+      },
+      {
+        key: 'DEBUG',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'DISABLE_SEASONAL_EVENTS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'LOG',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'MAX_OBJECTS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAX_PLAYERS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAX_TICK_RATE',
+        required: false,
+        defaultValue: '30',
+      },
+      {
+        key: 'MULTI_HOME',
+        required: false,
+        defaultValue: '::',
+      },
+      {
+        key: 'PGID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PUID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVER_GAME_PORT',
+        required: false,
+        defaultValue: '7777',
+      },
+      {
+        key: 'SERVER_MESSAGING_PORT',
+        required: false,
+        defaultValue: '8888',
+      },
+      {
+        key: 'SERVER_STREAMING',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'SKIP_UPDATE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'STEAM_BETA',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'TIMEOUT',
+        required: false,
+        defaultValue: '30',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -17725,6 +26871,53 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'INIT_SEAFILE_ADMIN_EMAIL',
+        required: false,
+        defaultValue: 'test@example.com',
+      },
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'seafile-db',
+      },
+      {
+        key: 'NON_ROOT',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'SEAFILE_LOG_TO_STDOUT',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'SEAFILE_MYSQL_DB_CCNET_DB_NAME',
+        required: false,
+        defaultValue: 'ccnet_db',
+      },
+      {
+        key: 'SEAFILE_MYSQL_DB_SEAFILE_DB_NAME',
+        required: false,
+        defaultValue: 'seafile_db',
+      },
+      {
+        key: 'SEAFILE_MYSQL_DB_SEAHUB_DB_NAME',
+        required: false,
+        defaultValue: 'seahub_db',
+      },
+      {
+        key: 'SITE_ROOT',
+        required: false,
+        defaultValue: '/',
+      },
+      {
+        key: 'TIME_ZONE',
+        required: false,
+        defaultValue: 'UTC',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -17785,6 +26978,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 8080,
         targetService: 'searxng',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'INSTANCE_NAME',
+        required: false,
+        defaultValue: 'coolify',
+      },
+      {
+        key: 'SEARXNG_BIND_ADDRESS',
+        required: false,
+        defaultValue: '0.0.0.0',
       },
     ],
     publishable: false,
@@ -17872,6 +27077,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'S3',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'AWS_ACCESS_KEY_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_SECRET_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SEAWEED_PASSWORD_ADMIN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SEAWEED_USER_ADMIN',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -17968,6 +27195,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'CRASH_REPORTING_DISABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'FEATURE_ACCOUNT_SELF_SIGNUP',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'sequin-db',
+      },
+      {
+        key: 'SEQUIN_TELEMETRY_DISABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -18030,6 +27279,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'SESSY',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -18087,6 +27337,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRES',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'LOG_LEVEL',
+        required: false,
+        defaultValue: 'info',
+      },
+      {
+        key: 'PORT_SFTPGO',
+        required: false,
+        defaultValue: '2222',
+      },
+      {
+        key: 'POSTGRES_DATABASE',
+        required: false,
+        defaultValue: 'sftpgo-db',
       },
     ],
     publishable: false,
@@ -18166,6 +27433,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'unresolved',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [
@@ -18266,6 +27534,83 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SIGNOZ_ALERTMANAGER_SIGNOZ_GLOBAL_SMTP__AUTH__PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SIGNOZ_ALERTMANAGER_SIGNOZ_GLOBAL_SMTP__AUTH__USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SIGNOZ_ALERTMANAGER_SIGNOZ_GLOBAL_SMTP__FROM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SIGNOZ_ALERTMANAGER_SIGNOZ_GLOBAL_SMTP__SMARTHOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SIGNOZ_EMAILING_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'SIGNOZ_EMAILING_SMTP_ADDRESS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SIGNOZ_EMAILING_SMTP_AUTH_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SIGNOZ_EMAILING_SMTP_AUTH_USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SIGNOZ_EMAILING_SMTP_FROM',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SIGNOZ_STATSREPORTER_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'ZOO_ALLOW_ANONYMOUS_LOGIN',
+        required: false,
+        defaultValue: 'yes',
+      },
+      {
+        key: 'ZOO_AUTOPURGE_INTERVAL',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'ZOO_ENABLE_PROMETHEUS_METRICS',
+        required: false,
+        defaultValue: 'yes',
+      },
+      {
+        key: 'ZOO_PROMETHEUS_METRICS_PORT_NUMBER',
+        required: false,
+        defaultValue: '9141',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -18320,6 +27665,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'SILVERBULLET',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -18365,6 +27711,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'UTC',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -18400,6 +27753,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -18436,6 +27790,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -18477,6 +27832,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -18539,6 +27895,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'SOKETI',
       },
     ],
+    userVariables: [
+      {
+        key: 'DEBUG',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'DEFAULT_APP_ENABLE_CLIENT_MESSAGES',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SOKETI_PUSHER_SCHEME',
+        required: false,
+        defaultValue: 'https',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -18581,6 +27954,88 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 8080,
         targetService: 'soketi-app-manager',
         resolution: 'prefix',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'APP_DEBUG',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'APP_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTORUN_LARAVEL_MIGRATION',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'DB_CONNECTION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DB_DATABASE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DB_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DB_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DB_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DB_USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'METRICS_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PUSHER_APP_CLUSTER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PUSHER_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PUSHER_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PUSHER_SCHEME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SOKETI_DB_REDIS_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SOKETI_DB_REDIS_USERNAME',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -18628,6 +28083,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'America/Toronto',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -18662,6 +28124,53 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 19898,
         targetService: 'spacebot',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'ANTHROPIC_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BRAVE_SEARCH_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DISCORD_BOT_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OPENAI_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OPENROUTER_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SLACK_APP_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SLACK_BOT_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SPACEBOT_CHANNEL_MODEL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SPACEBOT_WORKER_MODEL',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -18757,6 +28266,93 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'ALLOW_PRIVATE_NETWORK_CORS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'NODE_ENV',
+        required: false,
+        defaultValue: 'production',
+      },
+      {
+        key: 'SPARKY_FITNESS_ADMIN_EMAIL',
+        required: false,
+        defaultValue: 'admin@example.com',
+      },
+      {
+        key: 'SPARKY_FITNESS_APP_DB_USER',
+        required: false,
+        defaultValue: 'sparkyapp',
+      },
+      {
+        key: 'SPARKY_FITNESS_DB_NAME',
+        required: false,
+        defaultValue: 'sparkyfitness',
+      },
+      {
+        key: 'SPARKY_FITNESS_DB_PORT',
+        required: false,
+        defaultValue: '5432',
+      },
+      {
+        key: 'SPARKY_FITNESS_DISABLE_SIGNUP',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'SPARKY_FITNESS_EMAIL_FROM',
+        required: false,
+        defaultValue: '"Sparky Fitness <noreply@sparkyfitness.com>"',
+      },
+      {
+        key: 'SPARKY_FITNESS_EMAIL_HOST',
+        required: false,
+        defaultValue: 'smtp.gmail.com',
+      },
+      {
+        key: 'SPARKY_FITNESS_EMAIL_PASS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SPARKY_FITNESS_EMAIL_PORT',
+        required: false,
+        defaultValue: '587',
+      },
+      {
+        key: 'SPARKY_FITNESS_EMAIL_SECURE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'SPARKY_FITNESS_EMAIL_USER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SPARKY_FITNESS_EXTRA_TRUSTED_ORIGINS',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'SPARKY_FITNESS_FORCE_EMAIL_LOGIN',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'SPARKY_FITNESS_LOG_LEVEL',
+        required: false,
+        defaultValue: 'info',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Etc/UTC',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [
@@ -18794,6 +28390,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -18841,6 +28438,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -18876,6 +28474,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'only-service',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -18961,6 +28560,48 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRESQL',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'BROWSER',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'FAST_REFRESH',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'NODE_ENV',
+        required: false,
+        defaultValue: 'development',
+      },
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'strapi',
+      },
+      {
+        key: 'STRAPI_ENFORCE_SOURCEMAPS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'STRAPI_LICENSE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'STRAPI_PLUGIN_I18N_INIT_LOCALE_CODE',
+        required: false,
+        defaultValue: 'en',
+      },
+      {
+        key: 'STRAPI_TELEMETRY_DISABLED',
+        required: false,
+        defaultValue: 'true',
       },
     ],
     publishable: false,
@@ -19202,6 +28843,433 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MINIO',
       },
     ],
+    userVariables: [
+      {
+        key: 'ADDITIONAL_REDIRECT_URLS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'ANON_KEY_ASYMMETRIC',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'API_EXTERNAL_URL',
+        required: false,
+        defaultValue: 'http://supabase-kong:8000',
+      },
+      {
+        key: 'DASHBOARD_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DASHBOARD_USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DISABLE_SIGNUP',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'ENABLE_ANONYMOUS_USERS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'ENABLE_EMAIL_AUTOCONFIRM',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'ENABLE_EMAIL_SIGNUP',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'ENABLE_PHONE_AUTOCONFIRM',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'ENABLE_PHONE_SIGNUP',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'function',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'FUNCTIONS_VERIFY_JWT',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'GOOGLE_PROJECT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOOGLE_PROJECT_NUMBER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOTRUE_EXTERNAL_GITHUB_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOTRUE_EXTERNAL_GITHUB_ENABLED',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOTRUE_EXTERNAL_GITHUB_REDIRECT_URI',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOTRUE_EXTERNAL_GITHUB_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOTRUE_EXTERNAL_GOOGLE_ENABLED',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOTRUE_EXTERNAL_GOOGLE_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GOTRUE_SITE_URL',
+        required: false,
+        defaultValue: '${SERVICE_URL_SUPABASEKONG',
+      },
+      {
+        key: 'IMGPROXY_AUTO_WEBP',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'JWT_EXP',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'JWT_EXPIRY',
+        required: false,
+        defaultValue: '3600',
+      },
+      {
+        key: 'JWT_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'jwtAlgorithm',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'KONG_DECLARATIVE_CONFIG',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'KONG_STORAGE_CONNECT_TIMEOUT',
+        required: false,
+        defaultValue: '60',
+      },
+      {
+        key: 'KONG_STORAGE_READ_TIMEOUT',
+        required: false,
+        defaultValue: '3600',
+      },
+      {
+        key: 'KONG_STORAGE_REQUEST_BUFFERING',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'KONG_STORAGE_RESPONSE_BUFFERING',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'KONG_STORAGE_WRITE_TIMEOUT',
+        required: false,
+        defaultValue: '3600',
+      },
+      {
+        key: 'LOGFLARE_PUBLIC_ACCESS_TOKEN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'LUA_AUTH_EXPR',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'LUA_RT_WS_EXPR',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAILER_SUBJECTS_CONFIRMATION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAILER_SUBJECTS_EMAIL_CHANGE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAILER_SUBJECTS_INVITE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAILER_SUBJECTS_MAGIC_LINK',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAILER_SUBJECTS_RECOVERY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAILER_TEMPLATES_CONFIRMATION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAILER_TEMPLATES_EMAIL_CHANGE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAILER_TEMPLATES_INVITE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAILER_TEMPLATES_MAGIC_LINK',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAILER_TEMPLATES_RECOVERY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MAILER_URLPATHS_CONFIRMATION',
+        required: false,
+        defaultValue: '/auth/v1/verify',
+      },
+      {
+        key: 'MAILER_URLPATHS_EMAIL_CHANGE',
+        required: false,
+        defaultValue: '/auth/v1/verify',
+      },
+      {
+        key: 'MAILER_URLPATHS_INVITE',
+        required: false,
+        defaultValue: '/auth/v1/verify',
+      },
+      {
+        key: 'MAILER_URLPATHS_RECOVERY',
+        required: false,
+        defaultValue: '/auth/v1/verify',
+      },
+      {
+        key: 'MINIO_ROOT_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'MINIO_ROOT_USER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OPENAI_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PGRST_DB_EXTRA_SEARCH_PATH',
+        required: false,
+        defaultValue: 'public',
+      },
+      {
+        key: 'PGRST_DB_MAX_ROWS',
+        required: false,
+        defaultValue: '1000',
+      },
+      {
+        key: 'PGRST_DB_SCHEMAS',
+        required: false,
+        defaultValue: 'public,storage,graphql_public',
+      },
+      {
+        key: 'POOLER_DB_POOL_SIZE',
+        required: false,
+        defaultValue: '5',
+      },
+      {
+        key: 'POOLER_DEFAULT_POOL_SIZE',
+        required: false,
+        defaultValue: '20',
+      },
+      {
+        key: 'POOLER_MAX_CLIENT_CONN',
+        required: false,
+        defaultValue: '100',
+      },
+      {
+        key: 'POOLER_TENANT_ID',
+        required: false,
+        defaultValue: 'dev_tenant',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'postgres',
+      },
+      {
+        key: 'POSTGRES_HOST',
+        required: false,
+        defaultValue: 'supabase-db',
+      },
+      {
+        key: 'POSTGRES_HOSTNAME',
+        required: false,
+        defaultValue: 'supabase-db',
+      },
+      {
+        key: 'POSTGRES_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTGRES_PORT',
+        required: false,
+        defaultValue: '5432',
+      },
+      {
+        key: 'POSTGRES_USER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SECRET_PASSWORD_REALTIME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'service_name',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SERVICE_ROLE_KEY_ASYMMETRIC',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'servicePath',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_ADMIN_EMAIL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_PASS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_PORT',
+        required: false,
+        defaultValue: '587',
+      },
+      {
+        key: 'SMTP_SENDER_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_USER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'STORAGE_TENANT_ID',
+        required: false,
+        defaultValue: 'storage-single-tenant',
+      },
+      {
+        key: 'STUDIO_DEFAULT_ORGANIZATION',
+        required: false,
+        defaultValue: 'Default Organization',
+      },
+      {
+        key: 'STUDIO_DEFAULT_PROJECT',
+        required: false,
+        defaultValue: 'Default Project',
+      },
+      {
+        key: 'SUPABASE_ANON_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SUPABASE_PUBLISHABLE_KEY',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'SUPABASE_SECRET_KEY',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'SUPABASE_SERVICE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [
@@ -19289,6 +29357,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'MAPBOX_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'superset-db',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -19361,6 +29441,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MYSQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'API_KEYS',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'supertokens',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -19431,6 +29523,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRESQL',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'API_KEYS',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'supertokens',
       },
     ],
     publishable: false,
@@ -19520,6 +29624,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRESQL',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'ONBOARDING_STATE',
+        required: false,
+        defaultValue: 'open',
+      },
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'sure',
       },
     ],
     publishable: false,
@@ -19615,6 +29731,108 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'unresolved',
       },
     ],
+    userVariables: [
+      {
+        key: 'CLICKHOUSE_DATABASE',
+        required: false,
+        defaultValue: 'analytics',
+      },
+      {
+        key: 'CLICKHOUSE_PORT',
+        required: false,
+        defaultValue: '8123',
+      },
+      {
+        key: 'CLICKHOUSE_USER',
+        required: false,
+        defaultValue: 'default',
+      },
+      {
+        key: 'CLOUDFLARE_PROXY_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'DEBUG_MODE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'DISABLE_REGISTRATION',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'FROM_EMAIL',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'IP_GEOLOCATION_DB_PATH',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'OIDC_CLIENT_ID',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'OIDC_CLIENT_SECRET',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'OIDC_DISCOVERY_URL',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'OIDC_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'OIDC_ONLY_AUTH',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'REDIS_PORT',
+        required: false,
+        defaultValue: '6379',
+      },
+      {
+        key: 'REDIS_USER',
+        required: false,
+        defaultValue: 'default',
+      },
+      {
+        key: 'SMTP_HOST',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'SMTP_MOCK',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'SMTP_PASSWORD',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'SMTP_PORT',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'SMTP_USER',
+        required: false,
+        defaultValue: '',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [
@@ -19652,6 +29870,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Etc/UTC',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -19683,6 +29908,28 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
       },
     ],
     variables: [],
+    userVariables: [
+      {
+        key: 'TS_AUTHKEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'TS_HOSTNAME',
+        required: false,
+        defaultValue: 'coolify-ts',
+      },
+      {
+        key: 'TS_STATE_DIR',
+        required: false,
+        defaultValue: '/var/lib/tailscale',
+      },
+      {
+        key: 'TS_USERSPACE',
+        required: false,
+        defaultValue: 'false',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -19782,6 +30029,58 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'BACKEND_MAIL_AUTH_PASS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BACKEND_MAIL_AUTH_USER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BACKEND_MAIL_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BACKEND_MAIL_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BACKEND_MAIL_SECURE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BACKEND_MAIL_SENDER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'BACKEND_MAIL_SENDER_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'teable',
+      },
+      {
+        key: 'POSTGRES_PORT',
+        required: false,
+        defaultValue: '5432',
+      },
+      {
+        key: 'TIMEZONE',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -19823,6 +30122,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'LOG_LEVEL',
+        required: false,
+        defaultValue: 'info',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -19848,6 +30154,53 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
       },
     ],
     variables: [],
+    userVariables: [
+      {
+        key: 'AUTOCREATE',
+        required: false,
+        defaultValue: '2',
+      },
+      {
+        key: 'DIFFICULTY',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'LANGUAGE',
+        required: false,
+        defaultValue: 'en/US',
+      },
+      {
+        key: 'MAXPLAYERS',
+        required: false,
+        defaultValue: '8',
+      },
+      {
+        key: 'MOTD',
+        required: false,
+        defaultValue: 'Welcome to the server!',
+      },
+      {
+        key: 'PASSWORD',
+        required: false,
+        defaultValue: 'mypassword',
+      },
+      {
+        key: 'SECURE',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'WORLD',
+        required: false,
+        defaultValue: '/root/.local/share/Terraria/Worlds/world1.wld',
+      },
+      {
+        key: 'WORLDNAME',
+        required: false,
+        defaultValue: 'world1',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -19925,6 +30278,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRESQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'tolgee',
+      },
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'tolgee',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -19993,6 +30358,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'CONFIG_USE_ENVIRONMENT_VARIABLES',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'traccar',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -20028,6 +30405,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -20081,6 +30459,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'ADMIN',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -20242,6 +30621,203 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'ADMIN_EMAILS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AUTH',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'AUTH_GITHUB_CLIENT_ID',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'AUTH_GITHUB_CLIENT_SECRET',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'CONTAINERS',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT',
+        required: false,
+        defaultValue: '100',
+      },
+      {
+        key: 'DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT',
+        required: false,
+        defaultValue: '300',
+      },
+      {
+        key: 'DEPLOY_REGISTRY_HOST',
+        required: false,
+        defaultValue: 'ghcr.io',
+      },
+      {
+        key: 'DEPLOY_REGISTRY_NAMESPACE',
+        required: false,
+        defaultValue: 'trigger',
+      },
+      {
+        key: 'DEPLOY_REGISTRY_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DEPLOY_REGISTRY_PROTOCOL',
+        required: false,
+        defaultValue: 'https',
+      },
+      {
+        key: 'DEPLOY_REGISTRY_USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'DEV_OTEL_EXPORTER_OTLP_ENDPOINT',
+        required: false,
+        defaultValue: '',
+      },
+      {
+        key: 'DISTRIBUTION',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'DOCKER_AUTOREMOVE_EXITED_CONTAINERS',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'DOCKER_RUNNER_NETWORKS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_TRANSPORT',
+        required: false,
+        defaultValue: 'smtp',
+      },
+      {
+        key: 'FROM_EMAIL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'IMAGES',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'INFO',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'INTERNAL_OTEL_TRACE_LOGGING_ENABLED',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'NETWORKS',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'OBJECT_STORE_ACCESS_KEY_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OBJECT_STORE_BASE_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'OBJECT_STORE_SECRET_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'POST',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'trigger-db',
+      },
+      {
+        key: 'REPLY_TO_EMAIL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'RESEND_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_SECURE',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SMTP_USER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SUPERVISOR_DEBUG',
+        required: false,
+        defaultValue: '0',
+      },
+      {
+        key: 'TRIGGER_TELEMETRY_DISABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'TRIGGER_WORKER_TOKEN',
+        required: false,
+        defaultValue: 'file:///home/node/shared/worker_token',
+      },
+      {
+        key: 'TRIGGER_WORKLOAD_API_DOMAIN',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'WHITELISTED_EMAILS',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -20275,6 +30851,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 8080,
         targetService: 'triliumnext',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Europe/Berlin',
       },
     ],
     publishable: false,
@@ -20366,6 +30949,133 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'API_RATE_LIMITING_LIMIT',
+        required: false,
+        defaultValue: '100',
+      },
+      {
+        key: 'API_RATE_LIMITING_TTL',
+        required: false,
+        defaultValue: '100',
+      },
+      {
+        key: 'CACHE_STORAGE_TYPE',
+        required: false,
+        defaultValue: 'redis',
+      },
+      {
+        key: 'DEBUG_MODE',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'EMAIL_DRIVER',
+        required: false,
+        defaultValue: 'logger',
+      },
+      {
+        key: 'EMAIL_FROM_ADDRESS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_FROM_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_SMTP_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_SMTP_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_SMTP_PORT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_SMTP_USER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'EMAIL_SYSTEM_ADDRESS',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'IS_SIGN_UP_DISABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'MESSAGE_QUEUE_TYPE',
+        required: false,
+        defaultValue: 'pg-boss',
+      },
+      {
+        key: 'PASSWORD_RESET_TOKEN_EXPIRES_IN',
+        required: false,
+        defaultValue: '5m',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'twenty-db',
+      },
+      {
+        key: 'STORAGE_S3_ACCESS_KEY_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'STORAGE_S3_ENDPOINT',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'STORAGE_S3_NAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'STORAGE_S3_REGION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'STORAGE_S3_SECRET_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'STORAGE_TYPE',
+        required: false,
+        defaultValue: 'local',
+      },
+      {
+        key: 'TELEMETRY_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'WORKSPACE_INACTIVE_DAYS_BEFORE_DELETION',
+        required: false,
+        defaultValue: '21',
+      },
+      {
+        key: 'WORKSPACE_INACTIVE_DAYS_BEFORE_NOTIFICATION',
+        required: false,
+        defaultValue: '7',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -20400,6 +31110,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 8108,
         targetService: 'typesense',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'TYPESENSE_API_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'TYPESENSE_ENABLE_CORS',
+        required: false,
+        defaultValue: 'true',
       },
     ],
     publishable: false,
@@ -20469,6 +31191,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRES',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'umami',
       },
     ],
     publishable: false,
@@ -20548,6 +31277,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -20599,6 +31329,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 4242,
         targetService: 'unleash',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'DATABASE_SSL',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'DATABASE_URL',
+        required: true,
+        defaultValue: null,
       },
     ],
     publishable: false,
@@ -20659,6 +31401,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -20695,6 +31438,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'prefix',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -20764,6 +31508,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'MARIADB',
       },
     ],
+    userVariables: [
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'uptime-kuma-db',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Etc/UTC',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -20831,6 +31587,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'MYSQL',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'uptime-kuma-db',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Etc/UTC',
       },
     ],
     publishable: false,
@@ -20924,6 +31692,48 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'API_RATE_LIMIT',
+        required: false,
+        defaultValue: '1',
+      },
+      {
+        key: 'AWS_ACCESS_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_DEFAULT_REGION',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'AWS_SECRET_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GITHUB_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'GITHUB_SECRET',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'NEXT_PUBLIC_IS_CLOUD',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'SERVICE_DB_POSTGRES',
+        required: false,
+        defaultValue: 'usesend',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -20957,6 +31767,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 8200,
         targetService: 'vault',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'VAULT_VERSION',
+        required: false,
+        defaultValue: 'latest',
       },
     ],
     publishable: false,
@@ -21004,6 +31821,33 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'PUSH_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'PUSH_SERVICE_ID',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'PUSH_SERVICE_KEY',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'SIGNUP_ALLOWED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'VAULTWARDEN_DB_URL',
+        required: false,
+        defaultValue: 'data/db.sqlite3',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -21039,6 +31883,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -21089,6 +31934,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -21157,6 +32003,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRESQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: true,
+        defaultValue: null,
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -21203,6 +32056,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -21280,6 +32134,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'VVVEB',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'MARIADB_DATABASE',
+        required: false,
+        defaultValue: 'vvveb',
       },
     ],
     publishable: false,
@@ -21361,6 +32222,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'VVVEB',
       },
     ],
+    userVariables: [
+      {
+        key: 'MYSQL_DATABASE',
+        required: false,
+        defaultValue: 'vvveb',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -21440,6 +32308,93 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'DATABASE',
       },
     ],
+    userVariables: [
+      {
+        key: 'TIMEZONE',
+        required: false,
+        defaultValue: 'Europe/Berlin',
+      },
+      {
+        key: 'WAKAPI_ALLOW_SIGNUP',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WAKAPI_DB_HOST',
+        required: false,
+        defaultValue: 'postgres',
+      },
+      {
+        key: 'WAKAPI_DB_NAME',
+        required: false,
+        defaultValue: 'wakapi',
+      },
+      {
+        key: 'WAKAPI_DB_PORT',
+        required: false,
+        defaultValue: '5432',
+      },
+      {
+        key: 'WAKAPI_DISABLE_FRONTPAGE',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WAKAPI_ENVIRONMENT',
+        required: false,
+        defaultValue: 'production',
+      },
+      {
+        key: 'WAKAPI_LEADERBOARD_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WAKAPI_MAIL_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'WAKAPI_MAIL_SENDER',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'WAKAPI_MAIL_SMTP_HOST',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'WAKAPI_MAIL_SMTP_PASSWORD',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'WAKAPI_MAIL_SMTP_PORT',
+        required: false,
+        defaultValue: '587',
+      },
+      {
+        key: 'WAKAPI_MAIL_SMTP_TLS',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'WAKAPI_MAIL_SMTP_USERNAME',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'WAKAPI_PUBLIC_URL',
+        required: true,
+        defaultValue: null,
+      },
+      {
+        key: 'WAKAPI_SECURITY_EXPOSE_METRICS',
+        required: false,
+        defaultValue: 'false',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -21493,6 +32448,68 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [
+      {
+        key: 'AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'AUTHENTICATION_APIKEY_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'AUTHENTICATION_APIKEY_USERS',
+        required: false,
+        defaultValue: 'admin@example.com',
+      },
+      {
+        key: 'AUTHORIZATION_ADMINLIST_USERS',
+        required: false,
+        defaultValue: 'admin@example.com',
+      },
+      {
+        key: 'CLUSTER_HOSTNAME',
+        required: false,
+        defaultValue: 'node1',
+      },
+      {
+        key: 'DEFAULT_VECTORIZER_MODULE',
+        required: false,
+        defaultValue: 'none',
+      },
+      {
+        key: 'DISABLE_TELEMETRY',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'ENABLE_MODULES',
+        required: false,
+        defaultValue: 'text2vec-openai,generative-openai,qna-openai',
+      },
+      {
+        key: 'GOMAXPROCS',
+        required: false,
+        defaultValue: '2',
+      },
+      {
+        key: 'GOMEMLIMIT',
+        required: false,
+        defaultValue: '1024MiB',
+      },
+      {
+        key: 'LOG_LEVEL',
+        required: false,
+        defaultValue: 'info',
+      },
+      {
+        key: 'QUERY_DEFAULTS_LIMIT',
+        required: false,
+        defaultValue: '1000',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -21528,6 +32545,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'prefix',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -21620,6 +32638,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'weblate',
+      },
+      {
+        key: 'WEBLATE_ADMIN_EMAIL',
+        required: false,
+        defaultValue: 'admin@example.com',
+      },
+      {
+        key: 'WEBLATE_ADMIN_NAME',
+        required: false,
+        defaultValue: 'Admin',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -21656,6 +32691,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -21713,6 +32749,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRES',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'wiki-db',
       },
     ],
     publishable: false,
@@ -21814,6 +32857,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRES',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'windmill-db',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [
@@ -21860,6 +32910,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'WINGS',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'TIMEZONE',
+        required: false,
+        defaultValue: 'UTC',
       },
     ],
     publishable: false,
@@ -21913,6 +32970,13 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 51821,
         targetService: 'wg-easy',
         resolution: 'only-service',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'LANG',
+        required: false,
+        defaultValue: 'en',
       },
     ],
     publishable: false,
@@ -21984,6 +33048,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'WORDPRESS',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -22053,6 +33118,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'WORDPRESS',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -22089,6 +33155,7 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         resolution: 'exact',
       },
     ],
+    userVariables: [],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -22159,6 +33226,18 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         port: 8000,
         targetService: 'yamtrack',
         resolution: 'exact',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'REGISTRATION_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Europe/Berlin',
       },
     ],
     publishable: false,
@@ -22257,6 +33336,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
         identifier: 'POSTGRESQL',
       },
     ],
+    userVariables: [
+      {
+        key: 'POSTGRESQL_DATABASE',
+        required: false,
+        defaultValue: 'yamtrack-db',
+      },
+      {
+        key: 'REGISTRATION_ENABLED',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'TZ',
+        required: false,
+        defaultValue: 'Europe/Berlin',
+      },
+    ],
     publishable: false,
     verification: 'not-verified',
     warnings: [],
@@ -22324,6 +33420,23 @@ export const SERVICE_TEMPLATES: ServiceTemplate[] = [
           length: 16,
         },
         identifier: 'POSTGRES',
+      },
+    ],
+    userVariables: [
+      {
+        key: 'CORE_LOGGER',
+        required: false,
+        defaultValue: 'true',
+      },
+      {
+        key: 'CORE_RETURN_HTTPS',
+        required: false,
+        defaultValue: 'false',
+      },
+      {
+        key: 'POSTGRES_DB',
+        required: false,
+        defaultValue: 'zipline-db',
       },
     ],
     publishable: false,
