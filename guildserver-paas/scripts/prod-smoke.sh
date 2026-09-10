@@ -74,10 +74,24 @@ fi
 
 echo
 echo "deployed revision"
+# The updater resets the checkout to origin/main BEFORE it builds, so while a
+# build is running the checkout already names the new commit and the old
+# containers are still serving. Comparing checkout to origin/main alone then
+# reports "matches" for code that is not live yet. The updater holds this
+# lock for the whole update, so a held lock means "not deployed yet".
+UPDATE_LOCK="${UPDATE_LOCK:-/tmp/guildserver-self-update.lock}"
+update_in_progress() {
+  [ -e "$UPDATE_LOCK" ] || return 1
+  command -v flock >/dev/null 2>&1 || return 1
+  ! flock -n "$UPDATE_LOCK" true 2>/dev/null
+}
+
 if [ -n "${GUILDSERVER_REPO_DIR:-}" ] && [ -d "$GUILDSERVER_REPO_DIR/.git" ]; then
   head="$(git -C "$GUILDSERVER_REPO_DIR" rev-parse --short HEAD 2>/dev/null)"
   remote="$(git -C "$GUILDSERVER_REPO_DIR" rev-parse --short origin/main 2>/dev/null)"
-  if [ "$head" = "$remote" ]; then
+  if update_in_progress; then
+    skip "update to $head in progress; running containers may still be the previous revision"
+  elif [ "$head" = "$remote" ]; then
     ok "deployed revision $head matches origin/main"
   else
     # Not fatal: the 5-minute self-update cron may simply not have fired yet.
