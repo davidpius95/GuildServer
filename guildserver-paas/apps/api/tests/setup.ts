@@ -19,10 +19,11 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '@guildserver/database';
 
-// Test database connection — use TEST_DATABASE_URL if set, else fallback to DATABASE_URL from .env
-const testDbUrl = process.env.TEST_DATABASE_URL
-  || process.env.DATABASE_URL
-  || 'postgresql://guildserver:password123@localhost:5433/guildserver';
+// The URL is resolved and validated in tests/env.ts (jest `setupFiles`), which
+// runs before any module — including @guildserver/database — is imported.
+import { resolveTestDatabaseUrl } from './test-database-url';
+
+const testDbUrl = resolveTestDatabaseUrl();
 const testDb = postgres(testDbUrl, {
   max: 1,
 });
@@ -59,6 +60,11 @@ async function clearTestData() {
     'k8s_deployments',
     'kubernetes_clusters',
     'deployments',
+    // Compose stacks. Listed before `services` so the cascade is explicit
+    // rather than implied.
+    'service_containers',
+    'service_volumes',
+    'services',
     'applications',
     'compute_providers',
     'databases',
@@ -82,8 +88,8 @@ export const testUtils = {
   createUser: async (overrides: Record<string, any> = {}) => {
     const defaultUser = {
       name: 'Test User',
-      email: `test-${Date.now()}@example.com`,
-      passwordHash: '$2a$10$testhashedpassword',
+      email: `test-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`,
+      password: '$2a$10$testhashedpassword',
       ...overrides,
     };
 

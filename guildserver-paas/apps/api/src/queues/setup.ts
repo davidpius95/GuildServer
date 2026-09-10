@@ -24,6 +24,8 @@ import { decryptSecret } from "../utils/crypto";
 import { deploymentsTotal, deploymentDuration, queueDepth } from "../services/prometheus-metrics";
 import crypto from "crypto";
 import path from "path";
+import { runServiceDeployJob } from "./service-deploy";
+import { resolveCloneToken } from "../services/git-clone-token";
 
 // Redis connection
 // Note: dotenv may not be loaded when this module initializes (import hoisting),
@@ -68,6 +70,14 @@ const deploymentWorker = new Worker(
   async (job) => {
     const jobStartTime = process.hrtime();
     logger.info("Processing deployment job", { jobId: job.id, data: job.data });
+
+    // Compose stacks reuse this queue rather than growing a parallel one, so
+    // they inherit deployment history, live logs and the rollback machinery.
+    // The handler lives in its own module; nothing below this line applies to
+    // a stack, which has no single application row, image or host port.
+    if (job.name === "deploy-service") {
+      return await runServiceDeployJob(job.data);
+    }
 
     const { deploymentId, applicationId, userId, isRollback, sourceDeploymentId, isPreview, previewBranch } = job.data;
     const allBuildLogs: string[] = [];
@@ -265,18 +275,12 @@ const deploymentWorker = new Worker(
         let gitToken: string | undefined;
         const sourceProvider = (app.sourceType as string) || "git";
         if (["github", "gitlab", "bitbucket", "gitea"].includes(sourceProvider) && userId) {
-          const oauthAccount = await db.query.oauthAccounts.findFirst({
-            where: and(
-              eq(oauthAccounts.userId, userId),
-              eq(oauthAccounts.provider, sourceProvider)
-            ),
-          });
-          if (oauthAccount?.accessToken) {
-            gitToken = oauthAccount.accessToken;
-            allBuildLogs.push("Using authenticated clone (OAuth token found)");
-          } else {
-            allBuildLogs.push("No OAuth token found — attempting unauthenticated clone");
-          }
+          // Resolved through getValidAccessToken so an expired token is renewed
+          // instead of handed to git. Reading the column directly failed private
+          // clones about 8 hours after GitHub was connected.
+          const clone = await resolveCloneToken(userId, sourceProvider);
+          gitToken = clone.token;
+          allBuildLogs.push(clone.note);
         }
 
         // Clone repository
@@ -568,6 +572,10 @@ const deploymentWorker = new Worker(
         cpuLimit: app.cpuLimit,
         containerPort: detectedPort || app.containerPort || undefined,
         persistentStoragePath: app.persistentStoragePath,
+        // The application row carries the health-check, stop-grace and
+        // deployment-strategy settings. Without this the deploy path saw every
+        // field as NULL and could only ever take the legacy behaviour.
+        applicationConfig: app as unknown as Record<string, unknown>,
         replicas: app.replicas || 1,
         sourceType: app.sourceType || "docker",
         domains: domainList.length > 0 ? domainList : undefined,
@@ -715,6 +723,20 @@ const deploymentWorker = new Worker(
         completedAt: new Date(),
         imageTag: finalImageTag,
       };
+
+      // Record which replacement path ran, and the containers involved. A
+      // deployment interrupted between "candidate healthy" and "incumbent
+      // retired" leaves two containers claiming one Traefik router; these
+      // columns are what lets a later reconcile tell them apart.
+      if (result.strategy) {
+        deploymentUpdate.strategy = result.strategy;
+      }
+      if (result.candidateContainerId) {
+        deploymentUpdate.candidateContainerId = result.candidateContainerId;
+      }
+      if (result.previousContainerId) {
+        deploymentUpdate.previousContainerId = result.previousContainerId;
+      }
 
       // Store provider metadata for infrastructure tracking
       if (resolvedProviderId) {

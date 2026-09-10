@@ -244,21 +244,21 @@ CREATE TABLE IF NOT EXISTS "webhook_deliveries" (
 	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-ALTER TABLE "applications" ADD COLUMN "container_port" integer;--> statement-breakpoint
-ALTER TABLE "applications" ADD COLUMN "main_branch" varchar(255) DEFAULT 'main';--> statement-breakpoint
-ALTER TABLE "applications" ADD COLUMN "preview_ttl_hours" integer DEFAULT 72;--> statement-breakpoint
-ALTER TABLE "applications" ADD COLUMN "provider_id" uuid;--> statement-breakpoint
-ALTER TABLE "applications" ADD COLUMN "deployment_target" varchar(50) DEFAULT 'docker-local';--> statement-breakpoint
-ALTER TABLE "deployments" ADD COLUMN "image_tag" text;--> statement-breakpoint
-ALTER TABLE "deployments" ADD COLUMN "deployment_type" varchar(50) DEFAULT 'standard';--> statement-breakpoint
-ALTER TABLE "deployments" ADD COLUMN "triggered_by" varchar(255);--> statement-breakpoint
-ALTER TABLE "deployments" ADD COLUMN "source_deployment_id" uuid;--> statement-breakpoint
-ALTER TABLE "deployments" ADD COLUMN "is_preview" boolean DEFAULT false;--> statement-breakpoint
-ALTER TABLE "deployments" ADD COLUMN "preview_branch" varchar(255);--> statement-breakpoint
-ALTER TABLE "deployments" ADD COLUMN "provider_id" uuid;--> statement-breakpoint
-ALTER TABLE "deployments" ADD COLUMN "lxc_vm_id" integer;--> statement-breakpoint
-ALTER TABLE "deployments" ADD COLUMN "provider_metadata" jsonb;--> statement-breakpoint
-ALTER TABLE "organizations" ADD COLUMN "stripe_customer_id" varchar(255);--> statement-breakpoint
+ALTER TABLE "applications" ADD COLUMN IF NOT EXISTS "container_port" integer;--> statement-breakpoint
+ALTER TABLE "applications" ADD COLUMN IF NOT EXISTS "main_branch" varchar(255) DEFAULT 'main';--> statement-breakpoint
+ALTER TABLE "applications" ADD COLUMN IF NOT EXISTS "preview_ttl_hours" integer DEFAULT 72;--> statement-breakpoint
+ALTER TABLE "applications" ADD COLUMN IF NOT EXISTS "provider_id" uuid;--> statement-breakpoint
+ALTER TABLE "applications" ADD COLUMN IF NOT EXISTS "deployment_target" varchar(50) DEFAULT 'docker-local';--> statement-breakpoint
+ALTER TABLE "deployments" ADD COLUMN IF NOT EXISTS "image_tag" text;--> statement-breakpoint
+ALTER TABLE "deployments" ADD COLUMN IF NOT EXISTS "deployment_type" varchar(50) DEFAULT 'standard';--> statement-breakpoint
+ALTER TABLE "deployments" ADD COLUMN IF NOT EXISTS "triggered_by" varchar(255);--> statement-breakpoint
+ALTER TABLE "deployments" ADD COLUMN IF NOT EXISTS "source_deployment_id" uuid;--> statement-breakpoint
+ALTER TABLE "deployments" ADD COLUMN IF NOT EXISTS "is_preview" boolean DEFAULT false;--> statement-breakpoint
+ALTER TABLE "deployments" ADD COLUMN IF NOT EXISTS "preview_branch" varchar(255);--> statement-breakpoint
+ALTER TABLE "deployments" ADD COLUMN IF NOT EXISTS "provider_id" uuid;--> statement-breakpoint
+ALTER TABLE "deployments" ADD COLUMN IF NOT EXISTS "lxc_vm_id" integer;--> statement-breakpoint
+ALTER TABLE "deployments" ADD COLUMN IF NOT EXISTS "provider_metadata" jsonb;--> statement-breakpoint
+ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "stripe_customer_id" varchar(255);--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "compute_providers_organization_id_idx" ON "compute_providers" ("organization_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "compute_providers_type_idx" ON "compute_providers" ("type");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "compute_providers_default_idx" ON "compute_providers" ("organization_id","is_default");--> statement-breakpoint

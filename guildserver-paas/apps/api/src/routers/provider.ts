@@ -75,6 +75,27 @@ export const providerRouter = createTRPCRouter({
   create: adminProcedure
     .input(createProviderSchema)
     .mutation(async ({ ctx, input }) => {
+      // Refuse provider types the factory cannot build.
+      //
+      // Previously the "not yet implemented" throw was caught below, recorded as
+      // connectionStatus: "error", and the provider was inserted anyway. It then
+      // appeared in listings and could be set as the organization default, at
+      // which point getDefaultProvider() returned it and every deployment threw.
+      // A provider that cannot deploy is not a provider in a degraded state; it
+      // is not a provider.
+      if (!isProviderImplemented(input.type as ProviderType)) {
+        const supported = listAvailableProviders()
+          .filter((p) => isProviderImplemented(p.type))
+          .map((p) => p.type)
+          .join(", ");
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            `Provider type "${input.type}" is not implemented yet, so it cannot be created. ` +
+            `Supported types: ${supported}.`,
+        });
+      }
+
       // If setting as default, unset any existing default for this org
       if (input.isDefault && input.organizationId) {
         await ctx.db

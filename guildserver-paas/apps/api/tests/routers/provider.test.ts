@@ -113,7 +113,7 @@ describe('ProviderRouter', () => {
   describe('listAvailable', () => {
     it('should return all 9 provider types', async () => {
       const caller = providerRouter.createCaller(
-        createUserContext(regularUserId)
+        createAdminContext(adminUserId)
       );
 
       const result = await caller.listAvailable();
@@ -134,7 +134,7 @@ describe('ProviderRouter', () => {
 
     it('should mark docker-local and proxmox as implemented', async () => {
       const caller = providerRouter.createCaller(
-        createUserContext(regularUserId)
+        createAdminContext(adminUserId)
       );
 
       const result = await caller.listAvailable();
@@ -161,7 +161,7 @@ describe('ProviderRouter', () => {
   describe('list', () => {
     it('should return empty array when no providers exist', async () => {
       const caller = providerRouter.createCaller(
-        createUserContext(regularUserId)
+        createAdminContext(adminUserId)
       );
 
       const result = await caller.list();
@@ -179,7 +179,7 @@ describe('ProviderRouter', () => {
       });
 
       const caller = providerRouter.createCaller(
-        createUserContext(regularUserId)
+        createAdminContext(adminUserId)
       );
 
       const result = await caller.list();
@@ -208,7 +208,7 @@ describe('ProviderRouter', () => {
       ]);
 
       const caller = providerRouter.createCaller(
-        createUserContext(regularUserId)
+        createAdminContext(adminUserId)
       );
 
       const result = await caller.list();
@@ -271,22 +271,18 @@ describe('ProviderRouter', () => {
       expect(result.config).toEqual({}); // credentials must be redacted
     });
 
-    it('should set status to error when provider type is not implemented', async () => {
+    it('rejects an unimplemented provider type instead of storing it broken', async () => {
       const caller = providerRouter.createCaller(
         createAdminContext(adminUserId)
       );
 
-      const result = await caller.create({
-        name: 'My AWS',
-        type: 'aws-ecs',
-        config: {},
-      });
-
-      // Unimplemented providers should still be created but with error status
-      expect(result.name).toBe('My AWS');
-      expect(result.type).toBe('aws-ecs');
-      expect(result.status).toBe('error');
-      expect(result.healthMessage).toContain('not yet implemented');
+      // This previously succeeded, storing the provider with status 'error'.
+      // It could then be set as the organization default, and every deployment
+      // routed to it threw "not yet implemented" at deploy time instead of at
+      // configuration time. See the 'unimplemented provider types' block.
+      await expect(
+        caller.create({ name: 'My AWS', type: 'aws-ecs', config: {} }),
+      ).rejects.toThrow(/not implemented yet/);
     });
 
     it('should store provider in database with real config (not redacted)', async () => {
@@ -385,7 +381,7 @@ describe('ProviderRouter', () => {
         .returning();
 
       const caller = providerRouter.createCaller(
-        createUserContext(regularUserId)
+        createAdminContext(adminUserId)
       );
 
       const result = await caller.getById({ id: provider.id });
@@ -398,7 +394,7 @@ describe('ProviderRouter', () => {
 
     it('should throw NOT_FOUND for non-existent provider', async () => {
       const caller = providerRouter.createCaller(
-        createUserContext(regularUserId)
+        createAdminContext(adminUserId)
       );
 
       await expect(
@@ -698,6 +694,60 @@ describe('ProviderRouter', () => {
   // ============================
   // Credential redaction (cross-cutting)
   // ============================
+  describe('unimplemented provider types', () => {
+    // The factory throws for these. Before, create() caught that, stored the
+    // provider with connectionStatus 'error', and let it be set as the org
+    // default — after which every deployment threw. Creation must refuse.
+    const unimplemented = [
+      'docker-remote',
+      'kubernetes',
+      'aws-ecs',
+      'gcp-cloudrun',
+      'azure-aci',
+      'hetzner',
+      'digitalocean',
+    ] as const;
+
+    for (const type of unimplemented) {
+      it(`refuses to create a "${type}" provider`, async () => {
+        await expect(
+          providerRouter
+            .createCaller(createAdminContext(adminUserId))
+            .create({ name: `test-${type}`, type, config: {}, isDefault: false }),
+        ).rejects.toThrow(/not implemented yet/);
+      });
+    }
+
+    it('persists nothing when creation is refused', async () => {
+      const caller = providerRouter.createCaller(createAdminContext(adminUserId));
+      await expect(
+        caller.create({ name: 'ghost', type: 'aws-ecs', config: {}, isDefault: false }),
+      ).rejects.toThrow();
+
+      const all = await caller.list();
+      expect(all.find((p: any) => p.name === 'ghost')).toBeUndefined();
+    });
+
+    it('names the supported types so the error is actionable', async () => {
+      await expect(
+        providerRouter
+          .createCaller(createAdminContext(adminUserId))
+          .create({ name: 'x', type: 'hetzner', config: {}, isDefault: false }),
+      ).rejects.toThrow(/docker-local/);
+    });
+
+    it('still allows the implemented types', async () => {
+      // Guards against over-correcting into refusing everything.
+      const created = await providerRouter.createCaller(createAdminContext(adminUserId)).create({
+        name: 'local-ok',
+        type: 'docker-local',
+        config: {},
+        isDefault: false,
+      });
+      expect(created.type).toBe('docker-local');
+    });
+  });
+
   describe('credential redaction', () => {
     it('should never expose config in any response', async () => {
       const sensitiveConfig = {
@@ -723,16 +773,13 @@ describe('ProviderRouter', () => {
       expect(JSON.stringify(created)).not.toContain('super-secret');
 
       // Verify list response has empty config
-      const userCaller = providerRouter.createCaller(
-        createUserContext(regularUserId)
-      );
-      const listed = await userCaller.list();
+      const listed = await adminCaller.list();
       const found = listed.find((p) => p.id === created.id);
       expect(found?.config).toEqual({});
       expect(JSON.stringify(found)).not.toContain('super-secret');
 
       // Verify getById response has empty config
-      const fetched = await userCaller.getById({ id: created.id });
+      const fetched = await adminCaller.getById({ id: created.id });
       expect(fetched.config).toEqual({});
       expect(JSON.stringify(fetched)).not.toContain('super-secret');
 
@@ -754,9 +801,6 @@ describe('ProviderRouter', () => {
       const adminCaller = providerRouter.createCaller(
         createAdminContext(adminUserId)
       );
-      const userCaller = providerRouter.createCaller(
-        createUserContext(regularUserId)
-      );
 
       // 1. Create
       const created = await adminCaller.create({
@@ -769,11 +813,11 @@ describe('ProviderRouter', () => {
       expect(created.name).toBe('Lifecycle Provider');
 
       // 2. Read (list)
-      const list1 = await userCaller.list();
+      const list1 = await adminCaller.list();
       expect(list1.some((p) => p.id === created.id)).toBe(true);
 
       // 3. Read (getById)
-      const fetched = await userCaller.getById({ id: created.id });
+      const fetched = await adminCaller.getById({ id: created.id });
       expect(fetched.name).toBe('Lifecycle Provider');
 
       // 4. Update
@@ -794,12 +838,12 @@ describe('ProviderRouter', () => {
       expect(deleted.success).toBe(true);
 
       // 7. Verify deletion
-      const list2 = await userCaller.list();
+      const list2 = await adminCaller.list();
       expect(list2.some((p) => p.id === created.id)).toBe(false);
 
       // 8. getById should now throw
       await expect(
-        userCaller.getById({ id: created.id })
+        adminCaller.getById({ id: created.id })
       ).rejects.toThrow('Provider not found');
     });
   });

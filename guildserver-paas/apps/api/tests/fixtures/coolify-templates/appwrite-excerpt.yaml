@@ -1,0 +1,60 @@
+# documentation: https://appwrite.io/docs
+# slogan: A backend-as-a-service platform that simplifies the web & mobile app development.
+# category: backend
+# tags: backend, backend-as-a-service, platform
+# logo: svgs/appwrite.svg
+# port: 3003
+
+services:
+  appwrite:
+    image: appwrite/appwrite:1.7.4
+    container_name: appwrite
+    volumes:
+      - appwrite-uploads:/storage/uploads:rw
+      - appwrite-imports:/storage/imports:rw
+      - appwrite-cache:/storage/cache:rw
+      - appwrite-config:/storage/config:rw
+      - appwrite-certificates:/storage/certificates:rw
+      - appwrite-functions:/storage/functions:rw
+      - appwrite-sites:/storage/sites:rw
+      - appwrite-builds:/storage/builds:rw
+    depends_on:
+      - appwrite-mariadb
+      - appwrite-redis
+    environment:
+      - SERVICE_URL_APPWRITE=/
+      - _APP_ENV=${_APP_ENV:-production}
+      - _APP_EDITION=${_APP_EDITION:-self-hosted}
+      - _APP_WORKER_PER_CORE=${_APP_WORKER_PER_CORE:-6}
+      - _APP_LOCALE=${_APP_LOCALE:-en}
+      - _APP_COMPRESSION_MIN_SIZE_BYTES=${_APP_COMPRESSION_MIN_SIZE_BYTES}
+      - _APP_CONSOLE_WHITELIST_ROOT=${_APP_CONSOLE_WHITELIST_ROOT:-enabled}
+      - _APP_CONSOLE_WHITELIST_EMAILS=${_APP_CONSOLE_WHITELIST_EMAILS}
+      - _APP_CONSOLE_SESSION_ALERTS=${_APP_CONSOLE_SESSION_ALERTS}
+      - _APP_CONSOLE_WHITELIST_IPS=${_APP_CONSOLE_WHITELIST_IPS}
+      - _APP_CONSOLE_HOSTNAMES=${_APP_CONSOLE_HOSTNAMES}
+      - _APP_SYSTEM_EMAIL_NAME=${_APP_SYSTEM_EMAIL_NAME:-Appwrite}
+      - _APP_SYSTEM_EMAIL_ADDRESS=${_APP_SYSTEM_EMAIL_ADDRESS:-team@appwrite.io}
+      - _APP_SYSTEM_TEAM_EMAIL=${_APP_SYSTEM_TEAM_EMAIL:-team@appwrite.io}
+      - _APP_EMAIL_SECURITY=${_APP_EMAIL_SECURITY:-certs@appwrite.io}
+      - _APP_SYSTEM_RESPONSE_FORMAT=${_APP_SYSTEM_RESPONSE_FORMAT}
+      - _APP_OPTIONS_ABUSE=${_APP_OPTIONS_ABUSE:-enabled}
+      - _APP_OPTIONS_ROUTER_PROTECTION=${_APP_OPTIONS_ROUTER_PROTECTION:-disabled}
+      - _APP_OPTIONS_FORCE_HTTPS=${_APP_OPTIONS_FORCE_HTTPS:-disabled}
+      - _APP_OPTIONS_ROUTER_FORCE_HTTPS=${_APP_OPTIONS_ROUTER_FORCE_HTTPS:-disabled}
+      - _APP_OPENSSL_KEY_V1=$SERVICE_PASSWORD_64_APPWRITE
+      - _APP_CONSOLE_DOMAIN=${_APP_CONSOLE_DOMAIN}
+      - _APP_DOMAIN=${_APP_DOMAIN:-$SERVICE_FQDN_APPWRITE}
+      - _APP_DOMAIN_TARGET_CNAME=${_APP_DOMAIN_TARGET_CNAME:-localhost}
+      - _APP_DOMAIN_TARGET_AAAA=${_APP_DOMAIN_TARGET_AAAA:-::1}
+      - _APP_DOMAIN_TARGET_A=${_APP_DOMAIN_TARGET_A:-127.0.0.1}
+      - _APP_DOMAIN_TARGET_CAA=${_APP_DOMAIN_TARGET_CAA}
+      - _APP_DOMAIN_FUNCTIONS=${_APP_DOMAIN_FUNCTIONS:-functions.$SERVICE_FQDN_APPWRITE}
+      - _APP_DNS=${_APP_DNS}
+      - _APP_REDIS_HOST=${_APP_REDIS_HOST:-appwrite-redis}
+      - _APP_REDIS_PORT=${_APP_REDIS_PORT:-6379}
+      - _APP_REDIS_USER=${_APP_REDIS_USER}
+      - _APP_REDIS_PASS=${_APP_REDIS_PASS}
+      - _APP_DB_HOST=${_APP_DB_HOST:-appwrite-mariadb}
+      - _APP_DB_PORT=${_APP_DB_PORT:-3306}
+      - _APP_DB_SCHEMA=${_APP_DB_SCHEMA:-appwrite}

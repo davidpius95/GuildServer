@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure, enforcePlanLimit } from "../trpc/trpc";
-import { applications, projects, members, deployments, computeProviders, oauthAccounts } from "@guildserver/database";
+import { applications, projects, members, deployments, computeProviders } from "@guildserver/database";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { deploymentQueue } from "../queues/deployment";
 import {
@@ -18,9 +18,16 @@ import { healthCheck } from "../services/container-manager";
 import { listGithubRepos, listGithubBranches } from "../services/git-provider";
 import { getProvider } from "../providers/factory";
 import { registerGithubWebhook } from "../services/github";
+import { getValidAccessToken } from "../services/oauth-tokens";
 import { encryptSecret } from "../utils/crypto";
 
 import { runtimeSettingsSchema } from "../services/app-runtime";
+import {
+  parseHealthCheckConfig,
+  parseStopGracePeriod,
+  readConfiguredStrategy,
+  resolveDeploymentStrategy,
+} from "../services/docker/deploy-config";
 
 const createApplicationSchema = z.object({
   name: z.string().min(1),
@@ -188,6 +195,75 @@ export const applicationRouter = createTRPCRouter({
       return safeApplication;
     }),
 
+  /**
+   * The deploy strategy and health check this application will actually use.
+   *
+   * Read-only on purpose. The `deployment_strategy`, `health_check_*` and
+   * `stop_grace_period` columns are nullable and the resolution has several
+   * inputs an operator cannot see from the app row alone — the
+   * GS_ZERO_DOWNTIME kill switch, the preview-container rule, the
+   * persistent-storage guard, and the domain-based default. Showing the
+   * EFFECTIVE answer, with the reason, is what makes "why did my deploy take
+   * the old path?" answerable.
+   *
+   * `configurable: false` in the response means the storage for these settings
+   * has not been migrated yet, so the values shown are all derived defaults and
+   * a write endpoint would have nowhere to put anything.
+   */
+  deploymentSettings: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const application = await ctx.db.query.applications.findFirst({
+        where: eq(applications.id, input.id),
+        with: {
+          domains: true,
+          project: {
+            with: {
+              organization: {
+                with: { members: { where: eq(members.userId, ctx.user.id) } },
+              },
+            },
+          },
+        },
+      });
+
+      if (!application || (application.project?.organization?.members?.length ?? 0) === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Application not found or access denied",
+        });
+      }
+
+      const row = application as unknown as Record<string, unknown>;
+      const healthCheck = parseHealthCheckConfig(row);
+      const decision = resolveDeploymentStrategy({
+        configured: readConfiguredStrategy(row),
+        hasDomain: (application.domains?.length ?? 0) > 0,
+        isPreview: application.appName.includes("-preview-"),
+        hasPersistentStorage: !!application.persistentStoragePath,
+      });
+
+      return {
+        strategy: decision.strategy,
+        strategyReason: decision.reason,
+        stopGracePeriodSeconds: parseStopGracePeriod(row),
+        healthCheck: healthCheck
+          ? {
+              path: healthCheck.path,
+              port: healthCheck.port ?? null,
+              intervalSeconds: healthCheck.intervalSeconds,
+              timeoutSeconds: healthCheck.timeoutSeconds,
+              retries: healthCheck.retries,
+              startPeriodSeconds: healthCheck.startPeriodSeconds,
+              expectedStatus: healthCheck.expectedStatus,
+            }
+          : null,
+        /** null health check = the platform's built-in reachability probe. */
+        healthCheckMode: healthCheck ? ("configured" as const) : ("reachability-probe" as const),
+        configurable: "deploymentStrategy" in application || "deployment_strategy" in row,
+      };
+    }),
+
   create: protectedProcedure
     .input(createApplicationSchema)
     .mutation(async ({ ctx, input }) => {
@@ -265,14 +341,11 @@ export const applicationRouter = createTRPCRouter({
       // Register GitHub Webhook
       if (input.sourceType === "github" && input.repository) {
         try {
-          const account = await ctx.db.query.oauthAccounts.findFirst({
-            where: and(
-              eq(oauthAccounts.userId, ctx.user.id),
-              eq(oauthAccounts.provider, "github")
-            ),
-          });
+          // Through getValidAccessToken so an expired GitHub App token is renewed
+          // rather than sent to GitHub and rejected. Failures land in the catch.
+          const accessToken = await getValidAccessToken(ctx.user.id, "github");
 
-          if (account?.accessToken) {
+          if (accessToken) {
             // Determine the API base URL from env
             const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guild-technologies.com";
             // Check if it's the traefik setup where webhook route is on main domain under /api?
@@ -281,7 +354,7 @@ export const applicationRouter = createTRPCRouter({
             const webhookUrl = `${baseUrl}/webhooks/github`;
             const secret = process.env.GITHUB_WEBHOOK_SECRET || "guildserver-webhook-secret-default";
             
-            await registerGithubWebhook(input.repository, account.accessToken, webhookUrl, secret);
+            await registerGithubWebhook(input.repository, accessToken, webhookUrl, secret);
           }
         } catch (error) {
           console.warn("Failed to register webhook during app creation:", error);
@@ -346,19 +419,16 @@ export const applicationRouter = createTRPCRouter({
       // Register GitHub Webhook if repository was updated
       if (updates.repository && updatedApplication.sourceType === "github") {
         try {
-          const account = await ctx.db.query.oauthAccounts.findFirst({
-            where: and(
-              eq(oauthAccounts.userId, ctx.user.id),
-              eq(oauthAccounts.provider, "github")
-            ),
-          });
+          // Through getValidAccessToken so an expired GitHub App token is renewed
+          // rather than sent to GitHub and rejected. Failures land in the catch.
+          const accessToken = await getValidAccessToken(ctx.user.id, "github");
 
-          if (account?.accessToken) {
+          if (accessToken) {
             const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_URL || "https://api.guild-technologies.com";
             const webhookUrl = `${baseUrl}/webhooks/github`;
             const secret = process.env.GITHUB_WEBHOOK_SECRET || "guildserver-webhook-secret-default";
             
-            await registerGithubWebhook(updates.repository, account.accessToken, webhookUrl, secret);
+            await registerGithubWebhook(updates.repository, accessToken, webhookUrl, secret);
           }
         } catch (error) {
           console.warn("Failed to register webhook during app update:", error);

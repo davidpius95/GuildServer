@@ -269,11 +269,15 @@ describe("Infrastructure Router", () => {
       );
     });
 
-    it("should allow non-admin authenticated users (read-only)", async () => {
+    it("denies non-admin users", async () => {
+      // These endpoints expose the host provider's own infrastructure — node
+      // resources, every LXC on the node, storage pools — and
+      // resolveProxmoxProvider does not scope by organization. A non-admin
+      // tenant reaching them could enumerate other customers' workloads, so
+      // admin-only is the correct boundary, not an oversight.
       const provider = await createProxmoxProvider();
 
-      const result = await userCaller.getNodeResources({ id: provider.id });
-      expect(result.providerId).toBe(provider.id);
+      await expect(userCaller.getNodeResources({ id: provider.id })).rejects.toThrow(/FORBIDDEN/);
     });
   });
 
@@ -331,11 +335,15 @@ describe("Infrastructure Router", () => {
       );
     });
 
-    it("should allow non-admin authenticated users (read-only)", async () => {
+    it("denies non-admin users", async () => {
+      // These endpoints expose the host provider's own infrastructure — node
+      // resources, every LXC on the node, storage pools — and
+      // resolveProxmoxProvider does not scope by organization. A non-admin
+      // tenant reaching them could enumerate other customers' workloads, so
+      // admin-only is the correct boundary, not an oversight.
       const provider = await createProxmoxProvider();
 
-      const result = await userCaller.listLxcContainers({ id: provider.id });
-      expect(result.providerId).toBe(provider.id);
+      await expect(userCaller.listLxcContainers({ id: provider.id })).rejects.toThrow(/FORBIDDEN/);
     });
   });
 
@@ -367,11 +375,15 @@ describe("Infrastructure Router", () => {
       expect(local.content).toContain("vztmpl");
     });
 
-    it("should allow non-admin authenticated users (read-only)", async () => {
+    it("denies non-admin users", async () => {
+      // These endpoints expose the host provider's own infrastructure — node
+      // resources, every LXC on the node, storage pools — and
+      // resolveProxmoxProvider does not scope by organization. A non-admin
+      // tenant reaching them could enumerate other customers' workloads, so
+      // admin-only is the correct boundary, not an oversight.
       const provider = await createProxmoxProvider();
 
-      const result = await userCaller.listStorages({ id: provider.id });
-      expect(result.providerId).toBe(provider.id);
+      await expect(userCaller.listStorages({ id: provider.id })).rejects.toThrow(/FORBIDDEN/);
     });
 
     it("should throw NOT_FOUND for non-existent provider", async () => {
@@ -425,11 +437,15 @@ describe("Infrastructure Router", () => {
       expect(result.templates).toHaveLength(0);
     });
 
-    it("should allow non-admin authenticated users (read-only)", async () => {
+    it("denies non-admin users", async () => {
+      // These endpoints expose the host provider's own infrastructure — node
+      // resources, every LXC on the node, storage pools — and
+      // resolveProxmoxProvider does not scope by organization. A non-admin
+      // tenant reaching them could enumerate other customers' workloads, so
+      // admin-only is the correct boundary, not an oversight.
       const provider = await createProxmoxProvider();
 
-      const result = await userCaller.listTemplates({ id: provider.id });
-      expect(result.providerId).toBe(provider.id);
+      await expect(userCaller.listTemplates({ id: provider.id })).rejects.toThrow(/FORBIDDEN/);
     });
   });
 
@@ -569,11 +585,12 @@ describe("Infrastructure Router", () => {
       expect(result).toHaveLength(0);
     });
 
-    it("should allow non-admin authenticated users (read-only)", async () => {
+    it("denies non-admin users", async () => {
+      // overview() lists every compute provider with no organization filter,
+      // so it is the broadest of these reads. Admin-only.
       await createProxmoxProvider();
 
-      const result = await userCaller.overview();
-      expect(result).toBeInstanceOf(Array);
+      await expect(userCaller.overview()).rejects.toThrow(/FORBIDDEN/);
     });
   });
 

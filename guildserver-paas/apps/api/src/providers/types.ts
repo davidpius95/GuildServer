@@ -99,6 +99,20 @@ export interface DeployConfig {
   containerPort?: number;
   persistentStoragePath?: string | null;
   registryAuth?: { username: string; password: string; serveraddress?: string };
+  /**
+   * The application row itself, for settings the deploy path reads directly:
+   * health-check fields, stop_grace_period, deployment_strategy.
+   *
+   * Passed as an opaque record rather than a typed subset so that adding a
+   * column does not require touching every provider. The deploy path reads it
+   * tolerantly and treats NULL as "previous built-in behaviour".
+   *
+   * Required, not optional. Deleting the line that passes it is otherwise a
+   * silent regression: every setting reverts to NULL, the columns still exist,
+   * and no type error or test failure points at the cause. Callers with nothing
+   * to pass must say `null` deliberately.
+   */
+  applicationConfig: Record<string, unknown> | null;
 }
 
 // Result from a deployment
@@ -108,6 +122,15 @@ export interface DeployResult {
   hostPort: number;
   logs: string[];
   providerMetadata?: Record<string, unknown>; // provider-specific info
+  /** Which replacement path ran: "recreate" (legacy) or "rolling". */
+  strategy?: string;
+  /**
+   * Rolling-deploy bookkeeping, persisted so a deployment interrupted between
+   * "candidate healthy" and "incumbent retired" can be reconciled rather than
+   * leaving two containers claiming one Traefik router.
+   */
+  candidateContainerId?: string | null;
+  previousContainerId?: string | null;
 }
 
 // Container/workload info

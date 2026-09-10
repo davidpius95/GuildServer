@@ -59,13 +59,13 @@ CREATE TABLE IF NOT EXISTS "payment_transactions" (
 );
 --> statement-breakpoint
 ALTER TABLE "payment_methods" ALTER COLUMN "stripe_payment_method_id" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "invoices" ADD COLUMN "provider" "payment_provider" DEFAULT 'stripe' NOT NULL;--> statement-breakpoint
-ALTER TABLE "invoices" ADD COLUMN "flutterwave_tx_ref" varchar(255);--> statement-breakpoint
-ALTER TABLE "payment_methods" ADD COLUMN "provider" "payment_provider" DEFAULT 'stripe' NOT NULL;--> statement-breakpoint
-ALTER TABLE "payment_methods" ADD COLUMN "flutterwave_card_token" varchar(255);--> statement-breakpoint
-ALTER TABLE "payment_methods" ADD COLUMN "flutterwave_customer_id" varchar(255);--> statement-breakpoint
-ALTER TABLE "payment_methods" ADD COLUMN "wallet_address" varchar(255);--> statement-breakpoint
-ALTER TABLE "payment_methods" ADD COLUMN "wallet_chain_id" integer;--> statement-breakpoint
+ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "provider" "payment_provider" DEFAULT 'stripe' NOT NULL;--> statement-breakpoint
+ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "flutterwave_tx_ref" varchar(255);--> statement-breakpoint
+ALTER TABLE "payment_methods" ADD COLUMN IF NOT EXISTS "provider" "payment_provider" DEFAULT 'stripe' NOT NULL;--> statement-breakpoint
+ALTER TABLE "payment_methods" ADD COLUMN IF NOT EXISTS "flutterwave_card_token" varchar(255);--> statement-breakpoint
+ALTER TABLE "payment_methods" ADD COLUMN IF NOT EXISTS "flutterwave_customer_id" varchar(255);--> statement-breakpoint
+ALTER TABLE "payment_methods" ADD COLUMN IF NOT EXISTS "wallet_address" varchar(255);--> statement-breakpoint
+ALTER TABLE "payment_methods" ADD COLUMN IF NOT EXISTS "wallet_chain_id" integer;--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "crypto_payments_org_id_idx" ON "crypto_payments" ("organization_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "crypto_payments_tx_hash_idx" ON "crypto_payments" ("tx_hash");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "crypto_payments_status_idx" ON "crypto_payments" ("status");--> statement-breakpoint

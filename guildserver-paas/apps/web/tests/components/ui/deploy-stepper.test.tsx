@@ -30,11 +30,17 @@ describe("DeployStepper", () => {
       />
     )
 
-    expect(screen.getByText("Validate")).toBeInTheDocument()
-    expect(screen.getByText("Build")).toBeInTheDocument()
-    expect(screen.getByText("Verifying")).toBeInTheDocument()
-    expect(screen.getByText(/Verifying container health/i)).toBeInTheDocument()
-    expect(screen.getByText("5s")).toBeInTheDocument()
-    expect(screen.getByText(/Started/i)).toBeInTheDocument()
+    // The stepper renders two parallel layouts — a horizontal one for
+    // desktop and a vertical one for mobile — toggled with responsive
+    // Tailwind classes (`hidden sm:flex` / `sm:hidden`). jsdom doesn't
+    // evaluate media queries, so both layouts are present in the DOM at
+    // once and every label/value appears twice. Assert with getAllByText
+    // instead of getByText to account for that duplication.
+    expect(screen.getAllByText("Validate").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Build").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Verifying").length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Verifying container health/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText("5s").length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Started/i).length).toBeGreaterThan(0)
   })
 })

@@ -292,6 +292,19 @@ export const applications = pgTable("applications", {
   // Deployment settings
   replicas: integer("replicas").default(1),
   autoDeployment: boolean("auto_deployment").default(false),
+
+  // Rolling deploys and health checks.
+  // Every field is nullable and NULL means "previous built-in behaviour", so
+  // applications created before migration 0012 keep deploying unchanged.
+  deploymentStrategy: varchar("deployment_strategy", { length: 20 }),
+  healthCheckPath: text("health_check_path"),
+  healthCheckPort: integer("health_check_port"),
+  healthCheckInterval: integer("health_check_interval"),
+  healthCheckTimeout: integer("health_check_timeout"),
+  healthCheckRetries: integer("health_check_retries"),
+  healthCheckStartPeriod: integer("health_check_start_period"),
+  healthCheckExpectedStatus: text("health_check_expected_status"),
+  stopGracePeriod: integer("stop_grace_period"),
   
   // Preview deployments
   previewDeployments: boolean("preview_deployments").default(false),
@@ -311,6 +324,111 @@ export const applications = pgTable("applications", {
   projectIdIdx: index("applications_project_id_idx").on(table.projectId),
   statusIdx: index("applications_status_idx").on(table.status),
   providerIdIdx: index("applications_provider_id_idx").on(table.providerId),
+}));
+
+// =====================
+// COMPOSE SERVICES (multi-container stacks)
+// =====================
+
+/**
+ * A Compose stack: several containers deployed and managed as one resource.
+ *
+ * Modelled beside `applications` rather than inside it. An application is one
+ * container with one image and one domain; a service is an arbitrary graph of
+ * containers with their own ports, volumes and dependencies. Overloading
+ * `applications` would have meant nullable-everything and a status column that
+ * cannot describe "two of five containers are unhealthy".
+ *
+ * `deployments` gains a nullable serviceId instead of growing a parallel
+ * deployment table, so stacks reuse the existing queue, history, live build
+ * logs and rollback machinery.
+ */
+export const services = pgTable("services", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  /** DNS-safe slug used for the compose project name and container prefixes. */
+  serviceName: varchar("service_name", { length: 255 }).notNull(),
+  description: text("description"),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
+
+  /**
+   * The Compose file exactly as the user supplied it. Kept verbatim and treated
+   * as the source of truth: normalisation happens on the way to the daemon, so
+   * what the user wrote is always recoverable and re-editable.
+   */
+  composeFile: text("compose_file").notNull(),
+  /** Normalised Compose actually handed to Docker, for debugging what we changed. */
+  composeResolved: text("compose_resolved"),
+  /** Where the stack came from: "custom" or a catalogue template id. */
+  templateId: varchar("template_id", { length: 255 }),
+  templateVersion: varchar("template_version", { length: 64 }),
+
+  environment: jsonb("environment").default({}),
+  /** Domains routed to services, as { serviceName: [domain, ...] }. */
+  domains: jsonb("domains").default({}),
+
+  providerId: uuid("provider_id").references(() => computeProviders.id, { onDelete: "set null" }),
+
+  /** Aggregate state: inactive, deploying, running, degraded, failed. */
+  status: varchar("status", { length: 50 }).default("inactive"),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  projectIdIdx: index("services_project_id_idx").on(table.projectId),
+  statusIdx: index("services_status_idx").on(table.status),
+}));
+
+/**
+ * One container within a stack, reconciled from the daemon after each deploy.
+ *
+ * Stored rather than derived on read so the dashboard can show per-service
+ * state without a Docker round trip per page load, and so a container that has
+ * vanished is distinguishable from one that was never created.
+ */
+export const serviceContainers = pgTable("service_containers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  serviceId: uuid("service_id").references(() => services.id, { onDelete: "cascade" }).notNull(),
+
+  /** The key under `services:` in the Compose file. */
+  composeServiceName: varchar("compose_service_name", { length: 255 }).notNull(),
+  containerId: text("container_id"),
+  containerName: varchar("container_name", { length: 255 }),
+  image: text("image"),
+  status: varchar("status", { length: 50 }).default("pending"),
+  health: varchar("health", { length: 50 }),
+  hostPort: integer("host_port"),
+  containerPort: integer("container_port"),
+
+  lastSeenAt: timestamp("last_seen_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  serviceIdIdx: index("service_containers_service_id_idx").on(table.serviceId),
+  containerIdIdx: index("service_containers_container_id_idx").on(table.containerId),
+}));
+
+/**
+ * A named volume belonging to a stack.
+ *
+ * Tracked explicitly because deleting a stack must remove its own volumes and
+ * nothing else. Reaping by name prefix is how an unrelated volume gets
+ * destroyed, so ownership is recorded rather than inferred.
+ */
+export const serviceVolumes = pgTable("service_volumes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  serviceId: uuid("service_id").references(() => services.id, { onDelete: "cascade" }).notNull(),
+
+  /** Name as written in the Compose file. */
+  composeVolumeName: varchar("compose_volume_name", { length: 255 }).notNull(),
+  /** Actual Docker volume name after namespacing. */
+  volumeName: varchar("volume_name", { length: 255 }).notNull(),
+  /** Whether we created it, and may therefore delete it. */
+  managed: boolean("managed").default(true),
+
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  serviceIdIdx: index("service_volumes_service_id_idx").on(table.serviceId),
 }));
 
 // Databases
@@ -406,6 +524,19 @@ export const deployments = pgTable("deployments", {
   providerId: uuid("provider_id").references(() => computeProviders.id, { onDelete: "set null" }),
   lxcVmId: integer("lxc_vm_id"),
   providerMetadata: jsonb("provider_metadata"),
+
+  /**
+   * Set when this deployment is a Compose stack rather than a single
+   * application. Exactly one of applicationId / serviceId is populated.
+   */
+  serviceId: uuid("service_id").references(() => services.id, { onDelete: "cascade" }),
+
+  // Rolling-deploy bookkeeping. Recorded so a deployment interrupted between
+  // "candidate is healthy" and "incumbent retired" can be reconciled instead of
+  // leaving two containers claiming the same Traefik router.
+  candidateContainerId: text("candidate_container_id"),
+  previousContainerId: text("previous_container_id"),
+  strategy: varchar("strategy", { length: 20 }),
 
   // Timing
   startedAt: timestamp("started_at"),
@@ -1054,7 +1185,11 @@ export const usageRecords = pgTable("usage_records", {
 export const paymentMethods = pgTable("payment_methods", {
   id: uuid("id").primaryKey().defaultRandom(),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
-  stripePaymentMethodId: varchar("stripe_payment_method_id", { length: 255 }).notNull(),
+  // Nullable: migration 0004 drops the NOT NULL deliberately, because
+  // Flutterwave and crypto payment methods have no Stripe identifier. The
+  // schema declared it NOT NULL anyway, so Drizzle typed it as required and
+  // disagreed with every deployed database.
+  stripePaymentMethodId: varchar("stripe_payment_method_id", { length: 255 }),
   type: varchar("type", { length: 50 }).default("card"),
   cardBrand: varchar("card_brand", { length: 50 }),
   cardLast4: varchar("card_last4", { length: 4 }),

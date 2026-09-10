@@ -53,6 +53,7 @@ export class DockerLocalProvider implements ComputeProvider {
       containerPort: config.containerPort,
       persistentStoragePath: config.persistentStoragePath,
       registryAuth: config.registryAuth,
+      applicationConfig: config.applicationConfig,
     };
 
     const result = await deployContainer(opts);
@@ -63,6 +64,9 @@ export class DockerLocalProvider implements ComputeProvider {
       hostPort: result.hostPort,
       logs: result.logs,
       providerMetadata: { provider: "docker-local" },
+      strategy: result.strategy,
+      candidateContainerId: result.candidateContainerId,
+      previousContainerId: result.previousContainerId,
     };
   }
 

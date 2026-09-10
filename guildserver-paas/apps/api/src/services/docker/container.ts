@@ -3,9 +3,30 @@ import { appStorageMount, resolveRuntimePort } from "../app-runtime";
 import { Writable } from "stream";
 import { logger } from "../../utils/logger";
 import { broadcastToUser } from "../../websocket/server";
-import { docker, NETWORK_NAME, CONTAINER_PREFIX, GS_LABELS, isLocalhostDomain } from "./client";
+import { docker, NETWORK_NAME, GS_LABELS } from "./client";
 import { ensureNetwork } from "./networks";
 import { pullImage, detectDefaultPort, getImageExposedPort } from "./images";
+import {
+  ContainerSpec,
+  GS_ROLE_CANDIDATE,
+  GS_ROLE_LABEL,
+  buildAppLabels,
+  buildContainerConfig,
+  buildTraefikLabels,
+  findAvailablePort,
+  getStartupFailure,
+  makeContainerName,
+  parseDockerLogs,
+} from "./primitives";
+import {
+  HealthCheckConfig,
+  parseHealthCheckConfig,
+  parseStopGracePeriod,
+  readConfiguredStrategy,
+  resolveDeploymentStrategy,
+  DeploymentStrategy,
+} from "./deploy-config";
+import { rollingDeploy, CandidateFailedError } from "./rolling";
 
 export interface DeployOptions {
   deploymentId: string;
@@ -24,6 +45,30 @@ export interface DeployOptions {
   containerPort?: number;
   persistentStoragePath?: string | null;
   registryAuth?: { username: string; password: string; serveraddress?: string };
+  /**
+   * The application row (or any subset of it) carrying the nullable
+   * `deployment_strategy`, `health_check_*` and `stop_grace_period` columns.
+   *
+   * Absent or all-NULL — which is every application today — resolves to exactly
+   * the pre-existing behaviour: the legacy replace-then-create path and the
+   * legacy reachability probe.
+   */
+  applicationConfig?: Record<string, unknown> | null;
+}
+
+export interface DeployResult {
+  containerId: string;
+  containerName: string;
+  hostPort: number;
+  logs: string[];
+  /** How this deploy replaced the previous container. */
+  strategy?: DeploymentStrategy;
+  /** For a rolling deploy: how traffic was moved (`overlap` | `serial` | `cold`). */
+  promotionMode?: string;
+  /** Persisted to `deployments.candidate_container_id` once that column exists. */
+  candidateContainerId?: string;
+  /** Persisted to `deployments.previous_container_id` once that column exists. */
+  previousContainerId?: string | null;
 }
 
 export interface ContainerInfo {
@@ -42,80 +87,6 @@ export interface ContainerStats {
   memoryPercent: number;
   networkRxBytes: number;
   networkTxBytes: number;
-}
-
-function makeContainerName(appName: string, deploymentId: string): string {
-  const shortId = deploymentId.slice(0, 8);
-  return `${CONTAINER_PREFIX}-${appName}-${shortId}`;
-}
-
-async function findAvailablePort(dockerClient?: Docker): Promise<number> {
-  const d = dockerClient || docker;
-  const MIN_PORT = 10000;
-  const MAX_PORT = 60000;
-  const usedPorts = new Set<number>();
-
-  const containers = await d.listContainers({ all: true });
-  for (const c of containers) {
-    if (c.Ports) {
-      for (const p of c.Ports) {
-        if (p.PublicPort) usedPorts.add(p.PublicPort);
-      }
-    }
-  }
-
-  for (let attempt = 0; attempt < 100; attempt++) {
-    const port = MIN_PORT + Math.floor(Math.random() * (MAX_PORT - MIN_PORT));
-    if (!usedPorts.has(port)) return port;
-  }
-
-  throw new Error("No available ports found");
-}
-
-function parseDockerLogs(buffer: Buffer | string): string[] {
-  if (typeof buffer === "string") {
-    return buffer.split("\n").filter((line) => line.trim());
-  }
-
-  const lines: string[] = [];
-  let offset = 0;
-
-  while (offset < buffer.length) {
-    if (offset + 8 > buffer.length) break;
-    const size = buffer.readUInt32BE(offset + 4);
-    offset += 8;
-    if (offset + size > buffer.length) break;
-    const line = buffer.subarray(offset, offset + size).toString("utf8").trim();
-    if (line) lines.push(line);
-    offset += size;
-  }
-
-  return lines;
-}
-
-async function getStartupFailure(
-  container: Docker.Container,
-  initialRestartCount: number,
-): Promise<string | null> {
-  // A newly-started container can look healthy before its entrypoint exits.
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-
-  const inspection = await container.inspect();
-  const restartCount = inspection.RestartCount || 0;
-  if (inspection.State.Running && restartCount <= initialRestartCount) return null;
-
-  let recentLogs = "";
-  try {
-    const logBuffer = await container.logs({ stdout: true, stderr: true, tail: 20 });
-    recentLogs = parseDockerLogs(logBuffer).slice(-8).join("\n");
-  } catch {
-    // The exit status remains useful even if Docker cannot return logs.
-  }
-
-  const exitCode = inspection.State.ExitCode;
-  const state = inspection.State.Status || "exited";
-  const suffix = recentLogs ? ` Recent output:\n${recentLogs}` : "";
-  return `Container exited during startup (status: ${state}, exit code: ${exitCode}).${suffix}`;
 }
 
 export async function removeExistingContainers(
@@ -152,7 +123,7 @@ export async function removeExistingContainers(
 export async function deployContainer(
   opts: DeployOptions,
   dockerClient?: Docker,
-): Promise<{ containerId: string; containerName: string; hostPort: number; logs: string[] }> {
+): Promise<DeployResult> {
   const d = dockerClient || docker;
   const logs: string[] = [];
   const name = makeContainerName(opts.appName, opts.deploymentId);
@@ -181,29 +152,18 @@ export async function deployContainer(
     }
 
     const isPreviewContainer = opts.appName.includes("-preview-");
-    log("Cleaning up previous containers...");
-    await removeExistingContainers(
-      opts.applicationId,
-      isPreviewContainer ? { appNameFilter: opts.appName } : undefined,
-      d,
-    );
-
-    const hostPort = await findAvailablePort(d);
-    log(`Assigned host port: ${hostPort}`);
 
     const envArray = Object.entries(opts.environment || {}).map(([key, value]) => `${key}=${value}`);
     const cleanImage = opts.dockerImage.trim().replace(/:$/, "");
     const cleanTag = opts.dockerTag.trim() || "latest";
     const fullImage = `${cleanImage}:${cleanTag}`;
 
-    const labels: Record<string, string> = {
-      [GS_LABELS.MANAGED]: "true",
-      [GS_LABELS.APP_ID]: opts.applicationId,
-      [GS_LABELS.APP_NAME]: opts.appName,
-      [GS_LABELS.DEPLOYMENT_ID]: opts.deploymentId,
-      [GS_LABELS.PROJECT_ID]: opts.projectId,
-      [GS_LABELS.TYPE]: "application",
-    };
+    const appLabels = buildAppLabels({
+      applicationId: opts.applicationId,
+      appName: opts.appName,
+      deploymentId: opts.deploymentId,
+      projectId: opts.projectId,
+    });
 
     // Port resolution, most authoritative first:
     //   1. what the user/template explicitly configured
@@ -228,80 +188,113 @@ export async function deployContainer(
     }
     log(`Using container port: ${servicePort}`);
 
-    if (opts.domains && opts.domains.length > 0) {
-      const routerName = opts.appName.replace(/[^a-zA-Z0-9]/g, "-");
-      labels["traefik.enable"] = "true";
+    // Per-application health check. NULL `health_check_path` — i.e. every
+    // application row today — yields null here and the legacy reachability
+    // probe is used instead.
+    const healthConfig: HealthCheckConfig | null = parseHealthCheckConfig(opts.applicationConfig);
+    const stopGraceSeconds = parseStopGracePeriod(opts.applicationConfig);
 
-      const localhostDomains = opts.domains.filter((dm) => isLocalhostDomain(dm));
-      const tlsDomains = opts.domains.filter((dm) => !isLocalhostDomain(dm));
+    // Traefik gets its own load-balancer health check only when the app has one
+    // configured AND that config would accept a plain 200 — Traefik's LB check
+    // has its own notion of "OK" and we must not hand it a check that disagrees
+    // with the platform's.
+    const traefikHealthCheck =
+      healthConfig && healthConfig.matchesStatus(200)
+        ? {
+            path: healthConfig.path,
+            intervalSeconds: healthConfig.intervalSeconds,
+            timeoutSeconds: healthConfig.timeoutSeconds,
+          }
+        : null;
 
-      labels[`traefik.http.services.${routerName}.loadbalancer.server.port`] = String(servicePort);
+    const traefik = buildTraefikLabels({
+      appName: opts.appName,
+      domains: opts.domains,
+      servicePort,
+      healthCheck: traefikHealthCheck,
+    });
+    traefik.notes.forEach(log);
 
-      if (localhostDomains.length > 0) {
-        const localHostRules = localhostDomains.map((dm) => `Host(\`${dm}\`)`).join(" || ");
-        labels[`traefik.http.routers.${routerName}.rule`] = localHostRules;
-        labels[`traefik.http.routers.${routerName}.entrypoints`] = "web";
-        labels[`traefik.http.routers.${routerName}.service`] = routerName;
-      }
-
-      if (tlsDomains.length > 0) {
-        const tlsHostRules = tlsDomains.map((dm) => `Host(\`${dm}\`)`).join(" || ");
-        const behindTunnel = process.env.CLOUDFLARE_TUNNEL === "true";
-
-        if (behindTunnel) {
-          labels[`traefik.http.routers.${routerName}.rule`] = tlsHostRules;
-          labels[`traefik.http.routers.${routerName}.entrypoints`] = "web";
-          labels[`traefik.http.routers.${routerName}.service`] = routerName;
-          log(`Configured HTTP routing (behind Cloudflare Tunnel) for domains: ${tlsDomains.join(", ")}`);
-        } else {
-          const tlsRouterName = `${routerName}-secure`;
-          labels[`traefik.http.routers.${tlsRouterName}.rule`] = tlsHostRules;
-          labels[`traefik.http.routers.${tlsRouterName}.entrypoints`] = "websecure";
-          labels[`traefik.http.routers.${tlsRouterName}.tls`] = "true";
-          labels[`traefik.http.routers.${tlsRouterName}.tls.certresolver`] = "letsencrypt";
-          labels[`traefik.http.routers.${tlsRouterName}.service`] = routerName;
-
-          const redirectRouterName = `${routerName}-redirect`;
-          labels[`traefik.http.routers.${redirectRouterName}.rule`] = tlsHostRules;
-          labels[`traefik.http.routers.${redirectRouterName}.entrypoints`] = "web";
-          labels[`traefik.http.routers.${redirectRouterName}.middlewares`] = `${routerName}-https-redirect`;
-          labels[`traefik.http.routers.${redirectRouterName}.service`] = routerName;
-          labels[`traefik.http.middlewares.${routerName}-https-redirect.redirectscheme.scheme`] = "https";
-          labels[`traefik.http.middlewares.${routerName}-https-redirect.redirectscheme.permanent`] = "true";
-          log(`Configured TLS (Let's Encrypt) for domains: ${tlsDomains.join(", ")}`);
-        }
-      }
-
-      log(`Configured Traefik routing for domains: ${opts.domains.join(", ")}`);
-    }
-
-    const containerConfig: Docker.ContainerCreateOptions = {
-      Image: fullImage,
-      name,
-      Env: envArray,
-      Labels: labels,
-      ExposedPorts: { [`${servicePort}/tcp`]: {} },
-      HostConfig: {
-        PortBindings: { [`${servicePort}/tcp`]: [{ HostPort: String(hostPort) }] },
-        RestartPolicy: { Name: "unless-stopped", MaximumRetryCount: 0 },
-        NetworkMode: NETWORK_NAME,
-      },
-    };
-
+    const mounts: Docker.MountSettings[] = [];
     if (opts.persistentStoragePath) {
       const mount = appStorageMount(opts.applicationId, opts.persistentStoragePath, isPreviewContainer ? opts.appName : undefined);
       await d.createVolume({ Name: mount.Source, Labels: { [GS_LABELS.MANAGED]: "true", [GS_LABELS.APP_ID]: opts.applicationId, [GS_LABELS.TYPE]: "application-storage" } });
-      containerConfig.HostConfig!.Mounts = [mount];
+      mounts.push(mount);
       log(`Persistent storage mounted at ${mount.Target}`);
     }
 
-    if (opts.memoryLimit) {
-      containerConfig.HostConfig!.Memory = opts.memoryLimit * 1024 * 1024;
+    const spec: ContainerSpec = {
+      fullImage,
+      servicePort,
+      envArray,
+      networkName: NETWORK_NAME,
+      mounts,
+      memoryBytes: opts.memoryLimit ? opts.memoryLimit * 1024 * 1024 : undefined,
+      nanoCpus: opts.cpuLimit
+        ? Math.floor((typeof opts.cpuLimit === "string" ? parseFloat(opts.cpuLimit) : opts.cpuLimit) * 1e9)
+        : undefined,
+    };
+
+    const decision = resolveDeploymentStrategy({
+      configured: readConfiguredStrategy(opts.applicationConfig),
+      hasDomain: !!opts.domains && opts.domains.length > 0,
+      isPreview: isPreviewContainer,
+      hasPersistentStorage: !!opts.persistentStoragePath,
+    });
+    log(`Deployment strategy: ${decision.strategy} — ${decision.reason}`);
+
+    if (decision.strategy === "rolling") {
+      const result = await rollingDeploy({
+        docker: d,
+        spec,
+        appLabels,
+        traefikLabels: traefik.labels,
+        applicationId: opts.applicationId,
+        appName: opts.appName,
+        deploymentId: opts.deploymentId,
+        appNameFilter: isPreviewContainer ? opts.appName : undefined,
+        healthConfig,
+        stopGraceSeconds,
+        userId: opts.userId,
+        log,
+      });
+
+      log(`Container ${result.containerName} is running on port ${result.hostPort}`);
+      log(`Access URL: http://localhost:${result.hostPort}`);
+
+      return {
+        containerId: result.containerId,
+        containerName: result.containerName,
+        hostPort: result.hostPort,
+        logs,
+        strategy: "rolling",
+        promotionMode: result.mode,
+        candidateContainerId: result.candidateContainerId,
+        previousContainerId: result.previousContainerId,
+      };
     }
-    if (opts.cpuLimit) {
-      const cpuValue = typeof opts.cpuLimit === "string" ? parseFloat(opts.cpuLimit) : opts.cpuLimit;
-      containerConfig.HostConfig!.NanoCpus = Math.floor(cpuValue * 1e9);
-    }
+
+    // ---- Legacy `recreate` path: unchanged behaviour ----
+    //
+    // The old container is stopped and removed BEFORE the new one is created,
+    // so this is a real outage window and a failed start leaves the app down.
+    // That is deliberate here: it is the behaviour every existing caller has,
+    // and it is what `GS_ZERO_DOWNTIME=0` falls back to.
+    log("Cleaning up previous containers...");
+    await removeExistingContainers(
+      opts.applicationId,
+      isPreviewContainer ? { appNameFilter: opts.appName } : undefined,
+      d,
+    );
+
+    const hostPort = await findAvailablePort(d);
+    log(`Assigned host port: ${hostPort}`);
+
+    const containerConfig = buildContainerConfig(spec, {
+      name,
+      hostPort,
+      labels: { ...appLabels, ...traefik.labels },
+    });
 
     log(`Creating container ${name}...`);
     const container = await d.createContainer(containerConfig);
@@ -322,11 +315,48 @@ export async function deployContainer(
     log(`Container ${name} is running on port ${hostPort}`);
     log(`Access URL: http://localhost:${hostPort}`);
 
-    return { containerId: inspection.Id, containerName: name, hostPort, logs };
+    return {
+      containerId: inspection.Id,
+      containerName: name,
+      hostPort,
+      logs,
+      strategy: "recreate",
+      promotionMode: "recreate",
+      previousContainerId: null,
+    };
   } catch (error: any) {
     log(`ERROR: Deployment failed: ${error.message}`);
+    if (error instanceof CandidateFailedError && error.incumbentPreserved) {
+      log("The previously deployed version was left running and is still serving traffic.");
+    }
     throw error;
   }
+}
+
+/**
+ * Pick the container that is actually serving this application.
+ *
+ * During a rolling deploy three containers can briefly share `gs.app.id`: the
+ * incumbent, the health-gated candidate on an unrouted port, and the promoted
+ * replacement. Taking `containers[0]` — whatever Docker happened to list first
+ * — meant logs, stats and restart could address the candidate instead of the
+ * container serving traffic, so a user watching a deploy could be shown the
+ * wrong logs, or restart a container that was about to be discarded.
+ *
+ * A candidate is never the answer: it is unrouted by construction and exists
+ * only until it passes or fails its gate. Among the rest, prefer the
+ * most recently started, which is the promoted container once one exists.
+ */
+export function pickServingContainer(containers: Docker.ContainerInfo[]): Docker.ContainerInfo | null {
+  if (containers.length === 0) return null;
+
+  const serving = containers.filter((c) => c.Labels?.[GS_ROLE_LABEL] !== GS_ROLE_CANDIDATE);
+  // If everything present is a candidate, the deploy is mid-flight and there is
+  // genuinely nothing serving yet. Returning the candidate is better than
+  // returning nothing: it is the only container that exists.
+  const pool = serving.length > 0 ? serving : containers;
+
+  return pool.reduce((newest, c) => (c.Created > newest.Created ? c : newest), pool[0]);
 }
 
 export async function getAppContainer(applicationId: string, dockerClient?: Docker): Promise<Docker.Container | null> {
@@ -338,8 +368,8 @@ export async function getAppContainer(applicationId: string, dockerClient?: Dock
     },
   });
 
-  if (containers.length === 0) return null;
-  return d.getContainer(containers[0].Id);
+  const chosen = pickServingContainer(containers);
+  return chosen ? d.getContainer(chosen.Id) : null;
 }
 
 export interface ExecResult {
@@ -417,9 +447,9 @@ export async function getAppContainerInfo(applicationId: string, dockerClient?: 
     filters: { label: [`${GS_LABELS.APP_ID}=${applicationId}`] },
   });
 
-  if (containers.length === 0) return null;
+  const c = pickServingContainer(containers);
+  if (!c) return null;
 
-  const c = containers[0];
   return {
     containerId: c.Id,
     containerName: c.Names[0]?.replace("/", "") || "",

@@ -44,6 +44,66 @@ if [ "$CURRENT" = "$LATEST" ]; then
   exit 0
 fi
 
+# --- CI gate -----------------------------------------------------------------
+#
+# This updater deploys whatever is on origin/main. The "Deploy to Production"
+# workflow only prints a message, so until now a commit whose tests failed —
+# or which was never tested at all — reached customers within five minutes,
+# unattended. This checks the commit's status before deploying.
+#
+# GUILDSERVER_REQUIRE_CI:
+#   warn    (default) log the verdict and deploy anyway — current behaviour,
+#           kept while the suite still has known failures
+#   enforce refuse to deploy unless checks conclusively succeeded
+#   off     skip the check entirely
+#
+# Flip to `enforce` once the test suite is green; until then `warn` gives the
+# signal without freezing the pipeline.
+REQUIRE_CI="${GUILDSERVER_REQUIRE_CI:-warn}"
+
+ci_conclusion() {
+  # Prints: success | failure | pending | unknown
+  local sha="$1" repo url json
+  repo="$(git config --get remote.origin.url | sed -E 's#.*github\.com[:/]([^/]+/[^/.]+)(\.git)?$#\1#')"
+  [ -n "$repo" ] || { echo unknown; return; }
+  url="https://api.github.com/repos/$repo/commits/$sha/check-runs"
+
+  local auth=()
+  [ -n "${GITHUB_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $GITHUB_TOKEN")
+
+  json="$(curl -fsS --max-time 20 -H "Accept: application/vnd.github+json" "${auth[@]}" "$url" 2>/dev/null)" || { echo unknown; return; }
+
+  printf '%s' "$json" | python3 -c '
+import json, sys
+try:
+    runs = json.load(sys.stdin).get("check_runs", [])
+except Exception:
+    print("unknown"); raise SystemExit
+if not runs:
+    print("unknown"); raise SystemExit
+if any(r.get("status") != "completed" for r in runs):
+    print("pending"); raise SystemExit
+bad = [r for r in runs if r.get("conclusion") not in ("success", "neutral", "skipped")]
+print("failure" if bad else "success")
+' 2>/dev/null || echo unknown
+}
+
+if [ "$REQUIRE_CI" != "off" ]; then
+  VERDICT="$(ci_conclusion "$LATEST")"
+  case "$VERDICT" in
+    success)
+      log "CI checks passed for ${LATEST:0:7}."
+      ;;
+    *)
+      if [ "$REQUIRE_CI" = "enforce" ]; then
+        log "REFUSING to deploy ${LATEST:0:7}: CI verdict is '$VERDICT'. Retaining ${CURRENT:0:7}."
+        exit 1
+      fi
+      log "WARNING: CI verdict for ${LATEST:0:7} is '$VERDICT'; deploying anyway (GUILDSERVER_REQUIRE_CI=$REQUIRE_CI)."
+      ;;
+  esac
+fi
+
 if [ ! -f "$COMPOSE_DIR/$ENV_FILE" ]; then
   log "ERROR: $COMPOSE_DIR/$ENV_FILE is missing; refusing to deploy."
   exit 1
@@ -71,3 +131,36 @@ docker image prune -f >/dev/null 2>&1 || true
 docker builder prune -f --filter "until=168h" >/dev/null 2>&1 || true
 
 log "Update complete. Now running ${LATEST:0:7}."
+
+# --- keep the installed updater in step with the repo ------------------------
+#
+# The cron runs a COPY of this script (typically /usr/local/bin/
+# guildserver-self-update.sh), not the file in the repo. So edits here reach
+# the repository and never reach production: the copy on this host was byte
+# identical to the repo at the commit it was installed from, and would have
+# stayed frozen there indefinitely while the repo moved on.
+#
+# After a successful deploy, refresh that copy from the repo. Guards, because a
+# deploy script that breaks itself takes the host's ability to deploy with it:
+#   - only ever when the content actually differs
+#   - only if the new version parses (`bash -n`)
+#   - the previous version is kept alongside for a manual rollback
+#   - any failure is logged and ignored; the deploy already succeeded
+REPO_UPDATER="$COMPOSE_DIR/scripts/self-update.sh"
+INSTALLED_UPDATER="$(readlink -f "${BASH_SOURCE[0]}")"
+
+if [ -f "$REPO_UPDATER" ] && [ "$INSTALLED_UPDATER" != "$(readlink -f "$REPO_UPDATER")" ]; then
+  if ! cmp -s "$REPO_UPDATER" "$INSTALLED_UPDATER"; then
+    if bash -n "$REPO_UPDATER" 2>/dev/null; then
+      if sudo -n cp "$INSTALLED_UPDATER" "${INSTALLED_UPDATER}.prev" 2>/dev/null \
+         && sudo -n cp "$REPO_UPDATER" "$INSTALLED_UPDATER" 2>/dev/null; then
+        log "Refreshed the installed updater from the repo (previous kept at ${INSTALLED_UPDATER}.prev)."
+      else
+        log "WARNING: the installed updater is out of date and could not be refreshed automatically."
+        log "         Run: sudo cp $REPO_UPDATER $INSTALLED_UPDATER"
+      fi
+    else
+      log "WARNING: $REPO_UPDATER does not parse; keeping the installed updater."
+    fi
+  fi
+fi

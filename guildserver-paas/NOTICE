@@ -1,0 +1,23 @@
+GuildServer PaaS
+Copyright (c) Guild Technologies
+
+This product includes work derived from Coolify (https://github.com/coollabsio/coolify),
+Copyright (c) coollabs, licensed under the Apache License, Version 2.0.
+
+It redistributes 341 Compose service templates taken from that project's
+templates/compose/ directory at commit 424dbd36fff39a9ccd22efbee019cf490dcf9fc8.
+Those templates have been MODIFIED: Coolify's magic environment variables have
+been translated into ordinary Compose interpolation plus a declared list of
+required and generated variables, and Coolify's non-Compose `exclude_from_hc`
+key has been removed. They are found in
+packages/database/src/seed/service-template-compose.ts and
+packages/database/src/seed/service-templates.ts.
+
+Product logos referenced by those templates (Coolify's templates/svgs/) are NOT
+included here. They are third-party trademarks and are not covered by Coolify's
+Apache-2.0 grant.
+
+A copy of the Apache License 2.0 is included at LICENSES/Apache-2.0.txt.
+
+See docs/attribution/coolify.md for the specific artefacts involved and whether each
+was copied verbatim or reimplemented from reading.
