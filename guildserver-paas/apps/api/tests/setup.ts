@@ -177,4 +177,9 @@ export const mockServices = {
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-jwt-secret-key-for-testing-only';
 process.env.DATABASE_URL = testDbUrl;
-process.env.REDIS_URL = 'redis://localhost:6379/1'; // Use different Redis DB for tests
+// REDIS_URL is set once, in tests/env.ts, to the throwaway Redis on 6380.
+// This file used to overwrite it with redis://localhost:6379/1 after env.ts ran:
+// the default Redis port, which on a single-node install is the one the live
+// control plane's queues use. It was unreachable from the host here, so tests
+// that needed Redis simply failed; had it been reachable, they would have
+// written into production's Redis.
