@@ -1,0 +1,24 @@
+# documentation: https://example.invalid/docs
+# slogan: Declaration syntax variants.
+# category: testing
+# tags: fixture
+# logo: svgs/example.png
+# port: 80
+# IMPORTANT: SOMETHING_PERMANENT cannot be changed after first deployment!
+
+services:
+  web:
+    image: example/web:2.0
+    environment:
+      - SERVICE_URL_WEB
+      - SERVICE_URL_WEB=/console
+      - SERVICE_FQDN_WEB_80
+      - LITERAL=SERVICE_URL_WEB
+    healthcheck:
+      test: ["CMD", "true"]
+  api:
+    image: example/api:2.0
+    environment:
+      SERVICE_URL_API_9000: ${SERVICE_URL_API_9000}
+    expose:
+      - "9000"

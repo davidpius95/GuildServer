@@ -1,0 +1,11 @@
+# ignore: true
+# documentation: https://example.invalid/docs
+# slogan: Upstream says do not ship this.
+# category: testing
+# tags: fixture
+# logo: svgs/example.png
+# port: 4000
+
+services:
+  app:
+    image: example/app:1.0

@@ -1,0 +1,564 @@
+/**
+ * Unit tests for the Coolify template parser/translator.
+ *
+ * Everything here runs against fixtures checked in under
+ * tests/fixtures/coolify-templates. Nothing touches the network — the importer
+ * fetches from GitHub, but the logic under test is pure.
+ */
+
+import { readFileSync } from "fs";
+import { join } from "path";
+
+import {
+  classifyVariable,
+  collectUserVariables,
+  parseMetadata,
+  parseTemplate,
+  stripCoolifyOnlyKeys,
+  stripMetadataHeader,
+  translateCompose,
+  TemplateParseError,
+  type DomainVariable,
+  type GeneratedVariable,
+} from "../../src/services/templates/coolify-template";
+
+const FIXTURES = join(__dirname, "..", "fixtures", "coolify-templates");
+
+function fixture(name: string): string {
+  return readFileSync(join(FIXTURES, `${name}.yaml`), "utf8");
+}
+
+function generated(key: string, template: ReturnType<typeof parseTemplate>): GeneratedVariable {
+  const variable = template.variables.find((candidate) => candidate.key === key);
+  if (!variable || variable.kind !== "generated") {
+    throw new Error(`expected ${key} to be a generated variable, got ${variable?.kind ?? "nothing"}`);
+  }
+  return variable;
+}
+
+function domain(key: string, template: ReturnType<typeof parseTemplate>): DomainVariable {
+  const variable = template.variables.find((candidate) => candidate.key === key);
+  if (!variable || variable.kind !== "domain") {
+    throw new Error(`expected ${key} to be a domain variable, got ${variable?.kind ?? "nothing"}`);
+  }
+  return variable;
+}
+
+describe("classifyVariable", () => {
+  it("classifies each generator command with the right kind and length", () => {
+    const cases: Array<[string, string, number]> = [
+      ["SERVICE_PASSWORD_DB", "password", 32],
+      ["SERVICE_PASSWORD_64_DB", "password", 64],
+      ["SERVICE_PASSWORDWITHSYMBOLS_DB", "password_with_symbols", 32],
+      ["SERVICE_PASSWORDWITHSYMBOLS_64_DB", "password_with_symbols", 64],
+      ["SERVICE_BASE64_DB", "random_string", 32],
+      ["SERVICE_BASE64_32_DB", "random_string", 32],
+      ["SERVICE_BASE64_64_DB", "random_string", 64],
+      ["SERVICE_BASE64_128_DB", "random_string", 128],
+      ["SERVICE_REALBASE64_DB", "base64", 32],
+      ["SERVICE_REALBASE64_64_DB", "base64", 64],
+      ["SERVICE_REALBASE64_128_DB", "base64", 128],
+      ["SERVICE_HEX_32_DB", "hex", 32],
+      ["SERVICE_HEX_64_DB", "hex", 64],
+      ["SERVICE_HEX_128_DB", "hex", 128],
+      ["SERVICE_USER_DB", "username", 16],
+      ["SERVICE_LOWERCASEUSER_DB", "username_lowercase", 16],
+    ];
+
+    for (const [key, kind, length] of cases) {
+      const variable = classifyVariable(key);
+      expect(variable).not.toBeNull();
+      expect(variable!.kind).toBe("generated");
+      const asGenerated = variable as GeneratedVariable;
+      expect(asGenerated.generator).toEqual({ kind, length });
+    }
+  });
+
+  it("prefers the longest matching command so PASSWORD_64 is not read as PASSWORD", () => {
+    const variable = classifyVariable("SERVICE_PASSWORD_64_APPWRITE") as GeneratedVariable;
+    expect(variable.generator.length).toBe(64);
+    expect(variable.identifier).toBe("APPWRITE");
+  });
+
+  it("treats SERVICE_-prefixed names outside the command set as ordinary variables", () => {
+    // These are real names from the corpus. Reading them as generators would
+    // overwrite credentials the user has to supply.
+    expect(classifyVariable("SERVICE_ROLE_KEY")).toBeNull();
+    expect(classifyVariable("SERVICE_KEY")).toBeNull();
+    expect(classifyVariable("SERVICE_OPENAI_API_KEY")).toBeNull();
+    expect(classifyVariable("SERVICE_ANTHROPIC_API_KEY")).toBeNull();
+    expect(classifyVariable("SERVICE_AUTHOR")).toBeNull();
+    expect(classifyVariable("SERVICE_API_URL")).toBeNull();
+  });
+
+  it("ignores names without the SERVICE_ prefix", () => {
+    expect(classifyVariable("PASSWORD_DB")).toBeNull();
+    expect(classifyVariable("DATABASE_URL")).toBeNull();
+  });
+
+  it("splits domain variables into service label and port", () => {
+    expect(classifyVariable("SERVICE_URL_APP_3000")).toMatchObject({
+      kind: "domain",
+      format: "url",
+      serviceName: "app",
+      port: 3000,
+    });
+
+    expect(classifyVariable("SERVICE_FQDN_REDIS_CACHE_6379")).toMatchObject({
+      kind: "domain",
+      format: "fqdn",
+      serviceName: "redis_cache",
+      port: 6379,
+    });
+  });
+
+  it("keeps a non-numeric trailing segment as part of the label", () => {
+    expect(classifyVariable("SERVICE_URL_MY_APP")).toMatchObject({
+      kind: "domain",
+      format: "url",
+      serviceName: "my_app",
+      port: null,
+    });
+  });
+
+  it("leaves a domain unresolved until a Compose body is available", () => {
+    expect(classifyVariable("SERVICE_URL_APP_3000")).toMatchObject({
+      targetService: null,
+      resolution: "unresolved",
+    });
+  });
+
+  it("reports derived Supabase JWTs as unsupported rather than silently generating", () => {
+    const variable = classifyVariable("SERVICE_SUPABASEANON_KEY");
+    expect(variable).not.toBeNull();
+    expect(variable!.kind).toBe("unsupported");
+  });
+});
+
+describe("parseMetadata", () => {
+  it("reads the upstream header block", () => {
+    const meta = parseMetadata(fixture("actualbudget"));
+    expect(meta).toMatchObject({
+      documentation: "https://actualbudget.org/docs/install/docker",
+      slogan: "A local-first personal finance app.",
+      category: "finance",
+      logo: "svgs/actualbudget.png",
+      port: 5006,
+      ignore: false,
+    });
+    expect(meta.tags).toContain("budgeting");
+    expect(meta.tags).toContain("finance");
+  });
+
+  it("collects IMPORTANT notices", () => {
+    const meta = parseMetadata(fixture("declaration-forms"));
+    expect(meta.notices).toEqual([
+      "SOMETHING_PERMANENT cannot be changed after first deployment!",
+    ]);
+  });
+
+  it("reads the ignore flag", () => {
+    expect(parseMetadata(fixture("ignored")).ignore).toBe(true);
+  });
+
+  it("stops at the first non-comment line so body comments are not metadata", () => {
+    const source = [
+      "# slogan: Real slogan.",
+      "",
+      "services:",
+      "  app:",
+      "    # slogan: not metadata",
+      "    # category: not-metadata",
+      "    image: example/app:1.0",
+    ].join("\n");
+
+    const meta = parseMetadata(source);
+    expect(meta.slogan).toBe("Real slogan.");
+    expect(meta.category).toBeNull();
+  });
+
+  it("returns empty metadata for a file with no header", () => {
+    const meta = parseMetadata("services:\n  app:\n    image: example/app:1.0\n");
+    expect(meta.slogan).toBeNull();
+    expect(meta.tags).toEqual([]);
+    expect(meta.port).toBeNull();
+  });
+
+  it("rejects a non-numeric port instead of emitting NaN", () => {
+    expect(parseMetadata("# port: not-a-number\n").port).toBeNull();
+  });
+});
+
+describe("stripMetadataHeader", () => {
+  it("removes the header and leaves the Compose body intact", () => {
+    const body = stripMetadataHeader(fixture("actualbudget"));
+    expect(body.startsWith("services:")).toBe(true);
+    expect(body).toContain("actualbudget/actual-server:latest");
+    expect(body).not.toContain("# slogan:");
+  });
+});
+
+describe("translateCompose", () => {
+  it("turns a bare declaration into ordinary interpolation under the same name", () => {
+    const { compose } = translateCompose("services:\n  app:\n    environment:\n      - SERVICE_URL_APP_3000\n");
+    expect(compose).toContain("- SERVICE_URL_APP_3000=${SERVICE_URL_APP_3000}");
+  });
+
+  it("appends a declared path to the interpolated URL", () => {
+    const { compose } = translateCompose("    environment:\n      - SERVICE_URL_APPWRITE=/console\n");
+    expect(compose).toContain("- SERVICE_URL_APPWRITE=${SERVICE_URL_APPWRITE}/console");
+  });
+
+  it("leaves references untouched — both $VAR and ${VAR} are already valid Compose", () => {
+    const source = [
+      "    environment:",
+      "      - _APP_DB_PASS=$SERVICE_PASSWORD_MARIADB",
+      "      - _APP_DOMAIN=${_APP_DOMAIN:-$SERVICE_FQDN_APPWRITE}",
+      "      - _APP_DOMAIN_SITES=${_APP_DOMAIN_SITES:-sites.$SERVICE_FQDN_APPWRITE}",
+    ].join("\n");
+
+    const { compose } = translateCompose(source);
+    expect(compose).toBe(source);
+  });
+
+  it("does not rewrite a non-magic SERVICE_ declaration", () => {
+    const source = "    environment:\n      - SERVICE_ROLE_KEY\n";
+    expect(translateCompose(source).compose).toBe(source);
+  });
+
+  it("collects variables from references as well as declarations", () => {
+    const { variables } = translateCompose(
+      "    environment:\n      - SERVICE_URL_APP_3000\n      - PW=${SERVICE_PASSWORD_DB}\n",
+    );
+    expect(variables.map((v) => v.key).sort()).toEqual(["SERVICE_PASSWORD_DB", "SERVICE_URL_APP_3000"]);
+  });
+
+  it("deduplicates a variable used many times", () => {
+    const { variables } = translateCompose(
+      "    environment:\n      - A=${SERVICE_PASSWORD_DB}\n      - B=${SERVICE_PASSWORD_DB}\n",
+    );
+    expect(variables).toHaveLength(1);
+  });
+
+  it("is idempotent — translating twice changes nothing further", () => {
+    const source = fixture("declaration-forms");
+    const once = translateCompose(stripMetadataHeader(source)).compose;
+    expect(translateCompose(once).compose).toBe(once);
+  });
+});
+
+describe("parseTemplate", () => {
+  it("parses a simple single-service template end to end", () => {
+    const template = parseTemplate("actualbudget", fixture("actualbudget"));
+
+    expect(template.id).toBe("actualbudget");
+    expect(template.name).toBe("Actualbudget");
+    expect(template.metadata.port).toBe(5006);
+    expect(template.services).toHaveLength(1);
+    expect(template.services[0]).toMatchObject({
+      name: "actual_server",
+      image: "actualbudget/actual-server:latest",
+      hasHealthcheck: true,
+    });
+
+    const url = domain("SERVICE_URL_ACTUAL_5006", template);
+    expect(url.port).toBe(5006);
+    expect(template.compose).toContain("- SERVICE_URL_ACTUAL_5006=${SERVICE_URL_ACTUAL_5006}");
+  });
+
+  it("classifies every generator command in a multi-generator template", () => {
+    const template = parseTemplate("all-generators", fixture("all-generators"));
+
+    expect(generated("SERVICE_PASSWORD_APP", template).generator).toEqual({ kind: "password", length: 32 });
+    expect(generated("SERVICE_PASSWORD_64_APP", template).generator).toEqual({ kind: "password", length: 64 });
+    expect(generated("SERVICE_REALBASE64_64_APP", template).generator).toEqual({ kind: "base64", length: 64 });
+    expect(generated("SERVICE_HEX_32_APP", template).generator).toEqual({ kind: "hex", length: 32 });
+    expect(generated("SERVICE_USER_APP", template).generator).toEqual({ kind: "username", length: 16 });
+
+    // The two non-magic names must not appear in the declared set at all.
+    const keys = template.variables.map((variable) => variable.key);
+    expect(keys).not.toContain("SERVICE_OPENAI_API_KEY");
+    expect(keys).not.toContain("SERVICE_ROLE_KEY");
+  });
+
+  it("handles map-style and path-suffixed declarations together", () => {
+    const template = parseTemplate("declaration-forms", fixture("declaration-forms"));
+
+    expect(template.compose).toContain("- SERVICE_URL_WEB=${SERVICE_URL_WEB}");
+    expect(template.compose).toContain("- SERVICE_URL_WEB=${SERVICE_URL_WEB}/console");
+    expect(template.compose).toContain("- SERVICE_FQDN_WEB_80=${SERVICE_FQDN_WEB_80}");
+
+    // Map-style entries are already valid interpolation and stay as written.
+    expect(template.compose).toContain("SERVICE_URL_API_9000: ${SERVICE_URL_API_9000}");
+
+    expect(domain("SERVICE_URL_API_9000", template)).toMatchObject({ serviceName: "api", port: 9000 });
+    expect(template.services.find((s) => s.name === "api")!.ports).toEqual([9000]);
+  });
+
+  it("warns and stays unpublishable when a template needs derived JWTs", () => {
+    const template = parseTemplate("derived-jwt", fixture("derived-jwt"));
+    const unsupported = template.variables.filter((variable) => variable.kind === "unsupported");
+    expect(unsupported.map((variable) => variable.key).sort()).toEqual([
+      "SERVICE_SUPABASEANON_KEY",
+      "SERVICE_SUPABASESERVICE_KEY",
+    ]);
+    expect(template.warnings.some((warning) => warning.includes("SERVICE_SUPABASEANON_KEY"))).toBe(true);
+  });
+
+  describe("domain resolution", () => {
+    // The label in SERVICE_URL_<LABEL> is free-form and usually is NOT a
+    // Compose service name. 89 of the 341 importable templates would be flagged
+    // broken if it were read as one, so each rule below earns its keep.
+
+    const compose = (services: string[]) =>
+      ["# slogan: x", "", "services:", ...services].join("\n");
+
+    it("matches an exact service name", () => {
+      const template = parseTemplate(
+        "exact",
+        compose(["  web:", "    image: e/w:1", "    environment:", "      - SERVICE_URL_WEB_3000"]),
+      );
+      expect(domain("SERVICE_URL_WEB_3000", template)).toMatchObject({
+        targetService: "web",
+        resolution: "exact",
+      });
+    });
+
+    it("matches a label that is a prefix of the service name", () => {
+      // Real case: actualbudget labels its URL ACTUAL, service is actual_server.
+      const template = parseTemplate("actualbudget", fixture("actualbudget"));
+      expect(domain("SERVICE_URL_ACTUAL_5006", template)).toMatchObject({
+        targetService: "actual_server",
+        resolution: "prefix",
+      });
+      expect(template.warnings).toEqual([]);
+    });
+
+    it("falls back to the only service when nothing else matches", () => {
+      const template = parseTemplate(
+        "single",
+        compose(["  runtime:", "    image: e/r:1", "    environment:", "      - SERVICE_URL_DASHBOARD"]),
+      );
+      expect(domain("SERVICE_URL_DASHBOARD", template)).toMatchObject({
+        targetService: "runtime",
+        resolution: "only-service",
+      });
+    });
+
+    it("uses the port when exactly one service exposes it", () => {
+      const template = parseTemplate(
+        "byport",
+        compose([
+          "  frontend:",
+          "    image: e/f:1",
+          "    ports: ['9000']",
+          "    environment:",
+          "      - SERVICE_URL_SOMETHINGELSE_9000",
+          "  db:",
+          "    image: e/d:1",
+        ]),
+      );
+      expect(domain("SERVICE_URL_SOMETHINGELSE_9000", template)).toMatchObject({
+        targetService: "frontend",
+        resolution: "port",
+      });
+    });
+
+    it("matches across separator differences, e.g. INVOICENINJA to invoice-ninja", () => {
+      const template = parseTemplate(
+        "invoice-ninja",
+        compose([
+          "  invoice-ninja:",
+          "    image: e/i:1",
+          "    environment:",
+          "      - SERVICE_URL_INVOICENINJA",
+          "  mariadb:",
+          "    image: mariadb:11",
+        ]),
+      );
+      expect(domain("SERVICE_URL_INVOICENINJA", template)).toMatchObject({
+        targetService: "invoice-ninja",
+        resolution: "prefix",
+      });
+    });
+
+    it("warns rather than guessing when two services match the same label", () => {
+      // Real case: seaweedfs has seaweedfs-master and seaweedfs-admin. Picking
+      // one would silently route the domain to the wrong container.
+      const template = parseTemplate(
+        "seaweedfs",
+        compose([
+          "  seaweedfs-master:",
+          "    image: e/m:1",
+          "    environment:",
+          "      - SERVICE_URL_SEAWEEDFS",
+          "  seaweedfs-admin:",
+          "    image: e/a:1",
+        ]),
+      );
+      expect(domain("SERVICE_URL_SEAWEEDFS", template)).toMatchObject({
+        targetService: null,
+        resolution: "unresolved",
+      });
+      expect(template.warnings.some((w) => w.includes("SERVICE_URL_SEAWEEDFS"))).toBe(true);
+    });
+  });
+
+  it("warns about a service with no image", () => {
+    const source = [
+      "# slogan: Build-only service.",
+      "",
+      "services:",
+      "  app:",
+      "    build: .",
+    ].join("\n");
+
+    const template = parseTemplate("build-only", source);
+    expect(template.warnings.some((warning) => warning.includes("no image"))).toBe(true);
+  });
+
+  it("flags a template upstream marked ignore", () => {
+    const template = parseTemplate("ignored", fixture("ignored"));
+    expect(template.metadata.ignore).toBe(true);
+    expect(template.warnings.some((warning) => warning.includes("ignore"))).toBe(true);
+  });
+
+  it("parses a multi-service template sharing generated credentials between services", () => {
+    const template = parseTemplate("ghost", fixture("ghost"));
+
+    expect(template.services.map((service) => service.name).sort()).toEqual(["ghost", "mysql"]);
+
+    // The same identifier in two services must resolve to one variable, or the
+    // app and its database end up with different passwords.
+    expect(template.variables.filter((variable) => variable.key === "SERVICE_PASSWORD_MYSQL")).toHaveLength(1);
+    expect(generated("SERVICE_USER_MYSQL", template).identifier).toBe("MYSQL");
+    expect(generated("SERVICE_PASSWORD_MYSQLROOT", template).identifier).toBe("MYSQLROOT");
+
+    // Both the port-scoped declaration and the bare reference are declared.
+    expect(domain("SERVICE_URL_GHOST_2368", template).port).toBe(2368);
+    expect(domain("SERVICE_URL_GHOST", template).port).toBeNull();
+  });
+
+  it("reports the upstream YAML defect in langfuse rather than importing it broken", () => {
+    // langfuse.yaml (and gramps-web.yaml) merge a sequence anchor into a
+    // mapping with `<<:`, which is not valid YAML. These are the only two files
+    // in the 371-template corpus that fail to parse, and the importer excludes
+    // them with this reason rather than shipping a stack that cannot start.
+    expect(() => parseTemplate("langfuse", fixture("langfuse"))).toThrow(/cannot merge mappings/);
+  });
+
+  it("keeps complex nested default-value references intact", () => {
+    const template = parseTemplate("appwrite-excerpt", fixture("appwrite-excerpt"));
+    expect(template.compose).toContain("${_APP_DOMAIN:-$SERVICE_FQDN_APPWRITE}");
+    expect(template.compose).toContain("- SERVICE_URL_APPWRITE=${SERVICE_URL_APPWRITE}/");
+    expect(generated("SERVICE_PASSWORD_64_APPWRITE", template).generator.length).toBe(64);
+  });
+
+  describe("user-supplied variables", () => {
+    it("declares a variable with no default as required", () => {
+      // Real case: Ghost's mysql service has MYSQL_DATABASE=${MYSQL_DATABASE}
+      // with no default, so deploying without asking gives MySQL an empty
+      // database name.
+      const template = parseTemplate("ghost", fixture("ghost"));
+      const byKey = new Map(template.userVariables.map((variable) => [variable.key, variable]));
+
+      expect(byKey.get("MAIL_OPTIONS_AUTH_PASS")).toMatchObject({ required: true, defaultValue: null });
+      expect(byKey.get("MAIL_OPTIONS_PORT")).toMatchObject({ required: false, defaultValue: "465" });
+    });
+
+    it("treats a variable as optional when any occurrence supplies a default", () => {
+      // Ghost references MYSQL_DATABASE bare in one service and as
+      // ${MYSQL_DATABASE-ghost} in another. One default keeps the stack working.
+      const variables = collectUserVariables("a=${X}\nb=${X-fallback}\n");
+      expect(variables).toEqual([{ key: "X", required: false, defaultValue: "fallback" }]);
+    });
+
+    it("never lists a magic variable as user-supplied", () => {
+      const variables = collectUserVariables("${SERVICE_PASSWORD_DB} ${SERVICE_URL_APP_3000} ${REAL}");
+      expect(variables.map((variable) => variable.key)).toEqual(["REAL"]);
+    });
+
+    it("ignores an escaped literal dollar", () => {
+      expect(collectUserVariables("cost=$$NOT_A_VAR")).toEqual([]);
+    });
+  });
+
+  describe("Coolify-only Compose keys", () => {
+    it("strips exclude_from_hc from the emitted body", () => {
+      // It is Coolify's key, not Compose's. Docker rejects a service carrying
+      // it, so a vendored body that kept it could not be deployed at all.
+      const source = [
+        "# slogan: One-shot init container.",
+        "",
+        "services:",
+        "  init:",
+        "    image: e/mc:1",
+        '    restart: "no"',
+        "    exclude_from_hc: true",
+        "  app:",
+        "    image: e/a:1",
+      ].join("\n");
+
+      const template = parseTemplate("init", source);
+      expect(template.compose).not.toContain("exclude_from_hc");
+      expect(template.compose).toContain("image: e/mc:1");
+    });
+
+    it("records what the stripped key meant before removing it", () => {
+      const source = [
+        "# slogan: x",
+        "",
+        "services:",
+        "  init:",
+        "    image: e/mc:1",
+        "    exclude_from_hc: true",
+        "  app:",
+        "    image: e/a:1",
+        "    restart: always",
+      ].join("\n");
+
+      const template = parseTemplate("init", source);
+      expect(template.services.find((service) => service.name === "init")!.oneShot).toBe(true);
+      expect(template.services.find((service) => service.name === "app")!.oneShot).toBe(false);
+    });
+
+    it("leaves a body without Coolify-only keys untouched", () => {
+      const body = "services:\n  app:\n    image: e/a:1";
+      expect(stripCoolifyOnlyKeys(body)).toBe(body);
+    });
+  });
+
+  describe("malformed input", () => {
+    it("rejects an empty file", () => {
+      expect(() => parseTemplate("malformed-empty", fixture("malformed-empty"))).toThrow(TemplateParseError);
+    });
+
+    it("rejects a file with metadata but no body", () => {
+      expect(() => parseTemplate("malformed-header-only", fixture("malformed-header-only"))).toThrow(
+        /no Compose body/,
+      );
+    });
+
+    it("rejects invalid YAML with a useful message", () => {
+      expect(() => parseTemplate("malformed-bad-yaml", fixture("malformed-bad-yaml"))).toThrow(
+        /not valid YAML/,
+      );
+    });
+
+    it("rejects a file with no services mapping", () => {
+      expect(() => parseTemplate("malformed-no-services", fixture("malformed-no-services"))).toThrow(
+        /no `services` mapping/,
+      );
+    });
+
+    it("rejects a Compose body that is a scalar rather than a mapping", () => {
+      expect(() => parseTemplate("scalar", "# slogan: x\n\njust-a-string\n")).toThrow(TemplateParseError);
+    });
+
+    it("rejects an empty services mapping", () => {
+      expect(() => parseTemplate("empty-services", "# slogan: x\n\nservices: {}\n")).toThrow(
+        /declares no services/,
+      );
+    });
+  });
+});

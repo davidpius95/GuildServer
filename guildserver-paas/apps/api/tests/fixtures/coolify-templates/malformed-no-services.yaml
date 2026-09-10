@@ -1,0 +1,5 @@
+# slogan: No services mapping.
+# category: testing
+
+volumes:
+  data:
