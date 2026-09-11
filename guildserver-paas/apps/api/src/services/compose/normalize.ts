@@ -45,6 +45,7 @@ import yaml from "js-yaml";
 import { randomBytes } from "crypto";
 import { GS_LABELS, GS_TYPE_SERVICE, NETWORK_NAME } from "../docker/client";
 import { buildTraefikLabels } from "../docker/primitives";
+import { PUBLISHABLE_SERVICE_TEMPLATES } from "@guildserver/database/dist/seed/service-templates";
 import { ParsedCompose, ParsedService, ComposeParseError, parseCompose } from "./parse";
 
 /** Prefix for every Compose-stack project name. Distinct from the app prefix. */
@@ -278,6 +279,7 @@ export interface NormalizeInput {
     id: string;
     serviceName: string;
     projectId?: string | null;
+    templateId?: string | null;
     /** Stored environment for the stack; the substitution source. */
     environment?: Record<string, string> | null;
     /** { composeServiceName: [domain, ...] } */
@@ -426,6 +428,13 @@ export function normalizeCompose(input: NormalizeInput): NormalizeResult {
     let routedPort: number | undefined;
     if (domains.length > 0) {
       routedPort = pickRoutedPort(svc);
+      if (routedPort == null && input.service.templateId) {
+        const t = PUBLISHABLE_SERVICE_TEMPLATES.find((x) => x.id === input.service.templateId);
+        if (t) {
+          const matchedSvc = t.services.find((s) => s.name === svc.name);
+          routedPort = matchedSvc?.ports?.[0] ?? t.defaultPort ?? undefined;
+        }
+      }
       if (routedPort == null) {
         throw new ComposeNormalizeError(
           `services.${svc.name} has a domain but no port to route to — add \`expose: ["<port>"]\` or a \`ports:\` entry.`,
@@ -461,7 +470,11 @@ export function normalizeCompose(input: NormalizeInput): NormalizeResult {
     if (svc.command != null) out.command = svc.command;
     if (svc.entrypoint != null) out.entrypoint = svc.entrypoint;
     if (Object.keys(svc.environment).length > 0) out.environment = svc.environment;
-    if (svc.expose.length > 0) out.expose = svc.expose.map(String);
+    if (svc.expose.length > 0) {
+      out.expose = svc.expose.map(String);
+    } else if (routedPort != null && svc.ports.length === 0) {
+      out.expose = [String(routedPort)];
+    }
     if (svc.user) out.user = svc.user;
     if (svc.workingDir) out.working_dir = svc.workingDir;
     if (svc.healthcheck) out.healthcheck = svc.healthcheck;

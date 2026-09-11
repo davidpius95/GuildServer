@@ -90,19 +90,40 @@ export function declareNamedVolumes(composeBody: string): string {
  * known port, when the service publishes no port of its own. Returns the body
  * unchanged when nothing needs adding.
  */
-export function exposeDomainPorts(composeBody: string, variables: ServiceTemplate["variables"]): string {
+export function exposeDomainPorts(
+  composeBody: string,
+  variables: ServiceTemplate["variables"],
+  defaultPort?: number | null,
+  templateServices?: ServiceTemplate["services"],
+): string {
   const doc = yaml.load(composeBody) as Record<string, any> | null;
   if (!doc || typeof doc !== "object" || !doc.services || typeof doc.services !== "object") return composeBody;
 
   let changed = false;
   for (const variable of variables) {
-    if (variable.kind !== "domain" || !variable.targetService || !variable.port) continue;
-    const service = doc.services[variable.targetService];
+    if (variable.kind !== "domain" || !variable.targetService) continue;
+    const targetService = variable.targetService;
+    const service = doc.services[targetService];
     if (!service || typeof service !== "object") continue;
     const hasExpose = Array.isArray(service.expose) && service.expose.length > 0;
     const hasPorts = Array.isArray(service.ports) && service.ports.length > 0;
     if (hasExpose || hasPorts) continue;
-    service.expose = [String(variable.port)];
+
+    let resolvedPort = variable.port ?? null;
+    if (!resolvedPort && templateServices) {
+      const match = templateServices.find((s) => s.name === targetService);
+      if (match && match.ports.length > 0) {
+        resolvedPort = match.ports[0];
+      }
+    }
+    if (!resolvedPort && defaultPort) {
+      if (variable.format === "url" || (templateServices && templateServices.length === 1)) {
+        resolvedPort = defaultPort;
+      }
+    }
+    if (!resolvedPort) continue;
+
+    service.expose = [String(resolvedPort)];
     changed = true;
   }
   return changed ? yaml.dump(doc, { lineWidth: -1, noRefs: true }) : composeBody;
@@ -178,7 +199,12 @@ export function planTemplateStack(
     throw new TemplateInputError(`${template.name} needs a value for: ${missingRequired.join(", ")}`, missingRequired);
   }
 
-  composeBody = exposeDomainPorts(declareNamedVolumes(composeBody), template.variables);
+  composeBody = exposeDomainPorts(
+    declareNamedVolumes(composeBody),
+    template.variables,
+    template.defaultPort,
+    template.services,
+  );
   const parsed = parseCompose(composeBody);
   const routable = new Set(
     parsed.services.filter((service) => service.expose.length > 0 || service.ports.length > 0).map((s) => s.name),

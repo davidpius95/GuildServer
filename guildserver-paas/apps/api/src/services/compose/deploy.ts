@@ -185,6 +185,7 @@ export async function deployStack(options: DeployStackOptions): Promise<DeploySt
       id: service.id,
       serviceName: service.serviceName,
       projectId: service.projectId,
+      templateId: service.templateId,
       environment: (service.environment as Record<string, string>) ?? {},
       domains: (service.domains as Record<string, string[]>) ?? {},
     },
@@ -229,17 +230,25 @@ export async function deployStack(options: DeployStackOptions): Promise<DeploySt
   phase("deploy", "running", "Starting containers...");
 
   try {
-    const pull = await run({
-      project: normalized.project,
-      file,
-      cwd: dir,
-      args: ["pull", "--ignore-pull-failures"],
-      onLine: (line) => log(line, "pull"),
-    });
-    if (pull.code !== 0) {
-      // Non-fatal: `up` pulls what it needs anyway, and a private image with no
-      // credentials configured here should fail at `up` with a better message.
-      log("Image pre-pull reported errors; continuing — `up` will pull what it needs.", "pull");
+    try {
+      const pull = await run({
+        project: normalized.project,
+        file,
+        cwd: dir,
+        args: ["pull", "--ignore-pull-failures"],
+        timeoutMs: 1_200_000,
+        onLine: (line) => log(line, "pull"),
+      });
+      if (pull.code !== 0) {
+        // Non-fatal: `up` pulls what it needs anyway, and a private image with no
+        // credentials configured here should fail at `up` with a better message.
+        log("Image pre-pull reported errors; continuing — `up` will pull what it needs.", "pull");
+      }
+    } catch (pullError) {
+      log(
+        `Image pre-pull timed out or reported errors; continuing — \`up\` will pull what it needs: ${pullError instanceof Error ? pullError.message : String(pullError)}`,
+        "pull",
+      );
     }
 
     const up = await run({
@@ -249,7 +258,8 @@ export async function deployStack(options: DeployStackOptions): Promise<DeploySt
       // --remove-orphans deletes containers that belong to THIS project but are
       // no longer in the file (a service the user removed). It is scoped by
       // project name and cannot reach another stack.
-      args: ["up", "--detach", "--remove-orphans", "--wait", "--wait-timeout", "300"],
+      args: ["up", "--detach", "--remove-orphans", "--wait", "--wait-timeout", "600"],
+      timeoutMs: 1_200_000,
       onLine: (line) => log(line, "deploy"),
     });
 

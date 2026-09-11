@@ -215,6 +215,18 @@ describe('the deployable catalogue', () => {
     expect(plan.urls.map((u) => u.url)).toContain('https://uptime-kuma-kuma.example.com');
   });
 
+  it('gives ConvertX a routed public URL via template defaultPort even without a port in the domain variable', () => {
+    const template = deployableCatalogue().templates.find((t) => t.id === 'convertx');
+    expect(template).toBeDefined();
+    if (!template) return;
+    const plan = planTemplateStack(template, getServiceTemplateCompose('convertx')!, {
+      stackSlug: 'convertx', baseDomain: 'guild-technologies.com', https: true, userValues: {},
+    });
+    expect(plan.urls.map((u) => u.url)).toContain('https://convertx-convertx.guild-technologies.com');
+    expect(plan.domains).toEqual({ convertx: ['convertx-convertx.guild-technologies.com'] });
+    expect(plan.warnings).toEqual([]);
+  });
+
   it('plans every offered template with a routed URL only for services that exist', () => {
     const failures: string[] = [];
     for (const template of deployableCatalogue().templates) {

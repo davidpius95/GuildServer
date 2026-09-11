@@ -354,6 +354,26 @@ services:
         render({ composeFile: DOMAIN_STACK, service: { domains: { db: ['db.example.com'] } } as any }),
       ).toThrow(/no port to route to/);
     });
+
+    it('routes using template defaultPort when templateId is provided on a service without explicit port', () => {
+      const result = render({
+        composeFile: `
+services:
+  convertx:
+    image: ghcr.io/c4illin/convertx:latest
+`,
+        service: {
+          id: randomUUID(),
+          serviceName: 'convertx',
+          templateId: 'convertx',
+          domains: { convertx: ['convertx.example.com'] },
+        } as any,
+      });
+      const doc = asDocument(result.composeResolved);
+      expect(doc.services.convertx.expose).toEqual(['3000']);
+      const labels = doc.services.convertx.labels;
+      expect(labels[`traefik.http.services.${result.project}-convertx.loadbalancer.server.port`]).toBe('3000');
+    });
   });
 
   describe('variable expansion', () => {
