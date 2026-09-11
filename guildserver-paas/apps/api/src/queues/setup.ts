@@ -27,6 +27,7 @@ import crypto from "crypto";
 import path from "path";
 import { runServiceDeployJob } from "./service-deploy";
 import { resolveCloneToken } from "../services/git-clone-token";
+import { syncTraefikDynamicDomains } from "../services/traefik-dynamic";
 
 // Redis connection
 // Note: dotenv may not be loaded when this module initializes (import hoisting),
@@ -767,6 +768,9 @@ const deploymentWorker = new Worker(
 
       // 8. Update application status
       await updateApplicationStatus(applicationId, deploymentHealthy ? "running" : "failed");
+      if (deploymentHealthy) {
+        void syncTraefikDynamicDomains();
+      }
 
       // Mark health check complete (with appropriate status)
       broadcastToUser(userId, {

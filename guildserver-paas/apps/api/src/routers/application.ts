@@ -22,6 +22,7 @@ import { registerGithubWebhook } from "../services/github";
 import { getValidAccessToken } from "../services/oauth-tokens";
 import { encryptSecret } from "../utils/crypto";
 import { logger } from "../utils/logger";
+import { syncTraefikDynamicDomains } from "../services/traefik-dynamic";
 
 import { runtimeSettingsSchema } from "../services/app-runtime";
 import {
@@ -543,6 +544,7 @@ export const applicationRouter = createTRPCRouter({
       }
 
       await ctx.db.delete(applications).where(eq(applications.id, input.id));
+      void syncTraefikDynamicDomains();
 
       return { success: true };
     }),

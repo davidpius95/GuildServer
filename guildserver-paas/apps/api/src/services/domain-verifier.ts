@@ -26,6 +26,40 @@ function isPrivateIp(ip: string): boolean {
 }
 
 /**
+ * Checks if an IP falls within Cloudflare's published Anycast IP ranges.
+ */
+export function isCloudflareIp(ip: string): boolean {
+  if (
+    ip.startsWith("104.16.") || ip.startsWith("104.17.") || ip.startsWith("104.18.") ||
+    ip.startsWith("104.19.") || ip.startsWith("104.20.") || ip.startsWith("104.21.") ||
+    ip.startsWith("104.22.") || ip.startsWith("104.23.") || ip.startsWith("104.24.") ||
+    ip.startsWith("104.25.") || ip.startsWith("104.26.") || ip.startsWith("104.27.") ||
+    ip.startsWith("104.28.") || ip.startsWith("104.29.") || ip.startsWith("104.30.") ||
+    ip.startsWith("104.31.")
+  ) {
+    return true;
+  }
+  if (
+    ip.startsWith("172.64.") || ip.startsWith("172.65.") || ip.startsWith("172.66.") ||
+    ip.startsWith("172.67.") || ip.startsWith("172.68.") || ip.startsWith("172.69.") ||
+    ip.startsWith("172.70.") || ip.startsWith("172.71.")
+  ) {
+    return true;
+  }
+  if (ip.startsWith("162.158.") || ip.startsWith("162.159.")) return true;
+  if (ip.startsWith("198.41.")) return true;
+  if (ip.startsWith("197.234.")) return true;
+  if (ip.startsWith("188.114.")) return true;
+  if (ip.startsWith("190.93.")) return true;
+  if (ip.startsWith("108.162.")) return true;
+  if (ip.startsWith("141.101.")) return true;
+  if (ip.startsWith("103.21.") || ip.startsWith("103.22.") || ip.startsWith("103.31.")) return true;
+  if (ip.startsWith("173.245.")) return true;
+  if (ip.startsWith("131.0.72.")) return true;
+  return false;
+}
+
+/**
  * Normalizes a hostname by removing trailing dot and converting to lower case.
  */
 function normalizeHostname(hostname: string): string {
@@ -67,11 +101,21 @@ export async function verifyDns(opts: VerifyDnsOptions): Promise<VerifyDnsResult
   try {
     const cnames = await dns.resolveCname(hostname);
     const normalized = cnames.map(normalizeHostname);
-    if (normalized.includes(expectedCname)) {
+    const baseDomain = normalizeHostname(process.env.BASE_DOMAIN || "guild-technologies.com");
+    const fallbackOrigin = normalizeHostname(
+      process.env.CLOUDFLARE_FALLBACK_ORIGIN || `fallback.${baseDomain}`
+    );
+
+    if (
+      normalized.includes(expectedCname) ||
+      normalized.includes(fallbackOrigin) ||
+      normalized.includes(baseDomain) ||
+      normalized.some((c) => c.endsWith(`.${baseDomain}`))
+    ) {
       return { status: "active", resolved: cnames };
     }
   } catch {
-    // No CNAME record (e.g. apex A record) — fall through to IP check.
+    // No CNAME record (e.g. apex A record or CNAME flattened) — fall through to IP check.
   }
 
   // 2. A-record / resolved-IP match (covers apex A records and CNAME chains).
@@ -80,6 +124,18 @@ export async function verifyDns(opts: VerifyDnsOptions): Promise<VerifyDnsResult
     if (opts.serverIps.length > 0 && ips.some((ip) => opts.serverIps.includes(ip))) {
       return { status: "active", resolved: ips };
     }
+
+    // Behind Cloudflare Tunnel or server IPs are Cloudflare Anycast:
+    // When the custom domain also resolves to Cloudflare Anycast IPs, DNS is correctly routed.
+    const behindTunnel =
+      process.env.CLOUDFLARE_TUNNEL === "true" ||
+      process.env.CLOUDFLARE_TUNNEL === "1";
+    const serverIsCloudflare = opts.serverIps.some(isCloudflareIp);
+
+    if ((behindTunnel || serverIsCloudflare) && ips.some(isCloudflareIp)) {
+      return { status: "active", resolved: ips };
+    }
+
     if (ips.length > 0) {
       return {
         status: "failed",
