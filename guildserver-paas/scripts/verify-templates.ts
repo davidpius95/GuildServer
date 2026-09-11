@@ -230,6 +230,35 @@ export function selectCandidates(templates: ServiceTemplate[], only?: string[]):
   });
 }
 
+export interface Shard {
+  /** 1-based. */
+  index: number;
+  count: number;
+}
+
+/** Parse "3/24" into a shard, refusing anything else. */
+export function parseShard(spec: string): Shard {
+  const match = /^(\d+)\/(\d+)$/.exec(spec.trim());
+  if (!match) throw new Error(`--shard expects i/n, e.g. 3/24; got "${spec}"`);
+  const index = Number(match[1]);
+  const count = Number(match[2]);
+  if (count < 1 || index < 1 || index > count) throw new Error(`--shard ${spec}: need 1 <= i <= n`);
+  return { index, count };
+}
+
+/**
+ * The templates one shard of a sharded run verifies.
+ *
+ * Deterministic (ordered by id) and round-robin, so every candidate lands in
+ * exactly one shard and large and small templates spread evenly instead of
+ * clustering alphabetically.
+ */
+export function shardCandidates<T extends { id: string }>(candidates: T[], shard: Shard): T[] {
+  return [...candidates]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .filter((_, position) => position % shard.count === shard.index - 1);
+}
+
 export function prepareCompose(template: ServiceTemplate): string {
   const body = SERVICE_TEMPLATE_COMPOSE[template.id];
   if (!body) throw new Error(`No Compose body vendored for template "${template.id}"`);
@@ -267,6 +296,11 @@ interface Options {
   limit: number | null;
   timeoutMs: number;
   write: boolean;
+  shard: Shard | null;
+  /** Remove unused images after each template. For scratch CI runners with little disk. */
+  pruneImages: boolean;
+  /** Write the ledger here instead of scripts/verified-templates.json (one shard's results). */
+  output: string | null;
 }
 
 function parseOptions(argv: string[]): Options {
@@ -277,12 +311,16 @@ function parseOptions(argv: string[]): Options {
   const only = value("--only");
   const limit = value("--limit");
   const timeout = value("--timeout");
+  const shard = value("--shard");
 
   return {
     only: only ? only.split(",").map((entry) => entry.trim()) : [],
     limit: limit ? Number(limit) : null,
     timeoutMs: timeout ? Number(timeout) * 1000 : DEFAULT_TIMEOUT_MS,
     write: !argv.includes("--no-write"),
+    shard: shard ? parseShard(shard) : null,
+    pruneImages: argv.includes("--prune-images"),
+    output: value("--output"),
   };
 }
 
@@ -300,6 +338,10 @@ async function main(): Promise<void> {
 
   let candidates = selectCandidates(SERVICE_TEMPLATES, options.only);
   if (options.limit !== null) candidates = candidates.slice(0, options.limit);
+  if (options.shard) {
+    candidates = shardCandidates(candidates, options.shard);
+    console.log(`Shard ${options.shard.index}/${options.shard.count}: ${candidates.length} template(s).`);
+  }
 
   console.log(`${SERVICE_TEMPLATES.length} imported, ${candidates.length} eligible for the gate.\n`);
 
@@ -341,6 +383,20 @@ async function main(): Promise<void> {
       failed[template.id] = reason;
       console.log(`${label}: ERROR — ${reason}`);
     }
+
+    if (options.pruneImages) {
+      // Inside withSandbox, so the daemon safety check runs again before any
+      // image is removed; a shared daemon is refused here as everywhere else.
+      await withSandbox((sandbox) =>
+        (sandbox.docker as any).pruneImages({ filters: { dangling: ["false"] } }),
+      ).catch((error) => {
+        if (error instanceof SandboxRefused) {
+          console.error(`\n${error.message}`);
+          process.exit(1);
+        }
+        console.log(`${label}: image prune failed (${error instanceof Error ? error.message : error})`);
+      });
+    }
   }
 
   console.log(`\nPassed ${passed.length}, failed ${Object.keys(failed).length}.`);
@@ -356,8 +412,9 @@ async function main(): Promise<void> {
     passed: passed.sort(),
     failed: Object.fromEntries(Object.entries(failed).sort(([a], [b]) => a.localeCompare(b))),
   };
-  writeFileSync(LEDGER_PATH, `${JSON.stringify(ledger, null, 2)}\n`, "utf8");
-  console.log(`Wrote ${LEDGER_PATH}`);
+  const ledgerPath = options.output ? resolve(options.output) : LEDGER_PATH;
+  writeFileSync(ledgerPath, `${JSON.stringify(ledger, null, 2)}\n`, "utf8");
+  console.log(`Wrote ${ledgerPath}`);
   console.log("Re-run scripts/import-coolify-templates.ts to fold these results into the catalogue.");
 }
 

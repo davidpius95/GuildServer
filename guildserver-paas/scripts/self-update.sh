@@ -85,6 +85,9 @@ ci_conclusion() {
 import json, sys
 try:
     runs = json.load(sys.stdin).get("check_runs", [])
+    # Template verification runs for hours on scratch runners and reports
+    # catalogue quality, not whether this commit is safe to deploy.
+    runs = [r for r in runs if not str(r.get("name", "")).startswith(("Verify templates", "Publish verification results"))]
 except Exception:
     print("unknown"); raise SystemExit
 if not runs:

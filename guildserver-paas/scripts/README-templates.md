@@ -33,9 +33,9 @@ pass in the ledger **against the current pin**. Importing is not endorsing.
 ## Importing
 
 ```bash
-pnpm tsx scripts/import-coolify-templates.ts            # fetch, translate, write
-pnpm tsx scripts/import-coolify-templates.ts --dry-run  # report only
-pnpm tsx scripts/import-coolify-templates.ts --offline <dir>   # local checkout
+apps/api/node_modules/.bin/tsx scripts/import-coolify-templates.ts            # fetch, translate, write
+apps/api/node_modules/.bin/tsx scripts/import-coolify-templates.ts --dry-run  # report only
+apps/api/node_modules/.bin/tsx scripts/import-coolify-templates.ts --offline <dir>   # local checkout
 ```
 
 Nothing fetches at runtime — only this script talks to GitHub, and only at the
@@ -45,9 +45,9 @@ re-run, review the diff, re-run the gate, update the attribution file.
 ## Verifying
 
 ```bash
-GS_ALLOW_DOCKER_TESTS=1 pnpm tsx scripts/verify-templates.ts
-GS_ALLOW_DOCKER_TESTS=1 pnpm tsx scripts/verify-templates.ts --only ghost,umami
-GS_ALLOW_DOCKER_TESTS=1 pnpm tsx scripts/verify-templates.ts --limit 25 --no-write
+GS_ALLOW_DOCKER_TESTS=1 apps/api/node_modules/.bin/tsx scripts/verify-templates.ts
+GS_ALLOW_DOCKER_TESTS=1 apps/api/node_modules/.bin/tsx scripts/verify-templates.ts --only ghost,umami
+GS_ALLOW_DOCKER_TESTS=1 apps/api/node_modules/.bin/tsx scripts/verify-templates.ts --limit 25 --no-write
 ```
 
 > **This starts containers.** Run it only on a scratch daemon that hosts nothing
@@ -57,6 +57,30 @@ GS_ALLOW_DOCKER_TESTS=1 pnpm tsx scripts/verify-templates.ts --limit 25 --no-wri
 > set `GS_DOCKER_TESTS_ACK_SHARED_DAEMON`.
 
 After a run, re-run the importer to fold the results into the catalogue.
+
+Run these from `guildserver-paas/`. `tsx` is a dependency of `apps/api`, not of
+the workspace root, so `pnpm tsx` does not find it.
+
+### On GitHub Actions (the intended way)
+
+`.github/workflows/verify-templates.yml` runs the gate on GitHub's scratch
+runners: weekly, on demand (**Actions → Verify service templates → Run
+workflow**), and when the gate itself changes on `main`. It splits the
+eligible templates across 24 shards:
+
+```bash
+GS_ALLOW_DOCKER_TESTS=1 apps/api/node_modules/.bin/tsx scripts/verify-templates.ts \
+  --shard 3/24 --prune-images --output template-ledger-3.json
+```
+
+- `--shard i/n` verifies every n-th template by id, so each lands in exactly one shard.
+- `--prune-images` removes unused images after each template; runners have little disk.
+- `--output` writes that shard's ledger instead of `scripts/verified-templates.json`.
+
+A final job merges the shard ledgers with `scripts/merge-template-ledgers.ts`,
+re-runs the importer, and force-pushes the result to the
+`template-verification` branch for review. It never pushes to `main`, and the
+production updater's CI gate ignores these check runs.
 
 ## Consuming the data
 
