@@ -115,6 +115,11 @@ services:
       CLOUDFLARE_ZONE_ID: ${CLOUDFLARE_ZONE_ID:-${CF_ZONES:-}}
       CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
       CLOUDFLARE_FALLBACK_ORIGIN: ${CLOUDFLARE_FALLBACK_ORIGIN:-}
+      # Rolling (zero-downtime) application deploys; off unless set to 1 in
+      # .env.production. See docs/zero-downtime-deploys.md.
+      GS_ZERO_DOWNTIME: ${GS_ZERO_DOWNTIME:-0}
+      # Days of raw metrics kept; the nightly retention job deletes older rows.
+      METRICS_RETENTION_DAYS: ${METRICS_RETENTION_DAYS:-30}
       # Flutterwave v4. Empty defaults keep the stack bootable without them —
       # isFlutterwaveV4Configured() gates every call site.
       FLW_V4_CLIENT_ID: ${FLW_V4_CLIENT_ID:-}
