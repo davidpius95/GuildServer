@@ -60,6 +60,39 @@ export class ComposeNormalizeError extends Error {
   }
 }
 
+/**
+ * Declare every named volume a service mounts that the file does not declare.
+ * Returns the body unchanged when nothing is missing.
+ */
+export function declareNamedVolumes(composeBody: string): string {
+  const doc = yaml.load(composeBody) as Record<string, any> | null;
+  if (!doc || typeof doc !== "object" || !doc.services || typeof doc.services !== "object") return composeBody;
+
+  const declared = new Set(Object.keys(doc.volumes ?? {}));
+  const missing: string[] = [];
+  for (const service of Object.values<any>(doc.services)) {
+    for (const mount of Array.isArray(service?.volumes) ? service.volumes : []) {
+      const source =
+        typeof mount === "string"
+          ? mount.split(":")[0]
+          : mount && typeof mount === "object" && (mount.type ?? "volume") === "volume"
+            ? mount.source
+            : undefined;
+      // A named volume is a bare name: not a host path, and not interpolated.
+      if (typeof source !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(source)) continue;
+      if (!declared.has(source)) {
+        declared.add(source);
+        missing.push(source);
+      }
+    }
+  }
+  if (missing.length === 0) return composeBody;
+
+  doc.volumes = { ...(doc.volumes ?? {}) };
+  for (const name of missing) doc.volumes[name] = null;
+  return yaml.dump(doc, { lineWidth: -1, noRefs: true });
+}
+
 // ---------------------------------------------------------------------------
 // Naming
 // ---------------------------------------------------------------------------
@@ -362,9 +395,12 @@ export function normalizeCompose(input: NormalizeInput): NormalizeResult {
   }
 
   // ---- 3. Parse the expanded document ------------------------------------
+  // Named volumes mounted by services that are not declared under top-level volumes:
+  // are auto-declared so that Compose parse succeeds and all volumes are tracked.
+  const withVolumes = declareNamedVolumes(expanded);
   let parsed: ParsedCompose;
   try {
-    parsed = parseCompose(expanded);
+    parsed = parseCompose(withVolumes);
   } catch (error) {
     if (error instanceof ComposeParseError) {
       throw new ComposeNormalizeError(error.message.split("\n")[0], error.problems);
