@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { COOLIFY_UPSTREAM } from "@guildserver/database/dist/seed/service-templates";
@@ -78,10 +79,13 @@ export const serviceTemplateRouter = createTRPCRouter({
       }
 
       const baseDomain = process.env.BASE_DOMAIN || "guildserver.localhost";
+      const randomSuffix = crypto.randomBytes(2).toString("hex");
+      const baseSlug = slugify(input.name);
+      const stackSlug = `${baseSlug}-${randomSuffix}`;
       let plan;
       try {
         plan = planTemplateStack(template, compose, {
-          stackSlug: slugify(input.name),
+          stackSlug,
           baseDomain,
           https: !baseDomain.endsWith("localhost"),
           userValues: input.values,
@@ -99,6 +103,7 @@ export const serviceTemplateRouter = createTRPCRouter({
       const stacks = serviceRouter.createCaller(ctx);
       const stack = await stacks.create({
         name: input.name,
+        serviceName: stackSlug,
         projectId: input.projectId,
         description: template.description.slice(0, 1000),
         composeFile: plan.composeFile,

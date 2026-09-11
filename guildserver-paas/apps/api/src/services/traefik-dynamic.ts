@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { db, domains } from "@guildserver/database";
+import { db, domains, services } from "@guildserver/database";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { docker, GS_LABELS } from "./docker/client";
@@ -132,6 +132,47 @@ async function resolveTraefikService(
 }
 
 /**
+ * Resolves the Traefik service name for a specific container in a stack.
+ */
+async function resolveStackTraefikService(
+  stackId: string,
+  composeServiceName: string,
+  traefikServices: Set<string>
+): Promise<string | null> {
+  try {
+    const containers = await docker.listContainers({
+      all: true,
+      filters: {
+        label: [`${GS_LABELS.SERVICE_ID}=${stackId}`],
+      },
+    });
+
+    for (const c of containers) {
+      if (c.Labels?.[GS_LABELS.COMPOSE_SERVICE] !== composeServiceName) continue;
+
+      for (const [key, val] of Object.entries(c.Labels || {})) {
+        if (key.startsWith("traefik.http.routers.") && key.endsWith(".service")) {
+          const serviceName = `${val.toLowerCase()}@docker`;
+          if (traefikServices.size === 0 || traefikServices.has(serviceName)) {
+            return serviceName;
+          }
+        }
+        const svcMatch = key.match(/^traefik\.http\.services\.([^.]+)\.loadbalancer\.server\.port$/);
+        if (svcMatch?.[1]) {
+          const serviceName = `${svcMatch[1].toLowerCase()}@docker`;
+          if (traefikServices.size === 0 || traefikServices.has(serviceName)) {
+            return serviceName;
+          }
+        }
+      }
+    }
+  } catch {
+    // Docker socket might be unavailable in some environments
+  }
+  return null;
+}
+
+/**
  * Synchronize all verified custom domains directly into Traefik's dynamic
  * file configuration.
  *
@@ -199,6 +240,36 @@ export async function syncTraefikDynamicDomains(): Promise<void> {
       lines.push(`        - "web"`);
       lines.push(`        - "websecure"`);
       count++;
+    }
+
+    // Query stacks (services) with domains
+    const allStacks = await db.query.services.findMany();
+    for (const stack of allStacks) {
+      const domainMap = (stack.domains ?? {}) as Record<string, string[]>;
+      for (const [composeService, hostList] of Object.entries(domainMap)) {
+        if (!Array.isArray(hostList)) continue;
+        for (const host of hostList) {
+          const domainName = (host || "").trim().toLowerCase();
+          if (!domainName) continue;
+
+          const serviceName = await resolveStackTraefikService(
+            stack.id,
+            composeService,
+            traefikServices
+          );
+
+          if (!serviceName) continue;
+
+          const routerKey = `custom-stack-${stack.id.slice(0, 8)}-${composeService}-${domainName.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+          lines.push(`    ${routerKey}:`);
+          lines.push(`      rule: "Host(\`${domainName}\`)"`);
+          lines.push(`      service: "${serviceName}"`);
+          lines.push(`      entryPoints:`);
+          lines.push(`        - "web"`);
+          lines.push(`        - "websecure"`);
+          count++;
+        }
+      }
     }
 
     if (count === 0) {

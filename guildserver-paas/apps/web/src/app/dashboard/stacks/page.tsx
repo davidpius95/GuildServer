@@ -4,7 +4,7 @@ import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Layers, Loader2, Plus } from "lucide-react"
+import { Globe, Layers, Loader2, Plus } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,6 +30,7 @@ type StackRow = {
   runningCount: number
   updatedAt: string | Date | null
   projectName?: string
+  domains?: Record<string, string[]> | null
 }
 
 export default function StacksPage() {
@@ -108,6 +109,16 @@ export default function StacksPage() {
                     <StackStatusBadge status={stack.status} />
                   </div>
                   {stack.description && <p className="line-clamp-2 text-sm text-muted-foreground">{stack.description}</p>}
+                  {(() => {
+                    const domainMap = (stack.domains ?? {}) as Record<string, string[]>
+                    const firstDomain = Object.values(domainMap).flat().filter(Boolean)[0]
+                    return firstDomain ? (
+                      <div className="flex items-center gap-1.5 text-xs text-primary font-mono truncate">
+                        <Globe className="h-3 w-3 flex-shrink-0" />
+                        <span className="truncate">{firstDomain}</span>
+                      </div>
+                    ) : null
+                  })()}
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>
                       {stack.runningCount}/{stack.containerCount} running

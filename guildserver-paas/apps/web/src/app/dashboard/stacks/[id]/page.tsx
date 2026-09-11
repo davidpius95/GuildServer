@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { ArrowLeft, Loader2, Play, RefreshCw, RotateCw, Square, Terminal, Trash2 } from "lucide-react"
+import { ArrowLeft, Check, Copy, ExternalLink, Globe, Loader2, Play, RefreshCw, RotateCw, Square, Terminal, Trash2 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -60,6 +60,7 @@ export default function StackDetailPage() {
   const [domainText, setDomainText] = useState<Record<string, string>>({})
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [removeVolumes, setRemoveVolumes] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   // Seed the editors once per stack; later refetches must not clobber unsaved edits.
   useEffect(() => {
@@ -135,6 +136,11 @@ export default function StackDetailPage() {
   const previewServices = (previewQuery.data?.services ?? []) as Array<{ composeServiceName: string; routedPort?: number | null; domains?: string[] }>
   const busy = deployMutation.isPending || stopMutation.isPending || restartMutation.isPending
 
+  const domainMap = (stack.domains ?? {}) as Record<string, string[]>
+  const allDomains = Object.values(domainMap).flat().filter(Boolean)
+  const primaryDomain = allDomains[0] ?? null
+  const primaryUrl = primaryDomain ? `https://${primaryDomain}` : null
+
   return (
     <div className="space-y-6">
       <div className="space-y-3">
@@ -152,6 +158,39 @@ export default function StackDetailPage() {
               {stack.description || "Docker Compose stack"}
               {stack.templateId && stack.templateId !== "custom" ? ` · template ${stack.templateId}` : ""}
             </p>
+            {primaryUrl && (
+              <div className="flex flex-wrap items-center gap-2 pt-2">
+                <a
+                  href={primaryUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 font-mono text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+                >
+                  <Globe className="h-3.5 w-3.5" />
+                  {primaryDomain}
+                </a>
+                <Button variant="outline" size="sm" className="h-7 gap-1 px-2.5 text-xs" asChild>
+                  <a href={primaryUrl} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Open
+                  </a>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-xs"
+                  onClick={() => {
+                    navigator.clipboard.writeText(primaryUrl)
+                    setCopied(true)
+                    toast.success("URL copied to clipboard")
+                    setTimeout(() => setCopied(false), 2000)
+                  }}
+                >
+                  {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copied ? "Copied" : "Copy URL"}
+                </Button>
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => deployMutation.mutate({ id })} disabled={busy || stack.status === "deploying"}>
@@ -387,6 +426,19 @@ export default function StackDetailPage() {
                   </div>
                 ))
               )}
+              <div className="rounded-lg border bg-muted/40 p-4 text-xs space-y-2 text-muted-foreground">
+                <p className="font-semibold text-foreground">Configuring a Custom Domain:</p>
+                <ol className="list-decimal pl-4 space-y-1.5">
+                  <li>
+                    Create a <strong className="text-foreground">CNAME</strong> record with your DNS provider pointing your domain to{" "}
+                    <code className="rounded bg-background px-1.5 py-0.5 font-mono text-primary font-medium">
+                      {stack.serviceName || stack.id.slice(0, 8)}.guild-technologies.com
+                    </code>
+                  </li>
+                  <li>Enter the domain above (e.g. <code>app.yourdomain.com</code>) and click <strong>Save domains</strong>.</li>
+                  <li>SSL is provisioned automatically, and traffic will route through Traefik securely.</li>
+                </ol>
+              </div>
               <div className="flex justify-end">
                 <Button
                   onClick={() =>

@@ -31,6 +31,9 @@ import {
   restartStack,
   stopStack,
 } from "../services/compose/deploy";
+import { isCloudflareSaasConfigured, createCustomHostname } from "../services/cloudflare-saas";
+import { syncTraefikDynamicDomains } from "../services/traefik-dynamic";
+import { logger } from "../utils/logger";
 
 // ---------------------------------------------------------------------------
 // Authorization
@@ -106,6 +109,7 @@ const domainMapSchema = z.record(z.array(z.string().min(1)));
 
 const createServiceSchema = z.object({
   name: z.string().min(1).max(255),
+  serviceName: z.string().min(1).max(255).optional(),
   description: z.string().optional(),
   projectId: z.string().uuid(),
   composeFile: z.string().min(1).max(512 * 1024),
@@ -177,7 +181,7 @@ export const serviceRouter = createTRPCRouter({
       .insert(services)
       .values({
         name: input.name,
-        serviceName: slugify(input.name),
+        serviceName: input.serviceName ? slugify(input.serviceName) : slugify(input.name),
         description: input.description,
         projectId: input.projectId,
         composeFile: input.composeFile,
@@ -210,6 +214,39 @@ export const serviceRouter = createTRPCRouter({
       .set({ ...changes, updatedAt: new Date() })
       .where(eq(services.id, id))
       .returning();
+
+    if (input.domains) {
+      const baseDomain = process.env.BASE_DOMAIN || "guildserver.localhost";
+      const customDomains: string[] = [];
+      for (const hostnames of Object.values(input.domains)) {
+        if (!Array.isArray(hostnames)) continue;
+        for (const h of hostnames) {
+          const norm = (h || "").trim().toLowerCase();
+          if (norm && !norm.endsWith(baseDomain) && !norm.endsWith("localhost")) {
+            customDomains.push(norm);
+          }
+        }
+      }
+
+      if (customDomains.length > 0 && isCloudflareSaasConfigured()) {
+        for (const hostname of customDomains) {
+          try {
+            await createCustomHostname({ hostname, sslMethod: "http" });
+            logger.info(`[service.update] Registered Cloudflare SaaS custom hostname: ${hostname}`);
+          } catch (cfErr: any) {
+            if (!cfErr?.message?.includes("already exists")) {
+              logger.warn(`[service.update] Cloudflare SaaS registration warning for ${hostname}: ${cfErr.message}`);
+            }
+          }
+        }
+      }
+
+      try {
+        await syncTraefikDynamicDomains();
+      } catch (err: any) {
+        logger.warn(`[service.update] Traefik dynamic sync warning: ${err.message}`);
+      }
+    }
 
     return updated;
   }),

@@ -180,7 +180,13 @@ export function planTemplateStack(
   );
 
   const scheme = options.https ? "https" : "http";
-  const hostFor = (service: string) => `${slugify(service)}-${options.stackSlug}.${options.baseDomain}`;
+  const hostFor = (service: string) => {
+    const serviceSlug = slugify(service);
+    if (options.stackSlug.startsWith(`${serviceSlug}-`)) {
+      return `${options.stackSlug}.${options.baseDomain}`;
+    }
+    return `${serviceSlug}-${options.stackSlug}.${options.baseDomain}`;
+  };
   const domains: Record<string, string[]> = {};
   const warnings: string[] = [];
   const unrouted = new Set<string>();
