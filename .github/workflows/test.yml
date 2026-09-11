@@ -157,6 +157,12 @@ jobs:
           done
           echo "MinIO did not become healthy"; docker logs minio; exit 1
 
+      # @guildserver/database resolves to dist/ (package.json "main"), which is
+      # gitignored. Everything above runs the package's own source through tsx;
+      # the API tests import the built package.
+      - name: Build database package
+        run: pnpm --filter @guildserver/database build
+
       - name: Run backend tests
         run: pnpm --filter @guildserver/api test:ci
         env:
