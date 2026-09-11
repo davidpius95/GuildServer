@@ -20,7 +20,9 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "8080:8080"
+      # Traefik's API and dashboard (api.insecure) have no authentication. Bind
+      # them to loopback so only this server (scripts/prod-smoke.sh) can reach them.
+      - "127.0.0.1:8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./data/letsencrypt:/letsencrypt
