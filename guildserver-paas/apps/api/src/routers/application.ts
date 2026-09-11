@@ -20,6 +20,7 @@ import { getProvider } from "../providers/factory";
 import { registerGithubWebhook } from "../services/github";
 import { getValidAccessToken } from "../services/oauth-tokens";
 import { encryptSecret } from "../utils/crypto";
+import { logger } from "../utils/logger";
 
 import { runtimeSettingsSchema } from "../services/app-runtime";
 import {
@@ -655,7 +656,11 @@ export const applicationRouter = createTRPCRouter({
           return { timestamp, level, message };
         });
       } catch (error: any) {
-        return [{ timestamp: new Date(), level: "error", message: `Failed to fetch logs: ${error.message}` }];
+        // The raw error was returned verbatim, and it carries internal detail —
+        // Docker socket paths, hostnames, stack fragments. Keep that in the
+        // server log and tell the caller only what they can act on.
+        logger.warn("Failed to fetch container logs", { applicationId: input.id, error: String(error?.message ?? error) });
+        return [{ timestamp: new Date(), level: "error", message: "Failed to fetch logs. The container may not be running." }];
       }
     }),
 
