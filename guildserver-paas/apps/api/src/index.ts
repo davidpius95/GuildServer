@@ -11,6 +11,7 @@ import { createContext } from "./trpc/context";
 import { appRouter } from "./trpc/router";
 import { logger } from "./utils/logger";
 import { createWebSocketServer } from "./websocket/server";
+import { startLogDrains, stopLogDrains } from "./services/log-drain";
 import { initializeQueues } from "./queues/setup";
 import "./queues/instances"; // self-contained instance provisioning queue/worker
 import "./queues/backups"; // self-contained database backup queue/worker + scheduler
@@ -197,9 +198,13 @@ async function startServer() {
     createWebSocketServer(server);
     logger.info("🔌 WebSocket server initialized");
 
+    // Forward container logs for resources that have an enabled log drain.
+    startLogDrains();
+
     // Graceful shutdown
     process.on("SIGTERM", () => {
       logger.info("Received SIGTERM, shutting down gracefully");
+      void stopLogDrains();
       server.close(() => {
         logger.info("Server closed");
         process.exit(0);
@@ -208,6 +213,7 @@ async function startServer() {
 
     process.on("SIGINT", () => {
       logger.info("Received SIGINT, shutting down gracefully");
+      void stopLogDrains();
       server.close(() => {
         logger.info("Server closed");
         process.exit(0);

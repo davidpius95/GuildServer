@@ -824,6 +824,32 @@ export const notificationDeliveries = pgTable("notification_deliveries", {
   createdAtIdx: index("notification_deliveries_created_at_idx").on(table.createdAt),
 }));
 
+// Forward a resource's container logs to an HTTP endpoint. Exactly one of
+// applicationId / serviceId is set. The endpoint URL and headers are
+// encrypted JSON in `secret`.
+export const logDrains = pgTable("log_drains", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  applicationId: uuid("application_id").references(() => applications.id, { onDelete: "cascade" }),
+  serviceId: uuid("service_id").references(() => services.id, { onDelete: "cascade" }),
+  secret: text("secret").notNull(),
+  format: varchar("format", { length: 16 }).notNull().default("json"),
+  enabled: boolean("enabled").notNull().default(true),
+  lastDeliveryAt: timestamp("last_delivery_at"),
+  lastDeliveryOk: boolean("last_delivery_ok"),
+  lastError: text("last_error"),
+  recordsSent: bigint("records_sent", { mode: "number" }).notNull().default(0),
+  recordsDropped: bigint("records_dropped", { mode: "number" }).notNull().default(0),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  organizationIdIdx: index("log_drains_organization_id_idx").on(table.organizationId),
+  applicationIdIdx: index("log_drains_application_id_idx").on(table.applicationId),
+  serviceIdIdx: index("log_drains_service_id_idx").on(table.serviceId),
+}));
+
 // =====================
 // KUBERNETES TABLES
 // =====================

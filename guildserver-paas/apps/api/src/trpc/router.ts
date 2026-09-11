@@ -24,6 +24,7 @@ import { serviceRouter } from "../routers/service";
 import { apiTokenRouter } from "../routers/api-token";
 import { backupStorageRouter } from "../routers/backup-storage";
 import { notificationChannelRouter } from "../routers/notification-channel";
+import { logDrainRouter } from "../routers/log-drain";
 
 export const appRouter = createTRPCRouter({
   auth: authRouter,
@@ -54,6 +55,7 @@ export const appRouter = createTRPCRouter({
   /** Off-site (S3-compatible) destinations for database backups. */
   backupStorage: backupStorageRouter,
   notificationChannel: notificationChannelRouter,
+  logDrain: logDrainRouter,
 });
 
 export type AppRouter = typeof appRouter;
