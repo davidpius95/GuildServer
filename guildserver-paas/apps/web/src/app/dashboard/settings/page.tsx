@@ -12,7 +12,7 @@ import { BackupStorageCard } from "@/components/settings/backup-storage-card"
 import { LogDrainsCard } from "@/components/settings/log-drains-card"
 import { NotificationChannelsCard } from "@/components/settings/notification-channels-card"
 import { Switch } from "@/components/ui/switch"
-import {
+import { AlertTriangle,
   Settings,
   User,
   Bell,
@@ -822,15 +822,23 @@ export default function SettingsPage() {
                       <div>
                         <div className="font-medium flex items-center gap-2">
                           GitHub
-                          {githubStatus?.connected && (
+                          {githubStatus?.connected && !githubStatus.needsReconnect && (
                             <Badge variant="outline" className="bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-400 text-xs">
                               <CheckCircle className="w-3 h-3 mr-1" />
                               Connected
                             </Badge>
                           )}
+                          {githubStatus?.needsReconnect && (
+                            <Badge variant="outline" className="bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400 text-xs">
+                              <AlertTriangle className="w-3 h-3 mr-1" />
+                              Reconnect required
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          {githubStatus?.connected
+                          {githubStatus?.needsReconnect
+                            ? "GitHub no longer accepts this connection. Reconnect to keep browsing and deploying your repositories."
+                            : githubStatus?.connected
                             ? githubStatus.hasRepoScope
                               ? "Full access — can browse and deploy from your repositories"
                               : "Login only — grant repo access to browse repositories"
@@ -847,7 +855,17 @@ export default function SettingsPage() {
                     <div className="flex items-center gap-2">
                       {githubStatus?.connected ? (
                         <>
-                          {!githubStatus.hasRepoScope && (
+                          {githubStatus.needsReconnect ? (
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                void startGithubLink()
+                              }}
+                            >
+                              <GitHubIcon className="mr-2 h-3.5 w-3.5" />
+                              Reconnect
+                            </Button>
+                          ) : !githubStatus.hasRepoScope && (
                             <Button
                               variant="outline"
                               size="sm"

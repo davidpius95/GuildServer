@@ -5,6 +5,7 @@ import { oauthAccounts } from "@guildserver/database";
 import { eq, and } from "drizzle-orm";
 import { listGithubRepos, listGithubBranches, listGitlabRepos, listGitlabBranches, listBitbucketRepos, listBitbucketBranches } from "../services/git-provider";
 import { getValidAccessToken, isAuthFailure } from "../services/oauth-tokens";
+import { checkConnectionHealth } from "../services/git-connection-health";
 import { createLinkToken, LINK_TOKEN_TTL_SECONDS } from "../services/oauth-link";
 
 export const githubRouter = createTRPCRouter({
@@ -25,8 +26,14 @@ export const githubRouter = createTRPCRouter({
         },
       });
 
+    // A stored row only proves the user connected once; ask the provider
+    // whether it still accepts the token, so the UI can prompt a reconnect.
+    const health = account ? await checkConnectionHealth(ctx.user.id, provider) : null;
+
     return {
       connected: !!account,
+      health,
+      needsReconnect: health === "reconnect_required",
       hasRepoScope: account?.scope?.includes("repo") ?? false,
       scope: account?.scope ?? null,
       connectedAt: account?.createdAt ?? null,
