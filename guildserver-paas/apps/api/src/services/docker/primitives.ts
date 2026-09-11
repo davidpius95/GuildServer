@@ -247,6 +247,18 @@ export function buildTraefikLabels(input: {
 
   labels[`traefik.http.services.${routerName}.loadbalancer.server.port`] = String(input.servicePort);
 
+  // Retry a request that failed at the network level (connection refused or
+  // reset before any response) against another backend. During a rolling
+  // swap Traefik learns that the retiring container has stopped only when it
+  // processes Docker's event, about a second later; without this, requests
+  // routed to it in that window come back as 502s. A retried request never
+  // produced a response, but one cut off mid-processing may run twice, so
+  // applications should finish in-flight requests on SIGTERM (the stop grace
+  // period gives them time to).
+  const retryMiddleware = `${routerName}-retry`;
+  labels[`traefik.http.middlewares.${retryMiddleware}.retry.attempts`] = "3";
+  labels[`traefik.http.middlewares.${retryMiddleware}.retry.initialinterval`] = "100ms";
+
   if (input.healthCheck) {
     labels[`traefik.http.services.${routerName}.loadbalancer.healthcheck.path`] = input.healthCheck.path;
     labels[`traefik.http.services.${routerName}.loadbalancer.healthcheck.interval`] =
@@ -259,6 +271,7 @@ export function buildTraefikLabels(input: {
     const localHostRules = localhostDomains.map((dm) => `Host(\`${dm}\`)`).join(" || ");
     labels[`traefik.http.routers.${routerName}.rule`] = localHostRules;
     labels[`traefik.http.routers.${routerName}.entrypoints`] = "web";
+    labels[`traefik.http.routers.${routerName}.middlewares`] = retryMiddleware;
     labels[`traefik.http.routers.${routerName}.service`] = routerName;
   }
 
@@ -269,6 +282,7 @@ export function buildTraefikLabels(input: {
     if (behindTunnel) {
       labels[`traefik.http.routers.${routerName}.rule`] = tlsHostRules;
       labels[`traefik.http.routers.${routerName}.entrypoints`] = "web";
+      labels[`traefik.http.routers.${routerName}.middlewares`] = retryMiddleware;
       labels[`traefik.http.routers.${routerName}.service`] = routerName;
       notes.push(`Configured HTTP routing (behind Cloudflare Tunnel) for domains: ${tlsDomains.join(", ")}`);
     } else {
@@ -277,6 +291,7 @@ export function buildTraefikLabels(input: {
       labels[`traefik.http.routers.${tlsRouterName}.entrypoints`] = "websecure";
       labels[`traefik.http.routers.${tlsRouterName}.tls`] = "true";
       labels[`traefik.http.routers.${tlsRouterName}.tls.certresolver`] = "letsencrypt";
+      labels[`traefik.http.routers.${tlsRouterName}.middlewares`] = retryMiddleware;
       labels[`traefik.http.routers.${tlsRouterName}.service`] = routerName;
 
       const redirectRouterName = `${routerName}-redirect`;

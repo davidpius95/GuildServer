@@ -10,6 +10,11 @@ services:
       - "--providers.docker.network=guildserver"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
+      # Fail a dial to a stopped container's address in 2s instead of 30s, so
+      # the per-router retry middleware moves the request to a live backend
+      # during a rolling deploy. Connects on the local bridge take well under a
+      # millisecond; see apps/api/src/services/docker/rolling.ts.
+      - "--serverstransport.forwardingtimeouts.dialtimeout=2s"
       - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@guildserver.com}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"

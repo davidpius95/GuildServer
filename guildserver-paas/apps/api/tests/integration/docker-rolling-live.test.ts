@@ -47,6 +47,10 @@ async function startTraefik(sandbox: Sandbox, hostPort: number): Promise<string>
       // Traefik must not see, let alone route to, anything outside this sandbox.
       `--providers.docker.constraints=Label(\`${SANDBOX_LABEL}\`,\`${sandbox.id}\`)`,
       '--entrypoints.web.address=:80',
+      // As in docker-compose.prod.yml: fail a dial to a stopped container's
+      // address fast, so the retry middleware can move the request to a live
+      // backend (the default is 30s).
+      '--serverstransport.forwardingtimeouts.dialtimeout=2s',
     ],
     ExposedPorts: { '80/tcp': {} },
     HostConfig: {
@@ -92,16 +96,23 @@ function requestOnce(port: number): Promise<number> {
 interface LoadResult {
   total: number;
   nonSuccess: number[];
+  /** When each non-2xx happened, in ms since load started. */
+  failuresAtMs: number[];
 }
 
 /** Hammer the front door until `stop()` is called, recording every status. */
 function startLoad(port: number): { stop: () => Promise<LoadResult> } {
   const statuses: number[] = [];
+  const failuresAtMs: number[] = [];
+  const startedAt = Date.now();
   let running = true;
 
   const loop = (async () => {
     while (running) {
-      statuses.push(await requestOnce(port));
+      const sentAt = Date.now() - startedAt;
+      const status = await requestOnce(port);
+      statuses.push(status);
+      if (status < 200 || status >= 300) failuresAtMs.push(sentAt);
       await new Promise((r) => setTimeout(r, 10));
     }
   })();
@@ -110,7 +121,7 @@ function startLoad(port: number): { stop: () => Promise<LoadResult> } {
     stop: async () => {
       running = false;
       await loop;
-      return { total: statuses.length, nonSuccess: statuses.filter((s) => s < 200 || s >= 300) };
+      return { total: statuses.length, nonSuccess: statuses.filter((s) => s < 200 || s >= 300), failuresAtMs };
     },
   };
 }
@@ -164,6 +175,10 @@ describeDocker('rolling deploy against a real daemon', () => {
         ...sandbox.labels,
       };
 
+      // Deploy log lines with their time since the load started, so a failure
+      // can be placed against the swap's phases.
+      let loadStartedAt = Date.now();
+      const timeline: string[] = [];
       const deploy = (deploymentId: string, generation: string) =>
         rollingDeploy({
           docker: sandbox.docker,
@@ -175,7 +190,7 @@ describeDocker('rolling deploy against a real daemon', () => {
           deploymentId,
           healthConfig,
           stopGraceSeconds: 5,
-          log: () => undefined,
+          log: (message) => timeline.push(`${Date.now() - loadStartedAt}ms ${message}`),
         });
 
       const proxyPort = 18080 + Math.floor(Math.random() * 1000);
@@ -188,6 +203,8 @@ describeDocker('rolling deploy against a real daemon', () => {
       await waitForRoute(proxyPort);
 
       // Generation 2 — the rolling swap, under continuous load.
+      timeline.length = 0;
+      loadStartedAt = Date.now();
       const load = startLoad(proxyPort);
       const second = await deploy('gen2aaaa-0000-0000-0000-000000000002', '2');
       sandbox.trackContainer(second.containerId);
@@ -199,6 +216,11 @@ describeDocker('rolling deploy against a real daemon', () => {
       expect(second.mode).toBe('overlap');
       // A meaningful sample, not three requests that happened to land well.
       expect(result.total).toBeGreaterThan(100);
+      if (result.nonSuccess.length > 0) {
+        console.log(
+          `non-2xx ${JSON.stringify(result.nonSuccess)} at ${JSON.stringify(result.failuresAtMs)}ms\n` + timeline.join('\n'),
+        );
+      }
       expect(result.nonSuccess).toEqual([]);
     });
   });
