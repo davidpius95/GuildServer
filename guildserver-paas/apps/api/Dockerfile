@@ -33,8 +33,11 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Install git (for cloning repos), docker-cli (for building images), and tsx
-RUN apk add --no-cache git docker-cli
+# git clones repositories; docker-cli builds and runs containers; the compose
+# plugin deploys Compose stacks (without it every stack deploy fails with
+# "unknown flag: --project-name"). The version check fails the build rather
+# than shipping an image that cannot deploy stacks.
+RUN apk add --no-cache git docker-cli docker-cli-compose && docker compose version
 RUN npm install -g tsx
 
 # Copy all node_modules

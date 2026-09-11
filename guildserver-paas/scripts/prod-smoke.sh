@@ -53,6 +53,13 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   ok "$managed managed container(s) running"
   [ -z "$unhealthy" ]  && ok "no managed container reports unhealthy" || bad "unhealthy: $unhealthy"
   [ -z "$restarting" ] && ok "no managed container is restart-looping" || bad "restarting: $restarting"
+  # Compose stacks are deployed by the Compose plugin inside the API container.
+  # An image without it fails every stack deploy with "unknown flag: --project-name".
+  if docker exec "${API_CONTAINER:-guildserver-api}" docker compose version >/dev/null 2>&1; then
+    ok "API container can run docker compose"
+  else
+    bad "API container cannot run docker compose (stack deploys will fail)"
+  fi
 else
   skip "Docker inventory (no daemon access from here)"
 fi
