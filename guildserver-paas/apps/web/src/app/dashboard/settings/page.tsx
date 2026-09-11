@@ -7,6 +7,10 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ApiTokensCard } from "@/components/settings/api-tokens-card"
+import { BackupStorageCard } from "@/components/settings/backup-storage-card"
+import { LogDrainsCard } from "@/components/settings/log-drains-card"
+import { NotificationChannelsCard } from "@/components/settings/notification-channels-card"
 import { Switch } from "@/components/ui/switch"
 import {
   Settings,
@@ -323,7 +327,7 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="organization" className="space-y-4">
-        <TabsList>
+        <TabsList className="flex h-auto flex-wrap justify-start">
           <TabsTrigger value="organization">Organization</TabsTrigger>
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="notifications">
@@ -335,6 +339,9 @@ export default function SettingsPage() {
             <Link2 className="h-3.5 w-3.5 mr-1.5" />
             Integrations
           </TabsTrigger>
+          <TabsTrigger value="api-tokens">API Tokens</TabsTrigger>
+          <TabsTrigger value="log-drains">Log Drains</TabsTrigger>
+          <TabsTrigger value="backups">Backups</TabsTrigger>
         </TabsList>
 
         {/* ======================== ORGANIZATION TAB ======================== */}
@@ -592,6 +599,8 @@ export default function SettingsPage() {
               )}
             </CardContent>
           </Card>
+
+          <NotificationChannelsCard />
 
           {/* Slack Integration */}
           <Card>
@@ -949,6 +958,21 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ======================== API TOKENS TAB ======================== */}
+        <TabsContent value="api-tokens" className="space-y-4">
+          <ApiTokensCard />
+        </TabsContent>
+
+        {/* ======================== LOG DRAINS TAB ======================== */}
+        <TabsContent value="log-drains" className="space-y-4">
+          <LogDrainsCard />
+        </TabsContent>
+
+        {/* ======================== BACKUPS TAB ======================== */}
+        <TabsContent value="backups" className="space-y-4">
+          <BackupStorageCard />
         </TabsContent>
       </Tabs>
     </div>
