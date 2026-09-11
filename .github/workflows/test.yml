@@ -2,7 +2,9 @@ name: Test Suite
 
 on:
   push:
-    branches: [main, develop]
+    # acceptance/** branches run the suite without touching main, to prove a
+    # change (such as a new check) before it can gate production deploys.
+    branches: [main, develop, 'acceptance/**']
   pull_request:
     branches: [main, develop]
 
@@ -237,11 +239,6 @@ jobs:
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-latest
-    # There is no Playwright suite wired up yet: no playwright.config and no
-    # @playwright/test dependency, only two spec files under apps/web/tests/e2e.
-    # Until there is, the job would fail (or hang) on a suite that cannot start.
-    # Enable it by setting the repository variable GS_E2E_ENABLED=true.
-    if: ${{ vars.GS_E2E_ENABLED == 'true' }}
     timeout-minutes: 30
 
     services:
@@ -269,6 +266,16 @@ jobs:
         ports:
           - 6379:6379
 
+    # Read by the database scripts, the web build (API_URL feeds the /trpc
+    # rewrite) and the API and web servers Playwright starts.
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/guildserver_e2e_test
+      REDIS_URL: redis://localhost:6379/2
+      JWT_SECRET: test-jwt-secret-key-for-e2e
+      PORT: '4000'
+      FRONTEND_URL: http://localhost:3000
+      API_URL: http://localhost:4000
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -288,54 +295,36 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
+      - name: Install Playwright's Chromium
+        run: pnpm --filter @guildserver/web exec playwright install --with-deps chromium
 
       - name: Wait for services
         run: |
-          until pg_isready -h localhost -p 5432 -U test; do
-            echo "Waiting for PostgreSQL..."
-            sleep 2
-          done
-
+          until pg_isready -h localhost -p 5432 -U test; do sleep 2; done
           # redis-cli is not installed on the runner; probe the port instead.
-          until (exec 3<>/dev/tcp/localhost/6379) 2>/dev/null; do
-            echo "Waiting for Redis..."
-            sleep 2
-          done
+          until (exec 3<>/dev/tcp/localhost/6379) 2>/dev/null; do sleep 2; done
 
-      - name: Build applications
-        run: pnpm --filter @guildserver/database --filter @guildserver/web build
-        env:
-          NODE_ENV: production
-          DATABASE_URL: postgresql://test:test@localhost:5432/guildserver_e2e_test
-          REDIS_URL: redis://localhost:6379/2
+      - name: Prepare the database
+        run: |
+          pnpm --filter @guildserver/database db:migrate
+          pnpm --filter @guildserver/database db:migrate-instances
+          pnpm --filter @guildserver/database build
 
+      - name: Build the web app
+        run: pnpm --filter @guildserver/web build
+
+      # Starts the API and web servers itself (see apps/web/playwright.config.ts)
+      # and reports failures as annotations.
       - name: Run E2E tests
-        run: npx playwright test --workers=2
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/guildserver_e2e_test
-          REDIS_URL: redis://localhost:6379/2
-          JWT_SECRET: test-jwt-secret-key-for-e2e
-          NODE_ENV: test
-          CI: true
+        run: pnpm --filter @guildserver/web exec playwright test
 
-      - name: Upload E2E test results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: playwright-report
-          path: guildserver-paas/playwright-report/
-          retention-days: 7
-
-      - name: Upload E2E screenshots
-        uses: actions/upload-artifact@v4
+      - name: Upload Playwright results
         if: failure()
+        uses: actions/upload-artifact@v4
         with:
-          name: playwright-screenshots
-          path: guildserver-paas/test-results/
+          name: playwright-results
+          path: guildserver-paas/apps/web/test-results/
           retention-days: 7
-
   # Build Test
   build-test:
     name: Build Test
