@@ -11,6 +11,7 @@ import { parseCompose } from '../../src/services/compose/parse';
 import {
   declareNamedVolumes,
   deployableCatalogue,
+  exposeDomainPorts,
   planTemplateStack,
   TemplateInputError,
   toCatalogueEntry,
@@ -79,7 +80,17 @@ describe('planTemplateStack', () => {
     expect(plan.environment.SERVICE_URL_WEB).toBe('https://web-my-blog.guild-technologies.com');
   });
 
-  it('gives a service without a published port a hostname but no route, and says so', () => {
+  it('routes a service whose domain variable names its port, even if the file publishes none', () => {
+    const template = {
+      ...TEMPLATE,
+      variables: TEMPLATE.variables.map((v) => (v.kind === 'domain' && v.targetService === 'mysql' ? { ...v, port: 3306 } : v)),
+    } as ServiceTemplate;
+    const plan = planTemplateStack(template, COMPOSE, options());
+    expect(plan.domains.mysql).toEqual(['mysql-my-blog.guild-technologies.com']);
+    expect(plan.warnings).toEqual([]);
+  });
+
+  it('gives a service with no known port a hostname but no route, and says so', () => {
     const plan = planTemplateStack(TEMPLATE, COMPOSE, options());
     expect(plan.domains.mysql).toBeUndefined();
     expect(plan.environment.SERVICE_FQDN_MYSQL).toBe('mysql-my-blog.guild-technologies.com');
@@ -104,6 +115,7 @@ describe('planTemplateStack', () => {
   it('keeps the Compose body uninterpolated, for the stack deploy to interpolate', () => {
     const plan = planTemplateStack(TEMPLATE, COMPOSE, options());
     expect(plan.composeFile).toBe(COMPOSE);
+    expect(plan.composeFile).toContain('${SERVICE_PASSWORD_MYSQL}');
   });
 
   it('uses http URLs when asked', () => {
@@ -154,6 +166,29 @@ describe('declareNamedVolumes', () => {
   });
 });
 
+describe('exposeDomainPorts', () => {
+  const domain = (targetService: string, port: number | null) => ({
+    key: `SERVICE_URL_${targetService.toUpperCase()}`,
+    kind: 'domain' as const,
+    format: 'url' as const,
+    serviceName: targetService,
+    port,
+    targetService,
+    resolution: 'exact' as const,
+  });
+
+  it('exposes the port a domain variable names when the service publishes none', () => {
+    const body = `services:\n  kuma:\n    image: louislam/uptime-kuma:2\n`;
+    const doc = yaml.load(exposeDomainPorts(body, [domain('kuma', 3001)])) as any;
+    expect(doc.services.kuma.expose).toEqual(['3001']);
+  });
+
+  it('leaves a service that already publishes a port, or a variable with no port, alone', () => {
+    const body = `services:\n  web:\n    image: x\n    expose: ["8080"]\n  worker:\n    image: y\n`;
+    expect(exposeDomainPorts(body, [domain('web', 3000), domain('worker', null)])).toBe(body);
+  });
+});
+
 describe('the deployable catalogue', () => {
   it('offers most verified templates, and only verified ones', () => {
     const { templates, excluded } = deployableCatalogue();
@@ -169,6 +204,15 @@ describe('the deployable catalogue', () => {
     if (PUBLISHABLE_SERVICE_TEMPLATES.some((t) => t.id === 'pi-hole')) {
       expect(capAdd).toBeDefined();
     }
+  });
+
+  it('gives Uptime Kuma a routed public URL', () => {
+    const template = deployableCatalogue().templates.find((t) => t.id === 'uptime-kuma');
+    if (!template) return;
+    const plan = planTemplateStack(template, getServiceTemplateCompose('uptime-kuma')!, {
+      stackSlug: 'kuma', baseDomain: 'example.com', https: true, userValues: {},
+    });
+    expect(plan.urls.map((u) => u.url)).toContain('https://uptime-kuma-kuma.example.com');
   });
 
   it('plans every offered template with a routed URL only for services that exist', () => {

@@ -17,6 +17,11 @@
  * Named volumes the upstream file mounts but never declares are declared, as
  * Coolify's own parser does; Compose itself refuses an undeclared volume.
  *
+ * A domain variable such as SERVICE_URL_UPTIMEKUMA_3001 names the port the
+ * service listens on. Coolify routes to that port even when the Compose file
+ * publishes none, so a service with no `expose`/`ports` gets `expose` for it;
+ * otherwise the service would deploy with no public URL.
+ *
  * A template is offered only if it is publishable AND a stack planned from it
  * passes the same normalisation a real stack deploy runs. The verification
  * gate proves the images boot; this proves GuildServer's stack deployer accepts
@@ -78,6 +83,29 @@ export function declareNamedVolumes(composeBody: string): string {
   doc.volumes = { ...(doc.volumes ?? {}) };
   for (const name of missing) doc.volumes[name] = null;
   return yaml.dump(doc, { lineWidth: -1, noRefs: true });
+}
+
+/**
+ * Add `expose: ["<port>"]` to each service a domain variable routes to on a
+ * known port, when the service publishes no port of its own. Returns the body
+ * unchanged when nothing needs adding.
+ */
+export function exposeDomainPorts(composeBody: string, variables: ServiceTemplate["variables"]): string {
+  const doc = yaml.load(composeBody) as Record<string, any> | null;
+  if (!doc || typeof doc !== "object" || !doc.services || typeof doc.services !== "object") return composeBody;
+
+  let changed = false;
+  for (const variable of variables) {
+    if (variable.kind !== "domain" || !variable.targetService || !variable.port) continue;
+    const service = doc.services[variable.targetService];
+    if (!service || typeof service !== "object") continue;
+    const hasExpose = Array.isArray(service.expose) && service.expose.length > 0;
+    const hasPorts = Array.isArray(service.ports) && service.ports.length > 0;
+    if (hasExpose || hasPorts) continue;
+    service.expose = [String(variable.port)];
+    changed = true;
+  }
+  return changed ? yaml.dump(doc, { lineWidth: -1, noRefs: true }) : composeBody;
 }
 
 export interface CatalogueEntry {
@@ -150,7 +178,7 @@ export function planTemplateStack(
     throw new TemplateInputError(`${template.name} needs a value for: ${missingRequired.join(", ")}`, missingRequired);
   }
 
-  composeBody = declareNamedVolumes(composeBody);
+  composeBody = exposeDomainPorts(declareNamedVolumes(composeBody), template.variables);
   const parsed = parseCompose(composeBody);
   const routable = new Set(
     parsed.services.filter((service) => service.expose.length > 0 || service.ports.length > 0).map((s) => s.name),
