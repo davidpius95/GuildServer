@@ -128,6 +128,22 @@ jobs:
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/guildserver_test
 
+      # Off-site backup tests talk to a real S3 API. MinIO needs a command
+      # (`server /data`), which service containers cannot be given, so it is
+      # started here instead of under `services:`.
+      - name: Start MinIO
+        working-directory: .
+        run: |
+          docker run -d --name minio -p 127.0.0.1:9000:9000 \
+            -e MINIO_ROOT_USER=gs-test-access \
+            -e MINIO_ROOT_PASSWORD=gs-test-secret-key \
+            minio/minio:latest server /data
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:9000/minio/health/live && exit 0
+            sleep 2
+          done
+          echo "MinIO did not become healthy"; docker logs minio; exit 1
+
       - name: Run backend tests
         run: pnpm --filter @guildserver/api test:ci
         env:
@@ -136,6 +152,13 @@ jobs:
           REDIS_URL: redis://localhost:6379/1
           JWT_SECRET: test-jwt-secret-key-for-ci
           NODE_ENV: test
+          GS_MINIO_TESTS: '1'
+          TEST_S3_ENDPOINT: http://127.0.0.1:9000
+          TEST_S3_ACCESS_KEY: gs-test-access
+          TEST_S3_SECRET_KEY: gs-test-secret-key
+          # The test MinIO is on loopback, which production always refuses.
+          GS_S3_ALLOW_PRIVATE_ENDPOINTS: '1'
+          GS_S3_ALLOW_LOOPBACK_ENDPOINTS: '1'
 
       - name: Upload backend coverage
         uses: codecov/codecov-action@v4
