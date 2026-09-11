@@ -15,7 +15,9 @@ on:
   schedule:
     - cron: "41 4 * * 1"
   push:
-    branches: [main]
+    # acceptance/** branches run the suites without touching main, for
+    # investigating a failure.
+    branches: [main, 'acceptance/**']
     paths:
       - guildserver-paas/apps/api/src/services/docker/**
       - guildserver-paas/apps/api/src/services/compose/**
@@ -112,7 +114,25 @@ jobs:
           docker compose version
 
       - name: Run ${{ matrix.suite }}
-        run: pnpm --filter @guildserver/api exec jest --ci --runInBand --forceExit tests/integration/${{ matrix.suite }}.test.ts
+        # Job logs need an authenticated API call to read, annotations do not:
+        # on failure, the end of the jest output is re-emitted as an annotation.
+        run: |
+          set +e
+          pnpm --filter @guildserver/api exec jest --ci --runInBand --forceExit tests/integration/${{ matrix.suite }}.test.ts > "$RUNNER_TEMP/jest.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/jest.log"
+          if [ "$status" -ne 0 ]; then
+            python3 - "$RUNNER_TEMP/jest.log" <<'PY_EOF'
+          import re, sys
+          text = open(sys.argv[1], errors="replace").read()
+          text = re.sub(r"\x1b\[[0-9;]*m", "", text)
+          lines = [l for l in text.splitlines() if l.strip()]
+          tail = "\n".join(lines[-160:])[-30000:]
+          esc = tail.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error title=jest output (${{ matrix.suite }})::{esc}")
+          PY_EOF
+          fi
+          exit "$status"
         env:
           GS_ALLOW_DOCKER_TESTS: '1'
           TEST_DATABASE_URL: postgresql://test:test@localhost:5432/guildserver_test

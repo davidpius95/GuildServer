@@ -47,6 +47,14 @@
  *            by one container start rather than a whole pull+build+boot, and it
  *            self-heals: the next deploy's incumbent matches and overlaps.
  *
+ * Two more pieces make the overlap truly zero-downtime, both on the Traefik side:
+ * every router carries a retry middleware (see buildTraefikLabels), and Traefik
+ * runs with a short upstream dial timeout (docker-compose.prod.yml). When the
+ * retired container stops, its address vanishes from the network at once, but
+ * Traefik routes to it until it processes Docker's event. A dial to a vanished
+ * address hangs rather than being refused; the short timeout turns that into a
+ * fast failure the retry middleware sends to the promoted container instead.
+ *
  * The file-provider alternative (a dynamic config file on a volume shared with
  * Traefik) would give a genuinely atomic switch with no label-identity
  * constraint. It is not implemented here because it needs Traefik itself
