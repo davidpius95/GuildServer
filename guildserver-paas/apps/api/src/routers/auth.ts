@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { signupsTotal } from "../services/prometheus-metrics";
 import { sessionTokenLifetime } from "../utils/session-token";
 import { TRPCError } from "@trpc/server";
 import bcrypt from "bcryptjs";
@@ -130,7 +131,6 @@ export const authRouter = createTRPCRouter({
       );
 
       // Record business metric
-      const { signupsTotal } = await import("../services/prometheus-metrics");
       signupsTotal.inc({ provider: "email" });
 
       return {
