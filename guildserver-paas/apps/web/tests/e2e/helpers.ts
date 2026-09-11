@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type Page, type Request } from '@playwright/test'
 
 export interface TestUser {
   name: string
@@ -22,19 +22,35 @@ export function signOutButton(page: Page) {
 }
 
 /**
- * Fill and submit an auth form, retrying if the click beat hydration.
+ * Fill and submit an auth form, retrying only if the click beat hydration.
  *
  * Before React attaches its submit handler, a click does a native form submit
- * that simply reloads the page and clears the fields. Waiting for the tRPC
- * response proves the app, not the browser, handled the submit.
+ * that reloads the page and clears the fields, and no tRPC request is sent.
+ * So the retry waits briefly for the request, not the response: once the
+ * request has gone out it is never resubmitted (registering twice would fail
+ * with "already exists"), however long the server takes to answer.
  */
-async function submitAuthForm(page: Page, procedure: string, fill: () => Promise<void>, button: string) {
+async function submitAuthForm(
+  page: Page,
+  procedure: string,
+  fill: () => Promise<void>,
+  button: string,
+  expectSuccess = true,
+): Promise<void> {
+  let sent: Request | undefined
   await expect(async () => {
     await fill()
-    const response = page.waitForResponse((r) => r.url().includes(`/trpc/${procedure}`), { timeout: 5_000 })
+    const request = page.waitForRequest((r) => r.url().includes(`/trpc/${procedure}`), { timeout: 3_000 })
     await page.getByRole('button', { name: button }).click()
-    await response
+    sent = await request
   }).toPass({ timeout: 45_000 })
+
+  const response = await sent!.response()
+  if (expectSuccess && (!response || !response.ok())) {
+    // Surface the API's answer rather than a URL that never changed.
+    const body = response ? (await response.text()).slice(0, 500) : 'no response'
+    throw new Error(`${procedure} returned HTTP ${response?.status() ?? 0}: ${body}`)
+  }
 }
 
 export async function register(page: Page, user: TestUser): Promise<void> {
@@ -63,6 +79,8 @@ export async function signIn(page: Page, user: Pick<TestUser, 'email' | 'passwor
       await page.locator('input[type="password"]').fill(user.password)
     },
     'Sign In',
+    // A wrong-password test expects the API to refuse.
+    false,
   )
 }
 
