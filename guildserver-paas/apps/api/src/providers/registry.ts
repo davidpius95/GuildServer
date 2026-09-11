@@ -33,9 +33,29 @@ const dockerRemoteFields: ProviderConfigField[] = [
     description: "How to connect to the remote Docker daemon.",
   },
   { name: "host", label: "Host", type: "text", required: true, placeholder: "192.168.1.100" },
-  { name: "port", label: "Port", type: "number", required: true, defaultValue: 22 },
-  { name: "sshUser", label: "SSH User", type: "text", required: false, placeholder: "root" },
-  { name: "sshKey", label: "SSH Private Key", type: "textarea", required: false, description: "Paste your SSH private key" },
+  { name: "port", label: "Port", type: "number", required: true, defaultValue: 22, description: "22 for SSH; 2376 for Docker's TLS socket." },
+  { name: "sshUser", label: "SSH User", type: "text", required: false, placeholder: "deploy", description: "Must be able to run docker (root or a member of the docker group)." },
+  { name: "sshKey", label: "SSH Private Key", type: "textarea", required: false, description: "Unencrypted private key. Stored encrypted and never shown again." },
+  { name: "sshPassword", label: "SSH Password", type: "password", required: false, description: "Used only if no private key is given." },
+  {
+    name: "hostKeyFingerprint",
+    label: "Host Key Fingerprint",
+    type: "text",
+    required: false,
+    placeholder: "SHA256:…",
+    description: "Optional. From `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`. If empty, the key seen on the first successful connection is pinned.",
+  },
+  { name: "tlsCa", label: "TLS CA Certificate", type: "textarea", required: false, description: "TLS connections only." },
+  { name: "tlsCert", label: "TLS Client Certificate", type: "textarea", required: false, description: "TLS connections only." },
+  { name: "tlsKey", label: "TLS Client Key", type: "textarea", required: false, description: "TLS connections only. Stored encrypted." },
+  {
+    name: "manageProxy",
+    label: "Run GuildServer's proxy on this host",
+    type: "boolean",
+    required: false,
+    defaultValue: false,
+    description: "Starts Traefik on ports 80/443 so app domains can point at this host. Leave off if something else already serves those ports.",
+  },
 ];
 
 const proxmoxFields: ProviderConfigField[] = [
@@ -180,7 +200,6 @@ export function listAvailableProviders(): ProviderPluginMeta[] {
  * Check if a provider type is implemented (has a working backend)
  */
 export function isProviderImplemented(type: ProviderType): boolean {
-  // docker-local (Phase 1) and proxmox (Phase 2) are implemented
-  const implemented: ProviderType[] = ["docker-local", "proxmox"];
+  const implemented: ProviderType[] = ["docker-local", "docker-remote", "proxmox"];
   return implemented.includes(type);
 }

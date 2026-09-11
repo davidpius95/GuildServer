@@ -17,6 +17,7 @@ import {
 import { healthCheck } from "../services/container-manager";
 import { listGithubRepos, listGithubBranches } from "../services/git-provider";
 import { getProvider } from "../providers/factory";
+import type { ComputeProvider } from "../providers/types";
 import { registerGithubWebhook } from "../services/github";
 import { getValidAccessToken } from "../services/oauth-tokens";
 import { encryptSecret } from "../utils/crypto";
@@ -50,7 +51,7 @@ const createApplicationSchema = z.object({
   cpuLimit: z.number().optional(),
   replicas: z.number().default(1),
   autoDeployment: z.boolean().default(false),
-  deploymentTarget: z.enum(["docker-local", "proxmox"]).default("docker-local"),
+  deploymentTarget: z.enum(["docker-local", "docker-remote", "proxmox"]).default("docker-local"),
   providerId: z.string().uuid().optional().nullable(),
 });
 
@@ -71,7 +72,7 @@ const updateApplicationSchema = z.object({
   cpuLimit: z.number().optional(),
   replicas: z.number().optional(),
   autoDeployment: z.boolean().optional(),
-  deploymentTarget: z.enum(["docker-local", "proxmox"]).optional(),
+  deploymentTarget: z.enum(["docker-local", "docker-remote", "proxmox"]).optional(),
   providerId: z.string().uuid().optional().nullable(),
 });
 
@@ -313,7 +314,8 @@ export const applicationRouter = createTRPCRouter({
         });
 
         if (defaultProvider) {
-          resolvedDeploymentTarget = defaultProvider.type === "proxmox" ? "proxmox" : "docker-local";
+          resolvedDeploymentTarget =
+            defaultProvider.type === "proxmox" || defaultProvider.type === "docker-remote" ? defaultProvider.type : "docker-local";
           resolvedProviderId = defaultProvider.id;
         } else {
           resolvedDeploymentTarget = "docker-local";
@@ -521,13 +523,13 @@ export const applicationRouter = createTRPCRouter({
       }
 
       // Clean up containers based on deployment target
-      if (application.deploymentTarget === "proxmox" && application.providerId) {
-        // Proxmox-deployed app: destroy the LXC container
+      if (application.providerId && application.deploymentTarget !== "docker-local") {
+        // Provider-deployed app (Proxmox LXC, remote Docker host): remove it there
         try {
           const provider = await getProvider(application.providerId);
           await provider.remove(input.id);
         } catch (error: any) {
-          console.warn(`Failed to clean up Proxmox LXC for app ${input.id}: ${error.message}`);
+          console.warn(`Failed to clean up provider workload for app ${input.id}: ${error.message}`);
         }
       } else {
         // Docker-local: remove local Docker containers
@@ -636,9 +638,11 @@ export const applicationRouter = createTRPCRouter({
         });
       }
 
-      // Fetch real logs from Docker container
+      // Fetch real logs from wherever the workload runs
       try {
-        const rawLogs = await getContainerLogs(input.id, input.lines);
+        const rawLogs = application.providerId && application.deploymentTarget !== "docker-local"
+          ? await (await getProvider(application.providerId)).getLogs(input.id, input.lines)
+          : await getContainerLogs(input.id, input.lines);
 
         if (rawLogs.length === 0) {
           return [{ timestamp: new Date(), level: "info", message: "No logs available. Container may not be running." }];
@@ -695,6 +699,51 @@ export const applicationRouter = createTRPCRouter({
           code: "NOT_FOUND",
           message: "Application not found or access denied",
         });
+      }
+
+      // Provider-backed apps (remote Docker, Proxmox) are measured where they run.
+      if (application.providerId && application.deploymentTarget !== "docker-local") {
+        let providerMetrics: Awaited<ReturnType<ComputeProvider["getMetrics"]>> = null;
+        let providerInfo: Awaited<ReturnType<ComputeProvider["getInfo"]>> = null;
+        let providerHealth: Awaited<ReturnType<ComputeProvider["healthCheck"]>> | null = null;
+        try {
+          const provider = await getProvider(application.providerId);
+          [providerMetrics, providerInfo, providerHealth] = await Promise.all([
+            provider.getMetrics(input.id),
+            provider.getInfo(input.id),
+            provider.healthCheck(input.id),
+          ]);
+        } catch (error: any) {
+          logger.warn("Failed to fetch provider metrics", { applicationId: input.id, error: String(error?.message ?? error) });
+        }
+        const status = providerHealth?.status ?? "unknown";
+        if (!providerMetrics) {
+          return {
+            status,
+            container: providerInfo,
+            cpu: { current: 0, average: 0, max: 0, data: [] },
+            memory: { current: 0, average: 0, max: 0, data: [] },
+            network: { rxBytes: 0, txBytes: 0 },
+          };
+        }
+        return {
+          status,
+          container: providerInfo,
+          cpu: {
+            current: providerMetrics.cpuPercent,
+            average: providerMetrics.cpuPercent,
+            max: providerMetrics.cpuPercent,
+            data: [{ timestamp: new Date(), value: providerMetrics.cpuPercent }],
+          },
+          memory: {
+            current: providerMetrics.memoryUsageMb,
+            average: providerMetrics.memoryUsageMb,
+            max: providerMetrics.memoryLimitMb,
+            percent: providerMetrics.memoryPercent,
+            data: [{ timestamp: new Date(), value: providerMetrics.memoryUsageMb }],
+          },
+          network: { rxBytes: providerMetrics.networkRxBytes, txBytes: providerMetrics.networkTxBytes },
+        };
       }
 
       // Fetch real metrics from Docker container stats
@@ -767,7 +816,7 @@ export const applicationRouter = createTRPCRouter({
 
       // Restart container (Proxmox or Docker-local)
       let restarted: boolean;
-      if (application.deploymentTarget === "proxmox" && application.providerId) {
+      if (application.providerId && application.deploymentTarget !== "docker-local") {
         const provider = await getProvider(application.providerId);
         restarted = await provider.restart(input.id);
       } else {
@@ -827,7 +876,7 @@ export const applicationRouter = createTRPCRouter({
       }
 
       let stopped: boolean;
-      if (application.deploymentTarget === "proxmox" && application.providerId) {
+      if (application.providerId && application.deploymentTarget !== "docker-local") {
         const provider = await getProvider(application.providerId);
         await provider.stop(input.id);
         stopped = true;
@@ -897,8 +946,8 @@ export const applicationRouter = createTRPCRouter({
       // Handle scaling: if scaled to 0, stop the container
       if (replicas === 0) {
         try {
-          if (application.deploymentTarget === "proxmox" && application.providerId) {
-            // Proxmox-deployed app: stop the LXC container
+          if (application.providerId && application.deploymentTarget !== "docker-local") {
+            // Provider-deployed app: stop it where it runs
             const provider = await getProvider(application.providerId);
             await provider.stop(id);
           } else {

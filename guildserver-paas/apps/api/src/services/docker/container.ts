@@ -54,6 +54,11 @@ export interface DeployOptions {
    * legacy reachability probe.
    */
   applicationConfig?: Record<string, unknown> | null;
+  /**
+   * Host to probe on the assigned host port during health checks, for
+   * containers on a remote Docker host. Unset means probe locally.
+   */
+  probeHost?: string;
 }
 
 export interface DeployResult {
@@ -256,6 +261,7 @@ export async function deployContainer(
         healthConfig,
         stopGraceSeconds,
         userId: opts.userId,
+        probeHost: opts.probeHost,
         log,
       });
 

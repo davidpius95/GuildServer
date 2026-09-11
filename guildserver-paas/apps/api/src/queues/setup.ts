@@ -10,6 +10,7 @@ import {
   postDeployHealthCheck,
 } from "../services/docker";
 import { getProvider } from "../providers/factory";
+import type { DockerRemoteProvider } from "../providers/docker-remote";
 import { buildDeploymentAccessUrl, waitForUrlReachable } from "../services/deployment-access";
 import { selectNode } from "../services/node-scheduler";
 import { syncContainerStatuses } from "../services/container-manager";
@@ -624,7 +625,17 @@ const deploymentWorker = new Worker(
       const expectedPort = detectedPort || app.containerPort || 80;
       const containerHealth = providerType === "proxmox"
         ? await computeProvider.healthCheck(applicationId)
-        : await postDeployHealthCheck({
+        : providerType === "docker-remote"
+          // The container is on another host: probe it there, through that host's daemon.
+          ? await (computeProvider as DockerRemoteProvider).verifyDeployment({
+              containerId: result.containerId,
+              hostPort: result.hostPort,
+              expectedContainerPort: expectedPort,
+              userId,
+              deploymentId,
+              maxWaitMs: 120000,
+            })
+          : await postDeployHealthCheck({
             containerId: result.containerId,
             hostPort: result.hostPort,
             expectedContainerPort: expectedPort,

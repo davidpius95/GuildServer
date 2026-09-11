@@ -14,10 +14,14 @@ export interface UrlReachabilityResult {
   checkedUrl: string;
 }
 
+/** Where the workload's host port is reachable: a Proxmox LXC's IP or a remote Docker host. */
 function getLxcIp(providerMetadata?: Record<string, unknown> | null): string | null {
-  const value = providerMetadata?.lxcIp
-  if (typeof value === "string" && value.trim()) {
-    return value.trim()
+  for (const key of ["lxcIp", "remoteHost"]) {
+    const value = providerMetadata?.[key]
+    if (typeof value === "string" && value.trim()) {
+      const host = value.trim()
+      return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host
+    }
   }
   return null
 }

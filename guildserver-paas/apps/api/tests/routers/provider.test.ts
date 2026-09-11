@@ -6,6 +6,9 @@ import { db } from '../setup';
 import { TRPCError } from '@trpc/server';
 import { computeProviders, applications, users, organizations, projects, members } from '@guildserver/database';
 import { eq } from 'drizzle-orm';
+import { utils as sshUtils } from 'ssh2';
+import { decryptSecret } from '../../src/utils/crypto';
+import { createProviderFromConfig } from '../../src/providers/factory';
 
 // Mock the provider factory to avoid real connections
 jest.mock('../../src/providers/factory', () => ({
@@ -24,6 +27,15 @@ jest.mock('../../src/providers/factory', () => ({
           connected: true,
           message: 'Proxmox VE connected',
           details: { version: '8.0', nodes: ['pve1'] },
+        }),
+      };
+    }
+    if (type === 'docker-remote') {
+      return {
+        testConnection: jest.fn().mockResolvedValue({
+          connected: true,
+          message: 'Connected to Docker 27.0 over SSH',
+          details: { version: '27.0', hostKeyFingerprint: 'SHA256:' + 'B'.repeat(43) },
         }),
       };
     }
@@ -699,7 +711,6 @@ describe('ProviderRouter', () => {
     // provider with connectionStatus 'error', and let it be set as the org
     // default — after which every deployment threw. Creation must refuse.
     const unimplemented = [
-      'docker-remote',
       'kubernetes',
       'aws-ecs',
       'gcp-cloudrun',
@@ -847,4 +858,77 @@ describe('ProviderRouter', () => {
       ).rejects.toThrow('Provider not found');
     });
   });
+
+  // ============================
+  // Remote Docker hosts
+  // ============================
+  describe('docker-remote providers', () => {
+    const privateKey = sshUtils.generateKeyPairSync('ed25519').private;
+    const seenKey = 'SHA256:' + 'B'.repeat(43);
+    const remoteConfig = (over: Record<string, unknown> = {}) => ({
+      connectionType: 'ssh', host: '203.0.113.5', port: 22, sshUser: 'deploy', sshKey: privateKey, ...over,
+    });
+    const stored = async (id: string) => (await db.select().from(computeProviders).where(eq(computeProviders.id, id)))[0].config as any;
+
+    it('stores the key encrypted, pins the host key seen on a successful test, and returns no config', async () => {
+      const caller = providerRouter.createCaller(createAdminContext(adminUserId));
+      const created = await caller.create({ name: 'edge', type: 'docker-remote', config: remoteConfig() });
+
+      expect(created.config).toEqual({});
+      expect(created.status).toBe('connected');
+      const config = await stored(created.id);
+      expect(JSON.stringify(config)).not.toContain('PRIVATE KEY');
+      expect(decryptSecret(config.sshKey)).toBe(privateKey);
+      expect(config.hostKeyFingerprint).toBe(seenKey);
+    });
+
+    it('never replaces a pinned host key during a later connection test', async () => {
+      const caller = providerRouter.createCaller(createAdminContext(adminUserId));
+      const pinned = 'SHA256:' + 'C'.repeat(43);
+      const created = await caller.create({ name: 'edge', type: 'docker-remote', config: remoteConfig({ hostKeyFingerprint: pinned }) });
+      await caller.testConnection({ id: created.id });
+      expect((await stored(created.id)).hostKeyFingerprint).toBe(pinned);
+    });
+
+    it('does not pin a key from a failed connection test', async () => {
+      (createProviderFromConfig as jest.Mock).mockImplementationOnce(() => ({
+        testConnection: jest.fn().mockResolvedValue({ connected: false, message: 'SSH authentication failed', details: { hostKeyFingerprint: seenKey } }),
+      }));
+      const caller = providerRouter.createCaller(createAdminContext(adminUserId));
+      const created = await caller.create({ name: 'edge', type: 'docker-remote', config: remoteConfig() });
+      expect(created.status).toBe('error');
+      expect((await stored(created.id)).hostKeyFingerprint).toBeUndefined();
+    });
+
+    it.each([
+      [remoteConfig({ host: '127.0.0.1' }), /loopback/],
+      [remoteConfig({ host: '169.254.169.254' }), /link-local/],
+      [remoteConfig({ sshKey: undefined }), /private key or password/],
+      [remoteConfig({ sshKey: 'not a key' }), /private key/],
+    ])('refuses an invalid configuration %j before connecting or storing it', async (config, reason) => {
+      const before = (await db.select().from(computeProviders)).length;
+      await expect(
+        providerRouter.createCaller(createAdminContext(adminUserId)).create({ name: 'bad', type: 'docker-remote', config }),
+      ).rejects.toThrow(reason);
+      expect((await db.select().from(computeProviders)).length).toBe(before);
+    });
+
+    it('keeps the stored key when an update leaves it out', async () => {
+      const caller = providerRouter.createCaller(createAdminContext(adminUserId));
+      const created = await caller.create({ name: 'edge', type: 'docker-remote', config: remoteConfig() });
+      const before = await stored(created.id);
+      await caller.update({ id: created.id, config: remoteConfig({ sshKey: '', manageProxy: true }) });
+      const after = await stored(created.id);
+      expect(after.sshKey).toBe(before.sshKey);
+      expect(after.manageProxy).toBe(true);
+      expect(after.hostKeyFingerprint).toBe(seenKey);
+    });
+
+    it('is not available to non-admins', async () => {
+      await expect(
+        providerRouter.createCaller(createUserContext(adminUserId)).create({ name: 'edge', type: 'docker-remote', config: remoteConfig() }),
+      ).rejects.toThrow();
+    });
+  });
+
 });

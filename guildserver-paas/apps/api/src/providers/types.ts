@@ -27,12 +27,19 @@ export interface DockerRemoteConfig {
   port: number;
   // SSH
   sshUser?: string;
-  sshKey?: string; // encrypted
-  sshPassword?: string; // encrypted
+  sshKey?: string; // encrypted at rest
+  sshPassword?: string; // encrypted at rest
+  /**
+   * OpenSSH-style SHA256 fingerprint of the host key. Pinned on the first
+   * successful connection when not supplied; a different key is refused.
+   */
+  hostKeyFingerprint?: string;
   // TLS
   tlsCa?: string;
   tlsCert?: string;
-  tlsKey?: string;
+  tlsKey?: string; // encrypted at rest
+  /** Run GuildServer's Traefik on the host so domains route there. Off by default. */
+  manageProxy?: boolean;
 }
 
 export interface ProxmoxConfig {
@@ -174,6 +181,8 @@ export interface ConnectionTestResult {
       storageMb?: number;
     };
     nodeCount?: number;
+    /** docker-remote: fingerprint of the SSH host key presented during the test. */
+    hostKeyFingerprint?: string;
   };
 }
 

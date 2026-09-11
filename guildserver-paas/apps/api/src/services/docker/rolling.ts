@@ -94,6 +94,8 @@ export interface RollingDeployInput {
   userId?: string;
   log: (msg: string) => void;
   env?: NodeJS.ProcessEnv;
+  /** See DeployOptions.probeHost. */
+  probeHost?: string;
 }
 
 export interface RollingDeployResult {
@@ -324,6 +326,7 @@ export async function rollingDeploy(input: RollingDeployInput): Promise<RollingD
       deploymentId: input.deploymentId,
       maxWaitMs: input.healthTimeoutMs,
       dockerClient: d,
+      probeHost: input.probeHost,
     });
   } catch (error: any) {
     const logs = await tailContainerLogs(candidate.container);

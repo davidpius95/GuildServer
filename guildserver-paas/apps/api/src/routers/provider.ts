@@ -6,7 +6,29 @@ import { eq, and, count } from "drizzle-orm";
 import { createProviderFromConfig } from "../providers/factory";
 import { listAvailableProviders, isProviderImplemented } from "../providers/registry";
 import { removeClientByHost } from "../services/node-docker";
-import type { ProviderType, ProviderConfig } from "../providers/types";
+import type { ProviderType, ProviderConfig, DockerRemoteConfig } from "../providers/types";
+import { DockerRemoteConfigError, prepareDockerRemoteConfig } from "../providers/docker-remote-config";
+
+/** Validate and encrypt a docker-remote config; other types pass through unchanged. */
+async function prepareConfig(type: string, config: unknown, existing?: unknown): Promise<ProviderConfig> {
+  if (type !== "docker-remote") return config as ProviderConfig;
+  try {
+    return await prepareDockerRemoteConfig(config, existing as DockerRemoteConfig | undefined);
+  } catch (error) {
+    if (error instanceof DockerRemoteConfigError) throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
+    throw error;
+  }
+}
+
+/**
+ * Trust on first use: pin the SSH host key a docker-remote provider presented
+ * during a successful connection test, unless one is already pinned.
+ */
+function withPinnedHostKey(type: string, config: ProviderConfig, result: { connected: boolean; details?: { hostKeyFingerprint?: string } }): ProviderConfig {
+  const remote = config as DockerRemoteConfig;
+  if (type !== "docker-remote" || !result.connected || !result.details?.hostKeyFingerprint || remote.hostKeyFingerprint) return config;
+  return { ...remote, hostKeyFingerprint: result.details.hostKeyFingerprint };
+}
 
 const providerTypeValues = [
   "docker-local",
@@ -109,6 +131,8 @@ export const providerRouter = createTRPCRouter({
           );
       }
 
+      let storedConfig = await prepareConfig(input.type, input.config);
+
       // Test connection before saving
       let connectionStatus: "connected" | "error" = "pending" as any;
       let healthMessage = "";
@@ -116,11 +140,12 @@ export const providerRouter = createTRPCRouter({
       try {
         const provider = createProviderFromConfig(
           input.type as ProviderType,
-          input.config as ProviderConfig
+          storedConfig
         );
         const result = await provider.testConnection();
         connectionStatus = result.connected ? "connected" : "error";
         healthMessage = result.message;
+        storedConfig = withPinnedHostKey(input.type, storedConfig, result);
       } catch (err: any) {
         connectionStatus = "error";
         healthMessage = err.message || "Connection test failed";
@@ -131,7 +156,7 @@ export const providerRouter = createTRPCRouter({
         .values({
           name: input.name,
           type: input.type,
-          config: input.config,
+          config: storedConfig,
           region: input.region,
           isDefault: input.isDefault,
           organizationId: input.organizationId,
@@ -174,7 +199,7 @@ export const providerRouter = createTRPCRouter({
 
       const updateData: Record<string, unknown> = { updatedAt: new Date() };
       if (input.name !== undefined) updateData.name = input.name;
-      if (input.config !== undefined) updateData.config = input.config;
+      if (input.config !== undefined) updateData.config = await prepareConfig(existing.type, input.config, existing.config);
       if (input.region !== undefined) updateData.region = input.region;
       if (input.isDefault !== undefined) updateData.isDefault = input.isDefault;
 
@@ -249,11 +274,13 @@ export const providerRouter = createTRPCRouter({
           provider.config as ProviderConfig
         );
         const result = await instance.testConnection();
+        const nextConfig = withPinnedHostKey(provider.type, provider.config as ProviderConfig, result);
 
         // Update status in DB
         await ctx.db
           .update(computeProviders)
           .set({
+            config: nextConfig,
             status: result.connected ? "connected" : "error",
             lastHealthCheck: new Date(),
             healthMessage: result.message,

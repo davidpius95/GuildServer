@@ -97,8 +97,14 @@ export async function postDeployHealthCheck(opts: {
   deploymentId?: string;
   maxWaitMs?: number;
   dockerClient?: Docker;
+  /**
+   * Probe this host on hostPort instead of the container's bridge IP. Set for
+   * containers on a remote Docker host, whose bridge network is not reachable
+   * from the control plane.
+   */
+  probeHost?: string;
 }): Promise<HealthCheckResult> {
-  const { containerId, hostPort, expectedContainerPort, userId, deploymentId, maxWaitMs = 120000, dockerClient } = opts;
+  const { containerId, hostPort, expectedContainerPort, userId, deploymentId, maxWaitMs = 120000, dockerClient, probeHost } = opts;
 
   const log = (msg: string) => {
     logger.info(`[healthcheck] ${msg}`);
@@ -109,7 +115,7 @@ export async function postDeployHealthCheck(opts: {
 
   const intervalMs = 2000;
   const maxAttempts = Math.ceil(maxWaitMs / intervalMs);
-  const containerIP = await getContainerIPAddress(containerId, dockerClient);
+  const containerIP = probeHost ? null : await getContainerIPAddress(containerId, dockerClient);
 
   log(`Running health check on port ${hostPort} (expecting container port ${expectedContainerPort})...`);
 
@@ -120,7 +126,7 @@ export async function postDeployHealthCheck(opts: {
   const TCP_CONFIRM_THRESHOLD = 3; // ~6s of stable TCP reachability
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const host = containerIP || "127.0.0.1";
+    const host = probeHost || containerIP || "127.0.0.1";
     const port = containerIP ? expectedContainerPort : hostPort;
     const target = `${host}:${port}`;
 
@@ -267,8 +273,14 @@ export async function runConfiguredHealthCheck(opts: {
   dockerClient?: Docker;
   /** Overall ceiling, independent of `retries`. */
   maxWaitMs?: number;
+  /**
+   * Probe this host on hostPort instead of the container's bridge IP. Set for
+   * containers on a remote Docker host, whose bridge network is not reachable
+   * from the control plane.
+   */
+  probeHost?: string;
 }): Promise<HealthCheckResult> {
-  const { containerId, hostPort, expectedContainerPort, config, userId, deploymentId, dockerClient } = opts;
+  const { containerId, hostPort, expectedContainerPort, config, userId, deploymentId, dockerClient, probeHost } = opts;
   const d = dockerClient || docker;
 
   const log = (msg: string) => {
@@ -278,8 +290,8 @@ export async function runConfiguredHealthCheck(opts: {
     }
   };
 
-  const containerIP = await getContainerIPAddress(containerId, d);
-  const host = containerIP || "127.0.0.1";
+  const containerIP = probeHost ? null : await getContainerIPAddress(containerId, d);
+  const host = probeHost || containerIP || "127.0.0.1";
   const port = containerIP ? config.port || expectedContainerPort : hostPort;
   const target = `${host}:${port}${config.path}`;
 
@@ -360,6 +372,12 @@ export async function checkContainerHealth(opts: {
   deploymentId?: string;
   maxWaitMs?: number;
   dockerClient?: Docker;
+  /**
+   * Probe this host on hostPort instead of the container's bridge IP. Set for
+   * containers on a remote Docker host, whose bridge network is not reachable
+   * from the control plane.
+   */
+  probeHost?: string;
 }): Promise<HealthCheckResult> {
   if (!opts.config) {
     return postDeployHealthCheck({
@@ -370,6 +388,7 @@ export async function checkContainerHealth(opts: {
       deploymentId: opts.deploymentId,
       maxWaitMs: opts.maxWaitMs,
       dockerClient: opts.dockerClient,
+      probeHost: opts.probeHost,
     });
   }
   return runConfiguredHealthCheck({ ...opts, config: opts.config });

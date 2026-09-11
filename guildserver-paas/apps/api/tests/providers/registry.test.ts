@@ -40,8 +40,8 @@ describe('Provider Registry', () => {
       expect(isProviderImplemented('kubernetes')).toBe(false);
     });
 
-    it('returns false for docker-remote', () => {
-      expect(isProviderImplemented('docker-remote')).toBe(false);
+    it('returns true for docker-remote', () => {
+      expect(isProviderImplemented('docker-remote')).toBe(true);
     });
 
     it('returns false for gcp-cloudrun', () => {

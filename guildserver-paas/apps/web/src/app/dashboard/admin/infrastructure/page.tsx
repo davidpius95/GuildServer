@@ -259,7 +259,16 @@ function AddProviderWizard({
   const handleSelectType = (provider: any) => {
     setSelectedType(provider);
     setProviderName(provider.name);
-    setConfigValues({});
+    // Start from each field's default. The form displays defaults, so without
+    // this a value the admin never touched (a port, a checkbox) looked filled
+    // in but was never sent.
+    setConfigValues(
+      Object.fromEntries(
+        (provider.configSchema ?? [])
+          .filter((field: any) => field.defaultValue !== undefined)
+          .map((field: any) => [field.name, field.defaultValue]),
+      ),
+    );
     setError(null);
     setTestResult(null);
     setStep("configure");

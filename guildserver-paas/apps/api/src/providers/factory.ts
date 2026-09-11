@@ -1,8 +1,9 @@
-import { ComputeProvider, ProviderType, ProviderConfig, DockerLocalConfig, ProxmoxConfig } from "./types";
+import { ComputeProvider, ProviderType, ProviderConfig, DockerLocalConfig, DockerRemoteConfig, ProxmoxConfig } from "./types";
 import { DockerLocalProvider } from "./docker-local";
+import { DockerRemoteProvider } from "./docker-remote";
 import { ProxmoxProvider } from "./proxmox";
 import { db, computeProviders } from "@guildserver/database";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 /**
  * Get a ComputeProvider instance by provider ID from the database.
@@ -46,8 +47,7 @@ export function createProviderFromConfig(
       return new DockerLocalProvider(config as DockerLocalConfig);
 
     case "docker-remote":
-      // Phase 3 implementation
-      throw new Error("Docker Remote provider is not yet implemented. Coming in Phase 3.");
+      return new DockerRemoteProvider(config as DockerRemoteConfig, providerId);
 
     case "proxmox":
       return new ProxmoxProvider(config as ProxmoxConfig, providerId);
@@ -84,8 +84,10 @@ export function createProviderFromConfig(
  */
 export async function getDefaultProvider(organizationId?: string): Promise<ComputeProvider> {
   if (organizationId) {
+    // Scoped to the organization: an unscoped lookup returned whichever
+    // organization's default provider came first.
     const defaultProvider = await db.query.computeProviders.findFirst({
-      where: eq(computeProviders.isDefault, true),
+      where: and(eq(computeProviders.organizationId, organizationId), eq(computeProviders.isDefault, true)),
     });
 
     if (defaultProvider) {

@@ -23,15 +23,14 @@ describe('createProviderFromConfig', () => {
       const provider = createProviderFromConfig('proxmox', proxmoxConfig);
       expect(provider.type).toBe('proxmox');
     });
+
+    it('returns a DockerRemoteProvider for docker-remote without connecting', () => {
+      const provider = createProviderFromConfig('docker-remote', { connectionType: 'ssh', host: '203.0.113.5', port: 22, sshUser: 'deploy' });
+      expect(provider.type).toBe('docker-remote');
+    });
   });
 
   describe('unimplemented providers throw "not yet implemented"', () => {
-    it('throws for docker-remote', () => {
-      expect(() => createProviderFromConfig('docker-remote', {})).toThrow(
-        'not yet implemented',
-      );
-    });
-
     it('throws for kubernetes', () => {
       expect(() => createProviderFromConfig('kubernetes', {})).toThrow(
         'not yet implemented',
