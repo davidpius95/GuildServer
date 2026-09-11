@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure, adminProcedure } from "../trpc/trpc";
 import { auditLogs, members } from "@guildserver/database";
-import { eq, and, desc, gte, like, or } from "drizzle-orm";
+import { eq, and, desc, gte, like, or, lte, type SQL } from "drizzle-orm";
 
 const getAuditLogsSchema = z.object({
   organizationId: z.string().uuid().optional(),
@@ -93,8 +93,8 @@ export const auditRouter = createTRPCRouter({
 
       if (input.dateTo) {
         whereClause = whereClause
-          ? and(whereClause, gte(input.dateTo, auditLogs.timestamp))
-          : gte(input.dateTo, auditLogs.timestamp);
+          ? and(whereClause, lte(auditLogs.timestamp, input.dateTo))
+          : lte(auditLogs.timestamp, input.dateTo);
       }
 
       if (input.search) {
@@ -146,7 +146,8 @@ export const auditRouter = createTRPCRouter({
           metadata: input.metadata,
           ipAddress: ctx.req.ip || null,
           userAgent: ctx.req.get('User-Agent') || null,
-          sessionId: ctx.req.sessionID || null,
+          // No session middleware is mounted, so this is only set if one is added.
+          sessionId: (ctx.req as { sessionID?: string }).sessionID || null,
           timestamp: new Date(),
         })
         .returning();
@@ -267,14 +268,14 @@ export const auditRouter = createTRPCRouter({
         });
       }
 
-      let whereClause = eq(auditLogs.organizationId, input.organizationId);
+      let whereClause: SQL | undefined = eq(auditLogs.organizationId, input.organizationId);
 
       if (input.dateFrom) {
         whereClause = and(whereClause, gte(auditLogs.timestamp, input.dateFrom));
       }
 
       if (input.dateTo) {
-        whereClause = and(whereClause, gte(input.dateTo, auditLogs.timestamp));
+        whereClause = and(whereClause, lte(auditLogs.timestamp, input.dateTo));
       }
 
       const logs = await ctx.db.query.auditLogs.findMany({
@@ -322,7 +323,7 @@ export const auditRouter = createTRPCRouter({
         where: and(
           eq(auditLogs.organizationId, input.organizationId),
           gte(auditLogs.timestamp, input.dateFrom),
-          gte(input.dateTo, auditLogs.timestamp)
+          lte(auditLogs.timestamp, input.dateTo)
         ),
         orderBy: [desc(auditLogs.timestamp)],
       });

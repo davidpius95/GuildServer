@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sessionTokenLifetime } from "../utils/session-token";
 import { TRPCError } from "@trpc/server";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -125,7 +126,7 @@ export const authRouter = createTRPCRouter({
       const token = jwt.sign(
         { userId: newUser.id, email: newUser.email },
         process.env.JWT_SECRET!,
-        { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+        { expiresIn: sessionTokenLifetime() }
       );
 
       // Record business metric
@@ -175,7 +176,7 @@ export const authRouter = createTRPCRouter({
       const token = jwt.sign(
         { userId: user.id, email: user.email },
         process.env.JWT_SECRET!,
-        { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+        { expiresIn: sessionTokenLifetime() }
       );
 
       return {

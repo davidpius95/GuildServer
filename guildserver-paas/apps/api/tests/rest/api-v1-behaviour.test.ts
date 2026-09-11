@@ -9,7 +9,6 @@ jest.mock('../../src/queues/deployment', () => ({ deploymentQueue: { add: (...ar
 const mockProxy = () => new Proxy({ __esModule: true } as any, { get: (t, k) => (k in t ? t[k] : (t[k] = jest.fn())) });
 jest.mock('../../src/queues/backups', () => mockProxy());
 jest.mock('../../src/queues/instances', () => mockProxy());
-jest.mock('../../src/queues/crypto-payments', () => mockProxy());
 jest.mock('../../src/services/db-backup', () => mockProxy());
 jest.mock('../../src/services/database-provision', () => mockProxy());
 jest.mock('../../src/services/compose/deploy', () => mockProxy());

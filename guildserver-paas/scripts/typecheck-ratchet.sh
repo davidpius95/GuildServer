@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 # Fail if a package has MORE TypeScript errors than its recorded baseline.
 #
-# apps/api and apps/web carry type errors from before CI ran at all. Production
-# does not compile them with tsc (the API runs under tsx; Next builds with its
-# own settings), so demanding zero would block every change without making
-# anything safer. This holds the line instead: new code cannot add errors, and
-# when a change removes some, lower the baseline in the same commit.
+# Both apps are at zero errors (baselines of 0), so any type error fails CI.
+# The baseline files remain so a package that has to carry errors for a while
+# can do so explicitly and visibly, rather than by switching the check off.
 #
 # Usage: scripts/typecheck-ratchet.sh <package-dir> <baseline-file>
 set -euo pipefail

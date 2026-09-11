@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { sessionTokenLifetime } from "../utils/session-token";
 import jwt from "jsonwebtoken";
 import { eq, and } from "drizzle-orm";
 import { db, users, oauthAccounts, organizations, members, projects, plans, subscriptions } from "@guildserver/database";
@@ -275,7 +276,7 @@ oauthRouter.get("/github/callback", async (req: Request, res: Response) => {
     const jwtToken = jwt.sign(
       { userId: result.user.id, email: result.user.email },
       process.env.JWT_SECRET!,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+      { expiresIn: sessionTokenLifetime() }
     );
 
     // Update last login
@@ -386,7 +387,7 @@ oauthRouter.get("/google/callback", async (req: Request, res: Response) => {
     const jwtToken = jwt.sign(
       { userId: result.user.id, email: result.user.email },
       process.env.JWT_SECRET!,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+      { expiresIn: sessionTokenLifetime() }
     );
 
     await db.update(users).set({ lastLogin: new Date() }).where(eq(users.id, result.user.id));
@@ -495,7 +496,7 @@ oauthRouter.get("/gitlab/callback", async (req: Request, res: Response) => {
     const jwtToken = jwt.sign(
       { userId: result.user.id, email: result.user.email },
       process.env.JWT_SECRET!,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+      { expiresIn: sessionTokenLifetime() }
     );
 
     await db.update(users).set({ lastLogin: new Date() }).where(eq(users.id, result.user.id));
@@ -610,7 +611,7 @@ oauthRouter.get("/bitbucket/callback", async (req: Request, res: Response) => {
     const jwtToken = jwt.sign(
       { userId: result.user.id, email: result.user.email },
       process.env.JWT_SECRET!,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+      { expiresIn: sessionTokenLifetime() }
     );
 
     await db.update(users).set({ lastLogin: new Date() }).where(eq(users.id, result.user.id));

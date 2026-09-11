@@ -113,11 +113,9 @@ export default function SecurityPage() {
     onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
+  // The API does not generate reports yet and answers NOT_IMPLEMENTED, which
+  // surfaces here as a "coming soon" message.
   const exportReport = trpc.security.exportReport.useMutation({
-    onSuccess: (data) => {
-      toast.success("Report generated")
-      window.open(data.url, "_blank")
-    },
     onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 

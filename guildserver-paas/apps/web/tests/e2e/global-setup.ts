@@ -8,7 +8,7 @@ async function globalSetup(config: FullConfig) {
   try {
     console.log('📊 Setting up test database...');
     process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/guildserver_e2e_test';
-    process.env.NODE_ENV = 'test';
+    Object.assign(process.env, { NODE_ENV: 'test' })
     
     // Run database migrations for E2E tests
     execSync('npm run db:migrate --workspace=@guildserver/database', { 

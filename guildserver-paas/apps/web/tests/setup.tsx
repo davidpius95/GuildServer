@@ -6,7 +6,6 @@ import '@testing-library/jest-dom'
 // on XHR (rather than Node's native fetch) is what msw v1 can actually see
 // and mock.
 import 'whatwg-fetch'
-import { beforeAll, afterEach, afterAll } from '@jest/globals'
 import { cleanup } from '@testing-library/react'
 import { server } from './mocks/server'
 

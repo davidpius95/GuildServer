@@ -35,13 +35,16 @@ export function createTestQueryClient() {
  * which is what the handlers in tests/mocks/server.ts return.
  */
 function createTestTRPCClient() {
-  return trpc.createClient({
+  // AppRouter declares the superjson transformer, so createClient's type
+  // requires one. Leaving it out is the point of this client (see above).
+  const options = {
     links: [
       httpLink({
         url: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/trpc',
       }),
     ],
-  })
+  } as unknown as Parameters<typeof trpc.createClient>[0]
+  return trpc.createClient(options)
 }
 
 interface ProvidersOptions {

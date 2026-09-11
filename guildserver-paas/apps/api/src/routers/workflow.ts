@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc/trpc";
 import { workflowTemplates, workflowExecutions, approvalRequests, members } from "@guildserver/database";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, type SQL } from "drizzle-orm";
 import { runExecution, resumeExecution } from "../services/workflow-engine";
 
 const createWorkflowSchema = z.object({
@@ -303,7 +303,7 @@ export const workflowRouter = createTRPCRouter({
         });
       }
 
-      let whereClause = eq(workflowExecutions.organizationId, input.organizationId);
+      let whereClause: SQL | undefined = eq(workflowExecutions.organizationId, input.organizationId);
       
       if (input.templateId) {
         whereClause = and(whereClause, eq(workflowExecutions.templateId, input.templateId));

@@ -198,6 +198,7 @@ export const databaseRouter = createTRPCRouter({
         .insert(databases)
         .values({
           ...input,
+          cpuLimit: input.cpuLimit !== undefined ? String(input.cpuLimit) : undefined,
           dockerImage: input.dockerImage || defaultImages[input.type],
           status: "provisioning",
         })
@@ -285,6 +286,7 @@ export const databaseRouter = createTRPCRouter({
         .update(databases)
         .set({
           ...updates,
+          cpuLimit: updates.cpuLimit !== undefined ? String(updates.cpuLimit) : undefined,
           updatedAt: new Date(),
         })
         .where(eq(databases.id, id))

@@ -453,7 +453,7 @@ export default function WorkflowsPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-medium text-lg">{executionDetailsQuery.data.template?.name || "Unknown"}</h3>
-                <Badge variant="outline" className={getStatusColor(executionDetailsQuery.data.status)}>
+                <Badge variant="outline" className={getStatusColor(executionDetailsQuery.data.status ?? "")}>
                   {executionDetailsQuery.data.status}
                 </Badge>
               </div>

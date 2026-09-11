@@ -300,7 +300,7 @@ function DomainRow({ domain, appId, isPrimary, removeDomain, setPrimaryDomain, v
           )}
 
           {/* The DNS record to create (DNS method only) */}
-          {instructions.record && (
+          {instructions.method === "dns" && (
             <div className="mb-3">
               <span className="text-[10px] uppercase text-muted-foreground font-semibold mb-1 block">Record to add</span>
               <div className="grid grid-cols-[auto_1fr] sm:grid-cols-3 gap-2">
@@ -349,7 +349,7 @@ function DomainRow({ domain, appId, isPrimary, removeDomain, setPrimaryDomain, v
               )}
 
               {/* From / To (URL forwarding method only) */}
-              {instructions.generic && (
+              {instructions.method === "redirect" && (
                 <div className="flex gap-4">
                   <div className="flex-1">
                     <span className="text-[10px] uppercase text-muted-foreground font-semibold mb-1 block">From</span>
@@ -701,7 +701,7 @@ export default function ApplicationDetailPage() {
         <div className="flex-1">
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-semibold tracking-tight">{app.appName}</h1>
-            <Badge variant="outline" className={getStatusColor(app.status)}>
+            <Badge variant="outline" className={getStatusColor(app.status ?? "")}>
               {app.status}
             </Badge>
           </div>

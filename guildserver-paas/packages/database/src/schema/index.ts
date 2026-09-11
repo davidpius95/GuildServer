@@ -217,8 +217,8 @@ export const oauthAccounts = pgTable("oauth_accounts", {
 // Organization membership
 export const members = pgTable("members", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
-  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   role: memberRoleEnum("role").notNull(),
 
   // Granular permissions
@@ -275,7 +275,7 @@ export const projects = pgTable("projects", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
-  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
 
   // Project settings
   environment: jsonb("environment").default({}),
@@ -293,7 +293,7 @@ export const applications = pgTable("applications", {
   name: varchar("name", { length: 255 }).notNull(),
   appName: varchar("app_name", { length: 255 }).notNull(),
   description: text("description"),
-  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
   
   // Source configuration
   sourceType: sourceTypeEnum("source_type"),
@@ -502,7 +502,7 @@ export const databases = pgTable("databases", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: varchar("name", { length: 255 }).notNull(),
   type: varchar("type", { length: 50 }).notNull(), // postgresql, mysql, mongodb, redis
-  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
   
   // Database configuration
   databaseName: varchar("database_name", { length: 255 }).notNull(),
@@ -547,7 +547,7 @@ export const databases = pgTable("databases", {
 // Database Backups
 export const databaseBackups = pgTable("database_backups", {
   id: uuid("id").primaryKey().defaultRandom(),
-  databaseId: uuid("database_id").references(() => databases.id, { onDelete: "cascade" }),
+  databaseId: uuid("database_id").references(() => databases.id, { onDelete: "cascade" }).notNull(),
   // bigint: an int4 overflowed at 2 GiB.
   sizeBytes: bigint("size_bytes", { mode: "number" }).default(0),
   status: backupStatusEnum("status").default("pending"),
@@ -864,7 +864,7 @@ export const kubernetesClusters = pgTable("kubernetes_clusters", {
   region: varchar("region", { length: 100 }),
   status: clusterStatusEnum("status").default("pending"),
   metadata: jsonb("metadata").default({}),
-  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1368,7 +1368,7 @@ export const workflowTemplates = pgTable("workflow_templates", {
   definition: jsonb("definition").notNull(),
   version: varchar("version", { length: 50 }).default("1.0.0"),
   status: workflowStatusEnum("status").default("draft"),
-  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -1385,7 +1385,7 @@ export const workflowExecutions = pgTable("workflow_executions", {
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
   triggeredBy: uuid("triggered_by").references(() => users.id),
-  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1439,7 +1439,7 @@ export const auditLogs = pgTable("audit_logs", {
   metadata: jsonb("metadata").default({}),
   ipAddress: inet("ip_address"),
   userAgent: text("user_agent"),
-  timestamp: timestamp("timestamp").defaultNow(),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
   sessionId: varchar("session_id", { length: 255 }),
 }, (table) => ({
   organizationIdIdx: index("audit_logs_organization_id_idx").on(table.organizationId),

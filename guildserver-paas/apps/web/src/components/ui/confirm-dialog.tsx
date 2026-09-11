@@ -108,6 +108,11 @@ interface ConfirmDialogProps {
   variant?: ConfirmVariant
   onConfirm: () => void
   loading?: boolean
+  /**
+   * For irreversible actions: the confirm button stays disabled until the
+   * user types this exact text (typically the resource's name or slug).
+   */
+  confirmationText?: string
 }
 
 const variantConfig: Record<ConfirmVariant, {
@@ -142,8 +147,18 @@ export function ConfirmDialog({
   variant = "danger",
   onConfirm,
   loading = false,
+  confirmationText,
 }: ConfirmDialogProps) {
   const config = variantConfig[variant]
+  const [typed, setTyped] = React.useState("")
+  const inputId = React.useId()
+
+  // Start empty every time the dialog opens.
+  React.useEffect(() => {
+    if (!open) setTyped("")
+  }, [open])
+
+  const awaitingConfirmationText = !!confirmationText && typed !== confirmationText
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -166,6 +181,22 @@ export function ConfirmDialog({
           </div>
         </div>
 
+        {confirmationText && (
+          <div className="space-y-2">
+            <label htmlFor={inputId} className="text-sm text-muted-foreground">
+              Type <span className="font-mono font-semibold text-foreground">{confirmationText}</span> to confirm.
+            </label>
+            <input
+              id={inputId}
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex justify-end gap-3 mt-2">
           <AlertDialogCancel disabled={loading}>
@@ -175,9 +206,10 @@ export function ConfirmDialog({
             className={cn(config.buttonClass)}
             onClick={(e) => {
               e.preventDefault() // prevent auto-close so loading state is visible
+              if (awaitingConfirmationText) return
               onConfirm()
             }}
-            disabled={loading}
+            disabled={loading || awaitingConfirmationText}
           >
             {loading && (
               <svg

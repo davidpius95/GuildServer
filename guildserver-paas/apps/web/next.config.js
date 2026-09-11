@@ -17,16 +17,9 @@ const nextConfig = {
     API_URL: process.env.API_URL || 'https://guild-technologies.com',
   },
   transpilePackages: ['@guildserver/database'],
-  typescript: {
-    // trpc-provider.tsx imports AppRouter directly from API source, causing tsc to
-    // transitively check all API files through the web's tsconfig.
-    // Fix: build the API first and consume its compiled types, or move AppRouter to
-    // a shared @guildserver/types package. Until then, run `pnpm typecheck` separately.
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  // Type and lint errors fail the build. trpc-provider.tsx imports AppRouter
+  // from API source, so the build also type-checks the API through this app's
+  // tsconfig; the Dockerfile copies apps/api into the build stage for that.
   async headers() {
     return [
       {

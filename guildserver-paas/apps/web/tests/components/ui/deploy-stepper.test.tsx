@@ -1,5 +1,4 @@
 import { render, screen } from "@testing-library/react"
-import { describe, it, expect } from "@jest/globals"
 import { DeployStepper } from "../../../src/components/deploy-stepper"
 
 describe("DeployStepper", () => {

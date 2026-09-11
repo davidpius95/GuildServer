@@ -1,5 +1,4 @@
 import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, it, expect, jest } from '@jest/globals'
 import { useState } from 'react'
 import { EnvVarEditor, type EnvVarEntry } from '../../../src/components/env-var-editor'
 

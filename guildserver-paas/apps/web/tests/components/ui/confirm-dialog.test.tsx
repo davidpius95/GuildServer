@@ -1,5 +1,4 @@
 import { render, screen, fireEvent, renderHook, act } from '@testing-library/react'
-import { describe, it, expect, jest } from '@jest/globals'
 import { ConfirmDialog, useConfirmDialog } from '../../../src/components/ui/confirm-dialog'
 
 describe('ConfirmDialog', () => {
@@ -96,7 +95,7 @@ describe('ConfirmDialog', () => {
     ['danger', 'Delete this?'],
     ['warning', 'Restart this?'],
     ['info', 'Continue?'],
-  ] as const)('renders the %s variant', (variant, title) => {
+  ] as const)('renders the %s variant', (variant: 'danger' | 'warning' | 'info', title: string) => {
     render(
       <ConfirmDialog
         open
@@ -109,6 +108,47 @@ describe('ConfirmDialog', () => {
     )
 
     expect(screen.getByText(title)).toBeInTheDocument()
+  })
+
+  describe('with confirmationText', () => {
+    function renderTyped(onConfirm = jest.fn()) {
+      render(
+        <ConfirmDialog
+          open
+          onOpenChange={jest.fn()}
+          title="Delete Organization"
+          description="This cannot be undone."
+          confirmLabel="Delete Organization"
+          confirmationText="acme-corp"
+          onConfirm={onConfirm}
+        />
+      )
+      return onConfirm
+    }
+
+    it('keeps the confirm button disabled until the exact text is typed', () => {
+      const onConfirm = renderTyped()
+      const button = screen.getByRole('button', { name: 'Delete Organization' })
+      const input = screen.getByLabelText(/to confirm/)
+
+      expect(button).toBeDisabled()
+      fireEvent.change(input, { target: { value: 'acme' } })
+      expect(button).toBeDisabled()
+      fireEvent.change(input, { target: { value: 'Acme-Corp' } })
+      expect(button).toBeDisabled()
+      fireEvent.click(button)
+      expect(onConfirm).not.toHaveBeenCalled()
+
+      fireEvent.change(input, { target: { value: 'acme-corp' } })
+      expect(button).toBeEnabled()
+      fireEvent.click(button)
+      expect(onConfirm).toHaveBeenCalledTimes(1)
+    })
+
+    it('shows the text the user has to type', () => {
+      renderTyped()
+      expect(screen.getByText('acme-corp')).toBeInTheDocument()
+    })
   })
 })
 

@@ -33,7 +33,6 @@ import { resolveCloneToken } from "../services/git-clone-token";
 // so we default to the standard Redis port (6379)
 const redis = new IORedis(process.env.REDIS_URL || "redis://localhost:6379", {
   maxRetriesPerRequest: null,
-  retryDelayOnFailover: 100,
 });
 
 // Queue definitions

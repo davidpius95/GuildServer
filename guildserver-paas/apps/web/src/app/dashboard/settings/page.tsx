@@ -131,7 +131,8 @@ export default function SettingsPage() {
   const [slackUrl, setSlackUrl] = useState("")
   const [slackChannel, setSlackChannel] = useState("")
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const { orgId, currentOrg, refreshContext } = useOrganization()
+  const { orgId, currentOrg } = useOrganization()
+  const utils = trpc.useUtils()
 
   // Real data queries
   const orgQuery = trpc.organization.getById.useQuery(
@@ -161,7 +162,7 @@ export default function SettingsPage() {
     onSuccess: () => {
       setEditingOrg(false)
       orgQuery.refetch()
-      refreshContext()
+      utils.organization.list.invalidate()
     },
   })
 
@@ -169,7 +170,7 @@ export default function SettingsPage() {
     onSuccess: () => {
       toast.success("Organization deleted successfully")
       setDeleteDialogOpen(false)
-      refreshContext()
+      utils.organization.list.invalidate()
       router.push("/dashboard")
     },
     onError: (err) => toast.error(getFriendlyMessage(err)),
@@ -782,15 +783,15 @@ export default function SettingsPage() {
           </Card>
           
           <ConfirmDialog
-            isOpen={deleteDialogOpen}
-            onClose={() => setDeleteDialogOpen(false)}
+            open={deleteDialogOpen}
+            onOpenChange={setDeleteDialogOpen}
             onConfirm={() => deleteOrgMutation.mutate({ id: orgId })}
             title="Delete Organization"
             description={`Are you sure you want to delete ${org?.name}? This will permanently delete the organization, all projects, applications, databases, and associated data. This action cannot be undone.`}
-            confirmText="Delete Organization"
-            isDestructive={true}
-            isLoading={deleteOrgMutation.isPending}
-            requireConfirmationText={org?.slug}
+            confirmLabel="Delete Organization"
+            variant="danger"
+            loading={deleteOrgMutation.isLoading}
+            confirmationText={org?.slug ?? undefined}
           />
         </TabsContent>
 

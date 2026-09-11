@@ -1,5 +1,4 @@
 import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, it, expect, jest } from '@jest/globals'
 import { Button } from '../../../src/components/ui/button'
 
 describe('Button Component', () => {

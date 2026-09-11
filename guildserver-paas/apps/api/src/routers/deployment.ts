@@ -323,7 +323,7 @@ export const deploymentRouter = createTRPCRouter({
       }
 
       // Only allow canceling pending or running deployments
-      if (!["pending", "running"].includes(deployment.status)) {
+      if (!deployment.status || !["pending", "running"].includes(deployment.status)) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Cannot cancel a deployment that is not pending or running",

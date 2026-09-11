@@ -409,11 +409,13 @@ export const applicationRouter = createTRPCRouter({
         updates.registryPassword !== undefined
           ? { ...updates, registryPassword: encryptSecret(updates.registryPassword) }
           : updates;
+      const { cpuLimit, ...otherUpdates } = encryptedUpdates;
 
       const [updatedApplication] = await ctx.db
         .update(applications)
         .set({
-          ...encryptedUpdates,
+          ...otherUpdates,
+          ...(cpuLimit !== undefined ? { cpuLimit: String(cpuLimit) } : {}),
           updatedAt: new Date(),
         })
         .where(eq(applications.id, id))

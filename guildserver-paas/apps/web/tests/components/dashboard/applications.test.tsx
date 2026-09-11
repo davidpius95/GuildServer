@@ -1,5 +1,4 @@
 import { screen, fireEvent, waitFor, waitForElementToBeRemoved } from '@testing-library/react'
-import { describe, it, expect } from '@jest/globals'
 import { rest } from 'msw'
 import ApplicationsPage from '../../../src/app/dashboard/applications/page'
 import { renderWithProviders } from '../../helpers/render'

@@ -1273,14 +1273,3 @@ export const GRADIENT_MAP: Record<string, string> = {
   "default": "from-slate-900 via-gray-800 to-slate-900",
 }
 
-const getIconComponent = (icon: string) => {
-  switch (icon) {
-    case "globe": return Globe
-    case "server": return Server
-    case "database": return Database
-    case "code": return Code2
-    case "boxes": return Boxes
-    case "shield": return Shield
-    default: return Server
-  }
-}
