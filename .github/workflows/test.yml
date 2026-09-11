@@ -442,6 +442,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: [lint-and-typecheck, backend-tests, frontend-tests, e2e-tests, build-test, security-audit]
     if: always()
+    # This job does not check out the repository, so the workflow-wide
+    # working directory (guildserver-paas) does not exist here.
+    defaults:
+      run:
+        working-directory: .
 
     steps:
       - name: Check test results
