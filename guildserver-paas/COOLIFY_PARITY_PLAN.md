@@ -7,7 +7,7 @@ document is the original plan, kept for reference.
 
 | ID | State | How it is proven |
 |---|---|---|
-| W0 | CI gates every production deploy (`GUILDSERVER_REQUIRE_CI=enforce`): lint, zero type errors in api and web (baselines 0; the web build no longer ignores type or lint errors), backend (1,216 tests against real Postgres, Redis, MinIO), frontend (77). A Playwright suite exists and is being proven on an `acceptance/**` branch before it becomes a gate. | CI on every push to `main` |
+| W0 | CI gates every production deploy (`GUILDSERVER_REQUIRE_CI=enforce`): lint, zero type errors in api and web (baselines 0; the web build no longer ignores type or lint errors), backend (1,216 tests against real Postgres, Redis, MinIO), frontend (77). End-to-end (Playwright: register, sign in/out, every dashboard page renders without errors) against a real API, web app, Postgres and Redis. | CI on every push to `main` |
 | W1 | Rolling deploys with health gate, overlap/serial promotion, per-router retry middleware and a 2s Traefik dial timeout. Off unless `GS_ZERO_DOWNTIME=1`; apps with persistent storage stay on recreate unless `GS_ZERO_DOWNTIME_SHARED_VOLUME=1`. | `docker-acceptance.yml`: a swap under continuous load behind real Traefik returns no non-2xx; an unhealthy candidate leaves the old version serving |
 | W2 | Compose stacks (API, UI, deploy, logs, status, delete). | `docker-acceptance.yml`: web + Postgres + Redis stack deploys, keeps data across redeploy, deletes only its own resources |
 | W3 | 302 Coolify templates imported; 192 passed the deployment gate on scratch runners; 182 offered in the One-click services catalogue (the rest need `cap_add`, `security_opt`, a fixed `container_name`, or have an unparseable port). | `verify-templates.yml` (weekly); a unit test plans every offered template |
@@ -29,8 +29,7 @@ several of them real bugs); a GitHub connection that GitHub had revoked still sh
 (the settings page now detects it and offers Reconnect); metrics retention never ran (now nightly,
 30 days).
 
-Still open: the Playwright suite as a CI gate; enabling `GS_ZERO_DOWNTIME` in production;
-GitHub App installation tokens (repository access that does not depend on one user's login) need
+Still open: GitHub App installation tokens (repository access that does not depend on one user's login) need
 the App ID and private key configured.
 **Author:** Claude Opus 5, 9 September 2026
 **Worktree:** `Davidcode/guildserver-coolify-gaps-0978cc` @ `306545a`
