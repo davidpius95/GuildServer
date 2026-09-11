@@ -183,6 +183,10 @@ jobs:
           GS_S3_ALLOW_LOOPBACK_ENDPOINTS: '1'
 
       - name: Upload backend coverage
+        # Coverage reporting is informational. An upload failure (Codecov outage,
+        # rate limit, missing token) must not fail the job: production deploys
+        # are gated on these checks.
+        continue-on-error: true
         uses: codecov/codecov-action@v4
         with:
           files: ./guildserver-paas/apps/api/coverage/lcov.info
@@ -219,6 +223,10 @@ jobs:
           NODE_ENV: test
 
       - name: Upload frontend coverage
+        # Coverage reporting is informational. An upload failure (Codecov outage,
+        # rate limit, missing token) must not fail the job: production deploys
+        # are gated on these checks.
+        continue-on-error: true
         uses: codecov/codecov-action@v4
         with:
           files: ./guildserver-paas/apps/web/coverage/lcov.info
