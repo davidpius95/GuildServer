@@ -25,6 +25,7 @@ import { downloadRouter } from "./handlers/downloads";
 import { stripeWebhookRouter } from "./handlers/stripe-webhooks";
 import { register, httpRequestCounter, httpRequestDuration } from "./services/prometheus-metrics";
 import { AppError } from "./lib/errors";
+import { syncTraefikDynamicDomains } from "./services/traefik-dynamic";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -200,6 +201,9 @@ async function startServer() {
 
     // Forward container logs for resources that have an enabled log drain.
     startLogDrains();
+
+    // Sync all active custom domains to Traefik dynamic configuration
+    void syncTraefikDynamicDomains();
 
     // Graceful shutdown
     process.on("SIGTERM", () => {

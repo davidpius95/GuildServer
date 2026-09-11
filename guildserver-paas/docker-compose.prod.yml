@@ -8,6 +8,8 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=guildserver"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       # Fail a dial to a stopped container's address in 2s instead of 30s, so
@@ -31,6 +33,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./data/letsencrypt:/letsencrypt
+      - ./data/traefik-dynamic:/etc/traefik/dynamic
     networks:
       - default
       - guildserver
@@ -85,6 +88,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - database_backups:/var/lib/guildserver/backups
+      - ./data/traefik-dynamic:/etc/traefik/dynamic
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://guildserver:${POSTGRES_PASSWORD:-password123}@postgres:5432/guildserver
@@ -120,6 +124,7 @@ services:
       GS_ZERO_DOWNTIME: ${GS_ZERO_DOWNTIME:-0}
       # Days of raw metrics kept; the nightly retention job deletes older rows.
       METRICS_RETENTION_DAYS: ${METRICS_RETENTION_DAYS:-30}
+      TRAEFIK_DYNAMIC_DIR: /etc/traefik/dynamic
       # Flutterwave v4. Empty defaults keep the stack bootable without them —
       # isFlutterwaveV4Configured() gates every call site.
       FLW_V4_CLIENT_ID: ${FLW_V4_CLIENT_ID:-}

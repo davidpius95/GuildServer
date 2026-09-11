@@ -21,6 +21,7 @@ import {
   isHostnameActive,
   getVerificationInfo,
 } from "../services/cloudflare-saas";
+import { syncTraefikDynamicDomains } from "../services/traefik-dynamic";
 
 const BASE_DOMAIN = process.env.BASE_DOMAIN || "guildserver.localhost";
 
@@ -358,11 +359,15 @@ export const domainRouter = createTRPCRouter({
           .where(eq(domains.id, input.id))
           .returning();
 
+        if (updated.verified) {
+          void syncTraefikDynamicDomains();
+        }
+
         return {
           verified: updated.verified,
           domain: updated,
-          // Traefik only routes the domain after the container is re-labeled on deploy.
-          needsRedeploy: updated.verified,
+          // Traefik dynamically routes the domain immediately without a redeploy.
+          needsRedeploy: false,
           cfVerificationInfo,
         };
       }
@@ -471,6 +476,7 @@ export const domainRouter = createTRPCRouter({
       }
 
       await ctx.db.delete(domains).where(eq(domains.id, input.id));
+      void syncTraefikDynamicDomains();
 
       return { success: true };
     }),
