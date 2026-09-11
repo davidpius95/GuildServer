@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure, adminProcedure } from "../trpc/trpc";
-import { buildDiskReport } from "../services/disk-report";
+import { buildDiskReport, executeCleanup } from "../services/disk-report";
+import { logger } from "../utils/logger";
 import { metrics, applications, members, deployments, projects } from "@guildserver/database";
 import { eq, and, desc, gte, count, sql, inArray } from "drizzle-orm";
 import {
@@ -104,6 +105,36 @@ export const monitoringRouter = createTRPCRouter({
         .optional(),
     )
     .query(async ({ input }) => buildDiskReport({}, input ?? {})),
+
+  /**
+   * Remove images an admin selected from a disk report, and optionally idle
+   * build cache. A dry run unless `dryRun: false`. Each selected image must
+   * still be a safe candidate in a plan rebuilt at execution time, and images
+   * are removed without force. Volumes and containers are never touched. See
+   * services/disk-report/execute.ts.
+   */
+  diskCleanup: adminProcedure
+    .input(
+      z.object({
+        imageIds: z.array(z.string().regex(/^sha256:[a-f0-9]{64}$/, "Expected a full image id")).max(500),
+        includeBuildCache: z.boolean().default(false),
+        dryRun: z.boolean().default(true),
+        policy: z
+          .object({
+            rollbackKeepPerApp: z.number().int().min(1).max(50).optional(),
+            rollbackRetentionDays: z.number().int().min(1).max(365).optional(),
+            buildCacheIdleDays: z.number().int().min(0).max(365).optional(),
+          })
+          .optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await executeCleanup(input);
+      if (!input.dryRun) {
+        logger.info("Disk cleanup requested", { userId: ctx.user.id, images: result.images.length });
+      }
+      return result;
+    }),
 
   recordMetric: protectedProcedure
     .input(recordMetricSchema)

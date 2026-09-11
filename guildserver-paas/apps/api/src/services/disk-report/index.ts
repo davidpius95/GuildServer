@@ -20,3 +20,4 @@ export async function buildDiskReport(
   const [inventory, references] = await Promise.all([collectDiskInventory(deps), collectReferences(deps.database)]);
   return planCleanup(inventory, references, policy, now);
 }
+export { executeCleanup, type CleanupRequest, type CleanupResult, type CleanupDocker } from "./execute";
