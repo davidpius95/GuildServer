@@ -55,9 +55,10 @@ export async function syncTraefikDynamicDomains(): Promise<void> {
       if (!domainName) continue;
 
       const routerKey = `custom-domain-${d.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+      const serviceName = `${d.application.name.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}@docker`;
       lines.push(`    ${routerKey}:`);
       lines.push(`      rule: "Host(\`${domainName}\`)"`);
-      lines.push(`      service: "${d.application.name}@docker"`);
+      lines.push(`      service: "${serviceName}"`);
       lines.push(`      entryPoints:`);
       lines.push(`        - "web"`);
       lines.push(`        - "websecure"`);
