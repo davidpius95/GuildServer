@@ -18,6 +18,7 @@ import {
   date,
   index,
   uniqueIndex,
+  bigint,
 } from "drizzle-orm/pg-core";
 
 // =====================
@@ -465,6 +466,37 @@ export const serviceVolumes = pgTable("service_volumes", {
   serviceIdIdx: index("service_volumes_service_id_idx").on(table.serviceId),
 }));
 
+/**
+ * S3-compatible object storage used as an off-site destination for database
+ * backups. A backup on the same host as the database it protects is not a
+ * disaster-recovery plan.
+ *
+ * Credentials are stored encrypted with utils/crypto and never returned to a
+ * client; path-style addressing defaults on because MinIO, Ceph and most
+ * self-hosted S3 require it.
+ */
+export const s3Storages = pgTable("s3_storages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  endpoint: text("endpoint").notNull(),
+  region: varchar("region", { length: 64 }).notNull().default("us-east-1"),
+  bucket: varchar("bucket", { length: 255 }).notNull(),
+  pathPrefix: text("path_prefix"),
+  /** Encrypted. */
+  accessKeyId: text("access_key_id").notNull(),
+  /** Encrypted. */
+  secretAccessKey: text("secret_access_key").notNull(),
+  forcePathStyle: boolean("force_path_style").notNull().default(true),
+  lastTestedAt: timestamp("last_tested_at"),
+  lastTestOk: boolean("last_test_ok"),
+  lastTestError: text("last_test_error"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  organizationIdIdx: index("s3_storages_organization_id_idx").on(table.organizationId),
+}));
+
 // Databases
 export const databases = pgTable("databases", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -500,6 +532,8 @@ export const databases = pgTable("databases", {
   backupHour: integer("backup_hour"), // preferred hour-of-day (0-23) for the backup window
   backupRetentionDays: integer("backup_retention_days").default(7),
   backupDir: text("backup_dir"), // host directory for dumps (null = derived default)
+  /** Off-site destination; null keeps backups on the local host only. */
+  backupStorageId: uuid("backup_storage_id").references(() => s3Storages.id, { onDelete: "set null" }),
 
   // Status
   status: varchar("status", { length: 50 }).default("inactive"),
@@ -514,12 +548,20 @@ export const databases = pgTable("databases", {
 export const databaseBackups = pgTable("database_backups", {
   id: uuid("id").primaryKey().defaultRandom(),
   databaseId: uuid("database_id").references(() => databases.id, { onDelete: "cascade" }),
-  sizeBytes: integer("size_bytes").default(0),
+  // bigint: an int4 overflowed at 2 GiB.
+  sizeBytes: bigint("size_bytes", { mode: "number" }).default(0),
   status: backupStatusEnum("status").default("pending"),
   backupType: varchar("backup_type", { length: 20 }).default("manual"), // manual | automatic
   filePath: text("file_path"), // absolute path of the dump on the host
   fileUrl: text("file_url"),
   error: text("error"),
+  /** Off-site copy, when the database has a backup storage configured. */
+  storageId: uuid("storage_id").references(() => s3Storages.id, { onDelete: "set null" }),
+  remoteKey: text("remote_key"),
+  /** Hex SHA-256 of the dump; checked before restoring from either copy. */
+  checksumSha256: varchar("checksum_sha256", { length: 64 }),
+  uploadedAt: timestamp("uploaded_at"),
+  uploadError: text("upload_error"),
   startedAt: timestamp("started_at").defaultNow(),
   completedAt: timestamp("completed_at"),
   expiresAt: timestamp("expires_at"), // completedAt + retentionDays; used by the retention sweep
