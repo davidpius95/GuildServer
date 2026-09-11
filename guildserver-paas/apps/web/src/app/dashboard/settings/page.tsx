@@ -700,7 +700,7 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Security Settings</CardTitle>
-              <CardDescription>Manage your organization's security configuration</CardDescription>
+              <CardDescription>Manage your organization&apos;s security configuration</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3">

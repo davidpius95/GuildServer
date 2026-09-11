@@ -43,8 +43,17 @@ jobs:
       - name: Run ESLint
         run: pnpm --filter @guildserver/web lint
 
-      - name: Run TypeScript check
-        run: pnpm --filter @guildserver/web --filter @guildserver/database typecheck
+      - name: Run TypeScript check (database, strict)
+        run: pnpm --filter @guildserver/database typecheck
+
+      # apps/api and apps/web predate CI and carry type errors production does
+      # not compile against (the API runs under tsx; next.config ignores build
+      # type errors). Fail only if a change adds errors; see the script.
+      - name: TypeScript error ratchet (api, web)
+        run: |
+          pnpm --filter @guildserver/database build
+          bash scripts/typecheck-ratchet.sh apps/api apps/api/.typecheck-baseline
+          bash scripts/typecheck-ratchet.sh apps/web apps/web/.typecheck-baseline
 
   # Unit and Integration Tests
   backend-tests:
@@ -127,6 +136,10 @@ jobs:
         run: pnpm --filter @guildserver/database test
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/guildserver_test
+          # The harness creates and drops its own mig_runner_test_* databases
+          # through this admin URL. It defaults to the local test Postgres on
+          # 5433; the CI service listens on 5432.
+          TEST_DB_ADMIN_URL: postgresql://test:test@localhost:5432/postgres
 
       # Off-site backup tests talk to a real S3 API. MinIO needs a command
       # (`server /data`), which service containers cannot be given, so it is
@@ -150,6 +163,9 @@ jobs:
           TEST_DATABASE_URL: postgresql://test:test@localhost:5432/guildserver_test
           DATABASE_URL: postgresql://test:test@localhost:5432/guildserver_test
           REDIS_URL: redis://localhost:6379/1
+          # tests/env.ts reads TEST_REDIS_URL and otherwise uses the local
+          # throwaway Redis on 6380, which does not exist on the runner.
+          TEST_REDIS_URL: redis://localhost:6379/1
           JWT_SECRET: test-jwt-secret-key-for-ci
           NODE_ENV: test
           GS_MINIO_TESTS: '1'
@@ -324,8 +340,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build all packages
-        run: pnpm --filter @guildserver/database --filter @guildserver/api --filter @guildserver/web build
+      # Build what production builds. The API image runs its TypeScript under
+      # tsx and never compiles it with tsc (apps/api/Dockerfile); type errors
+      # are held by the ratchet in the lint job instead.
+      - name: Build packages
+        run: pnpm --filter @guildserver/database --filter @guildserver/web build
         env:
           NODE_ENV: production
 
@@ -339,6 +358,11 @@ jobs:
   security-audit:
     name: Security Audit
     runs-on: ubuntu-latest
+    # CodeQL uploads results to code scanning; the default token is read-only.
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
 
     steps:
       - name: Checkout code

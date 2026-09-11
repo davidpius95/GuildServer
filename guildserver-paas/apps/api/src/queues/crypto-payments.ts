@@ -1,7 +1,8 @@
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
 import { logger } from "../utils/logger";
-import { pollCryptoPaymentConfirmations, isCryptoConfigured } from "../services/billing";
+// Imported from the module itself: services/billing/index.ts does not re-export crypto.
+import { pollCryptoPaymentConfirmations, isCryptoConfigured } from "../services/billing/crypto";
 
 // Self-contained Redis connection (mirrors queues/backups.ts).
 const redis = new IORedis(process.env.REDIS_URL || "redis://localhost:6379", {

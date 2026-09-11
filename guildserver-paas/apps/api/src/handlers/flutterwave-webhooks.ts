@@ -1,10 +1,11 @@
 import { Router, Request, Response } from "express";
 import { logger } from "../utils/logger";
+// Imported from the module itself: services/billing/index.ts does not re-export flutterwave.
 import {
   isFlutterwaveConfigured,
   verifyFlutterwaveWebhookSignature,
   reconcileFlutterwaveTransaction,
-} from "../services/billing";
+} from "../services/billing/flutterwave";
 import { db, paymentTransactions, subscriptions, plans, organizations, members } from "@guildserver/database";
 import { eq, and } from "drizzle-orm";
 import { notify } from "../services/notification";

@@ -128,7 +128,7 @@ export default function DashboardPage() {
       <div className="space-y-8">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Welcome to GuildServer</h1>
-          <p className="text-muted-foreground">Let's get you set up</p>
+          <p className="text-muted-foreground">Let&apos;s get you set up</p>
         </div>
         <Card className="text-center py-12">
           <CardContent>
