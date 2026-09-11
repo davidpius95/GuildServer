@@ -1,5 +1,5 @@
 import { db, metrics, applications } from "@guildserver/database";
-import { eq } from "drizzle-orm";
+import { eq, inArray, lt } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { collectAllMetrics, getContainerSummary } from "./container-manager";
 import { broadcastToAll } from "../websocket/server";
@@ -147,28 +147,44 @@ export function stopMetricsCollection(): void {
   }
 }
 
+/** Longest range the dashboards query (monitoring.getMetrics "30d"). */
+export const DEFAULT_METRICS_RETENTION_DAYS = 30;
+
+/** METRICS_RETENTION_DAYS, or 30 when unset or not a whole number of days >= 1. */
+export function metricsRetentionDays(env: NodeJS.ProcessEnv = process.env): number {
+  const days = Number(env.METRICS_RETENTION_DAYS);
+  return Number.isInteger(days) && days >= 1 ? days : DEFAULT_METRICS_RETENTION_DAYS;
+}
+
 /**
- * Clean up old metrics data (retention policy)
- * @param retentionDays - Number of days to keep raw metrics (default: 7)
+ * Delete raw metrics older than the retention window.
+ *
+ * The collector writes a handful of rows per container every 15 seconds, so
+ * without this the table grows without bound. Deletes run in batches through
+ * the timestamp index so no single statement holds locks on millions of rows.
+ * Returns the number of rows removed.
  */
-export async function cleanupOldMetrics(retentionDays: number = 7): Promise<number> {
-  try {
-    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+export async function cleanupOldMetrics(
+  retentionDays: number = metricsRetentionDays(),
+  { batchSize = 10_000, now = new Date() }: { batchSize?: number; now?: Date } = {},
+): Promise<number> {
+  const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000);
+  let removed = 0;
 
-    const result = await db
+  for (;;) {
+    const expired = db
+      .select({ id: metrics.id })
+      .from(metrics)
+      .where(lt(metrics.timestamp, cutoff))
+      .limit(batchSize);
+    const deleted = await db
       .delete(metrics)
-      .where(
-        // Only delete metrics older than the cutoff
-        // Using raw SQL for less-than comparison
-        eq(metrics.name, metrics.name) // placeholder - we'll use gte from drizzle
-      );
-
-    // For now, use a simpler approach: delete via raw query
-    // We'll handle this with the monitoring queue's cleanup job
-    logger.info(`Metrics cleanup: removed records older than ${retentionDays} days`);
-    return 0;
-  } catch (error: any) {
-    logger.error(`Metrics cleanup failed: ${error.message}`);
-    return 0;
+      .where(inArray(metrics.id, expired))
+      .returning({ id: metrics.id });
+    removed += deleted.length;
+    if (deleted.length < batchSize) break;
   }
+
+  logger.info(`Metrics retention: removed ${removed} row(s) older than ${retentionDays} day(s)`);
+  return removed;
 }

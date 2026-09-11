@@ -17,7 +17,7 @@ import { syncContainerStatuses } from "../services/container-manager";
 import { broadcastToUser } from "../websocket/server";
 import { cloneRepository, cleanupClone } from "../services/git-provider";
 import { buildImage, getPortForBuildType } from "../services/builder";
-import { startMetricsCollection, stopMetricsCollection, collectAndStoreMetrics } from "../services/metrics-collector";
+import { startMetricsCollection, stopMetricsCollection, collectAndStoreMetrics, cleanupOldMetrics } from "../services/metrics-collector";
 import { notify } from "../services/notification";
 import { trackDeployment, trackBuildMinutes } from "../services/usage-meter";
 import { checkSpendLimit, checkSpendThresholds } from "../services/spend-manager";
@@ -910,21 +910,24 @@ const monitoringWorker = new Worker(
 
     try {
       switch (type) {
-        case "collect-metrics":
+        case "collect-metrics": {
           await syncContainerStatuses();
           await collectAndStoreMetrics();
-          
+
           // Collect Queue Depths for Prometheus
           const depActive = await deploymentQueue.getActiveCount();
           const depWaiting = await deploymentQueue.getWaitingCount();
           queueDepth.set({ queue_name: "deployment", status: "active" }, depActive);
           queueDepth.set({ queue_name: "deployment", status: "waiting" }, depWaiting);
-          
           break;
+        }
         case "health-check":
           await syncContainerStatuses();
           break;
         case "alert-check":
+          break;
+        case "metrics-retention":
+          await cleanupOldMetrics();
           break;
         default:
           logger.warn("Unknown monitoring job type", { type });
@@ -1035,6 +1038,17 @@ export async function initializeQueues() {
         repeat: { pattern: "*/2 * * * *" },
         removeOnComplete: 50,
         removeOnFail: 20,
+      }
+    );
+
+    // Raw metrics are only queried 30 days back; prune older rows nightly.
+    await monitoringQueue.add(
+      "metrics-retention",
+      { type: "metrics-retention" },
+      {
+        repeat: { pattern: "17 3 * * *" },
+        removeOnComplete: 10,
+        removeOnFail: 10,
       }
     );
 

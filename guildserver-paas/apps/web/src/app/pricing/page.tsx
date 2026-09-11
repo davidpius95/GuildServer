@@ -421,7 +421,7 @@ function ComparisonTable({ plans }: { plans: any[] }) {
     { label: "Build minutes", key: "limits.maxBuildMinutes", suffix: "min" },
     { label: "Audit retention", key: "limits.auditRetentionDays", suffix: "days" },
     { label: "API access", key: "features.apiAccess", boolean: true },
-    { label: "SSO", key: "features.sso", boolean: true },
+    { label: "SSO (coming soon)", key: "features.sso", boolean: true },
   ]
 
   return (

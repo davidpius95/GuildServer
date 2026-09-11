@@ -1,12 +1,14 @@
-import type { Config } from "drizzle-kit";
+import { defineConfig } from "drizzle-kit";
 
-export default {
+// drizzle-kit is used for `studio` and for drafting SQL. Production schema
+// changes still ship as hand-reviewed files applied by src/migrate.ts.
+export default defineConfig({
+  dialect: "postgresql",
   schema: "./src/schema/index.ts",
   out: "./migrations",
-  driver: "pg",
   dbCredentials: {
-    connectionString: process.env.DATABASE_URL!,
+    url: process.env.DATABASE_URL!,
   },
   verbose: true,
   strict: true,
-} satisfies Config;
+});

@@ -9,7 +9,7 @@
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate:pg",
+    "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/migrate.ts",
     "db:migrate:baseline": "tsx src/migrate-baseline.ts",
     "db:verify": "tsx src/verify-schema.ts",
@@ -19,18 +19,19 @@
     "db:migrate-instances": "tsx src/migrate-instances.ts",
     "db:seed-instances": "tsx src/seed-instance-types.ts",
     "db:backfill-subscriptions": "tsx src/backfill-subscriptions.ts",
-    "test": "tsx src/__tests__/migration-runner.test.ts"
+    "db:backfill-jsonb": "tsx src/backfill-jsonb.ts",
+    "test": "tsx src/__tests__/migration-runner.test.ts && tsx src/__tests__/jsonb-backfill.test.ts"
   },
   "dependencies": {
     "dotenv": "^17.2.1",
-    "drizzle-orm": "^0.29.1",
+    "drizzle-orm": "0.45.2",
     "postgres": "^3.4.3",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "@faker-js/faker": "^10.4.0",
     "@types/node": "^20.10.5",
-    "drizzle-kit": "^0.20.6",
+    "drizzle-kit": "^0.31.10",
     "tsx": "^4.6.2",
     "typescript": "^5.3.3"
   }

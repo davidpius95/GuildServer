@@ -378,13 +378,18 @@ export default function WorkflowsPage() {
               { name: "Database Maintenance", desc: "Automated database backup, cleanup, and health monitoring workflow" },
               { name: "Security Scanning", desc: "Comprehensive security scanning for dependencies and containers" },
               { name: "Multi-Environment Deploy", desc: "Deploy applications across multiple environments with approval gates" },
-              { name: "Kubernetes Deployment", desc: "Deploy and manage applications on Kubernetes clusters" }
-            ].map((tmpl, i) => (
+              { name: "Kubernetes Deployment", desc: "Deploy and manage applications on Kubernetes clusters", experimental: true }
+            ].map((tmpl: { name: string; desc: string; experimental?: boolean }, i) => (
               <Card key={i} className="cursor-pointer hover:shadow-md transition-shadow">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Workflow className="h-5 w-5" />
                     {tmpl.name}
+                    {tmpl.experimental && (
+                      <span className="rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Experimental
+                      </span>
+                    )}
                   </CardTitle>
                   <CardDescription>{tmpl.desc}</CardDescription>
                 </CardHeader>

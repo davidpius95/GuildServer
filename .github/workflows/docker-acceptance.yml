@@ -1,0 +1,131 @@
+name: Docker acceptance
+
+# Real-daemon acceptance tests: a rolling deploy that must not drop a request
+# under load (zero-downtime deploys), and a web + postgres + redis Compose
+# stack that must deploy, keep its data across a redeploy and delete only its
+# own resources.
+#
+# They create and destroy containers, networks and volumes, so they run only on
+# GitHub's scratch runners, whose Docker daemons host nothing else. They must
+# never run on a GuildServer host, and tests/helpers/docker-sandbox.ts refuses
+# a daemon that has platform-managed containers on it.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 4 * * 1"
+  push:
+    branches: [main]
+    paths:
+      - guildserver-paas/apps/api/src/services/docker/**
+      - guildserver-paas/apps/api/src/services/compose/**
+      - guildserver-paas/apps/api/tests/integration/**
+      - guildserver-paas/apps/api/tests/helpers/docker-sandbox.ts
+      - .github/workflows/docker-acceptance.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-acceptance-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '20'
+
+defaults:
+  run:
+    working-directory: guildserver-paas
+
+jobs:
+  acceptance:
+    name: Docker acceptance (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [docker-rolling-live, compose-stack-live]
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: guildserver_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: guildserver-paas/package.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: guildserver-paas/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare the test database
+        run: |
+          until pg_isready -h localhost -p 5432 -U test; do sleep 2; done
+          pnpm --filter @guildserver/database db:migrate
+          pnpm --filter @guildserver/database db:migrate-instances
+          pnpm --filter @guildserver/database build
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/guildserver_test
+
+      # The runner's daemon has only the service containers above on it. Stop
+      # here rather than let a misconfigured runner reach the tests.
+      - name: Confirm this is a scratch daemon
+        run: |
+          managed=$(docker ps -a --filter label=gs.managed=true --format '{{.Names}}')
+          if [ -n "$managed" ]; then
+            echo "Refusing: platform-managed containers exist on this daemon: $managed"
+            exit 1
+          fi
+          docker version --format 'Docker {{.Server.Version}}'
+          docker compose version
+
+      - name: Run ${{ matrix.suite }}
+        run: pnpm --filter @guildserver/api exec jest --ci --runInBand --forceExit tests/integration/${{ matrix.suite }}.test.ts
+        env:
+          GS_ALLOW_DOCKER_TESTS: '1'
+          TEST_DATABASE_URL: postgresql://test:test@localhost:5432/guildserver_test
+          DATABASE_URL: postgresql://test:test@localhost:5432/guildserver_test
+          REDIS_URL: redis://localhost:6379/1
+          TEST_REDIS_URL: redis://localhost:6379/1
+          JWT_SECRET: test-jwt-secret-key-for-ci
+          NODE_ENV: test
+
+      - name: Show leftover sandbox resources
+        if: always()
+        working-directory: .
+        run: |
+          docker ps -a --filter label=gs.test.sandbox --format '{{.Names}} {{.Status}}'
+          docker network ls --filter label=gs.test.sandbox --format '{{.Name}}'
+          docker volume ls --filter label=gs.test.sandbox --format '{{.Name}}'

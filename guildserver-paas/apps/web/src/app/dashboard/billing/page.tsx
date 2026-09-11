@@ -442,7 +442,7 @@ function PlansTab({
               <FeatureItem label="Preview Deployments" enabled={plan.features?.previewDeployments} />
               <FeatureItem label="Team Collaboration" enabled={plan.features?.teamCollaboration} />
               <FeatureItem label="Priority Support" enabled={plan.features?.prioritySupport} />
-              <FeatureItem label="SSO / SAML" enabled={plan.features?.sso} />
+              <FeatureItem label="SSO / SAML" enabled={plan.features?.sso} note="Coming soon" />
               <FeatureItem label="Webhooks" enabled={plan.features?.webhooks} />
               <FeatureItem label="API Access" enabled={plan.features?.apiAccess} />
             </div>
@@ -1158,7 +1158,7 @@ function PlanLimit({
   )
 }
 
-function FeatureItem({ label, enabled }: { label: string; enabled: boolean }) {
+function FeatureItem({ label, enabled, note }: { label: string; enabled: boolean; note?: string }) {
   return (
     <div className="flex items-center gap-2 text-sm">
       <Check
@@ -1168,6 +1168,11 @@ function FeatureItem({ label, enabled }: { label: string; enabled: boolean }) {
         )}
       />
       <span className={cn(!enabled && "text-muted-foreground")}>{label}</span>
+      {note && (
+        <span className="rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          {note}
+        </span>
+      )}
     </div>
   )
 }
