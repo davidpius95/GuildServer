@@ -29,6 +29,7 @@ import {
   Box,
   Eye,
 } from "lucide-react";
+import { DiskCleanupCard } from "@/components/admin/disk-cleanup-card";
 
 // ---------------------------------------------------------------------------
 // Shared components
@@ -1083,6 +1084,8 @@ export default function InfrastructurePage() {
           Add Provider
         </button>
       </div>
+
+      <DiskCleanupCard />
 
       {/* Overview summary bar (when Proxmox providers exist) */}
       {proxmoxProviders.length > 0 && (
