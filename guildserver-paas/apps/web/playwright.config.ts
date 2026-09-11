@@ -1,91 +1,58 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test'
 
 /**
- * @see https://playwright.dev/docs/test-configuration
+ * End-to-end tests against a running web app and API.
+ *
+ * In CI (the E2E job in .github/workflows/test.yml) Playwright starts both
+ * servers against that job's throwaway Postgres and Redis. Anywhere else, set
+ * E2E_BASE_URL to an environment where creating test accounts is acceptable:
+ * the suite never starts servers on a developer or production host by itself,
+ * because the API's background workers talk to the local Docker daemon.
  */
+const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000'
+const startServers = !process.env.E2E_BASE_URL && !!process.env.CI
+
+export const STORAGE_STATE = 'playwright/.auth/user.json'
+
 export default defineConfig({
   testDir: './tests/e2e',
-  /* Run tests in files in parallel */
-  fullyParallel: true,
-  /* Fail the build on CI if you accidentally left test.only in the source code. */
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: !!process.env.CI,
-  /* Retry on CI only */
-  retries: process.env.CI ? 2 : 0,
-  /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
-  /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: [
-    ['html'],
-    ['json', { outputFile: 'test-results/results.json' }],
-    ['junit', { outputFile: 'test-results/results.xml' }],
-  ],
-  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
+  retries: process.env.CI ? 1 : 0,
+  // The github reporter turns failures into annotations on the check run.
+  reporter: process.env.CI ? [['github'], ['list']] : [['list']],
+  timeout: 60_000,
+  expect: { timeout: 15_000 },
   use: {
-    /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'http://localhost:3000',
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
-    trace: 'on-first-retry',
-    /* Take screenshot on failure */
+    baseURL,
+    trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    /* Record video on failure */
-    video: 'retain-on-failure',
   },
-
-  /* Configure projects for major browsers */
   projects: [
+    { name: 'setup', testMatch: /auth\.setup\.ts/, use: { ...devices['Desktop Chrome'] } },
+    { name: 'public', testMatch: /auth\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
     {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
-
-    /* Test against mobile viewports. */
-    {
-      name: 'Mobile Chrome',
-      use: { ...devices['Pixel 5'] },
-    },
-    {
-      name: 'Mobile Safari',
-      use: { ...devices['iPhone 12'] },
-    },
-
-    /* Test against branded browsers. */
-    {
-      name: 'Microsoft Edge',
-      use: { ...devices['Desktop Edge'], channel: 'msedge' },
-    },
-    {
-      name: 'Google Chrome',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome' },
+      name: 'dashboard',
+      testMatch: /dashboard\.spec\.ts/,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
   ],
-
-  /* Run your local dev server before starting the tests */
-  webServer: [
-    {
-      command: 'npm run dev --workspace=@guildserver/web',
-      url: 'http://localhost:3000',
-      reuseExistingServer: !process.env.CI,
-      timeout: 120 * 1000,
-    },
-    {
-      command: 'npm run dev --workspace=@guildserver/api',
-      url: 'http://localhost:4000',
-      reuseExistingServer: !process.env.CI,
-      timeout: 120 * 1000,
-    },
-  ],
-
-  /* Global setup for database */
-  globalSetup: require.resolve('./tests/e2e/global-setup.ts'),
-  globalTeardown: require.resolve('./tests/e2e/global-teardown.ts'),
-});
+  webServer: startServers
+    ? [
+        {
+          command: 'pnpm --filter @guildserver/api exec tsx src/index.ts',
+          url: 'http://localhost:4000/health',
+          timeout: 120_000,
+          reuseExistingServer: false,
+        },
+        {
+          command: 'pnpm --filter @guildserver/web start',
+          url: 'http://localhost:3000',
+          timeout: 120_000,
+          reuseExistingServer: false,
+        },
+      ]
+    : undefined,
+})
