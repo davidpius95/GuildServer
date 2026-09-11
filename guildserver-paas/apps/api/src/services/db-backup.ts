@@ -163,6 +163,30 @@ async function storageForDatabase(storageId: string, database: { projectId: stri
   return organizationId && storage.organizationId === organizationId ? storage : null;
 }
 
+/** Tell the database's organization that a backup needs attention. Never throws. */
+async function notifyBackupProblem(
+  event: "backup_failed" | "backup_upload_failed",
+  database: { id: string; name: string; projectId: string | null },
+  backupId: string,
+  error: string,
+): Promise<void> {
+  try {
+    const organizationId = await organizationOfDatabase(database);
+    if (!organizationId) return;
+    // Loaded lazily: the notification service pulls in the WebSocket server,
+    // which the backup code should not depend on at import time.
+    const { notifyOrganization } = await import("./notification");
+    notifyOrganization(organizationId, event, {
+      databaseName: database.name,
+      error,
+      url: `${process.env.APP_URL || "http://localhost:3000"}/dashboard/databases`,
+      dedupeKey: backupId,
+    }).catch((notifyError: any) => logger.warn(`${event} notification for backup ${backupId} failed: ${notifyError?.message}`));
+  } catch (notifyError: any) {
+    logger.warn(`Could not send ${event} notification for backup ${backupId}: ${notifyError?.message}`);
+  }
+}
+
 export class DatabaseBackupService {
   /**
    * Create the backup record immediately (so the UI sees "in_progress") and
@@ -246,6 +270,7 @@ export class DatabaseBackupService {
         .update(databaseBackups)
         .set({ status: "failed", error: err.message, completedAt: new Date() })
         .where(eq(databaseBackups.id, backupId));
+      await notifyBackupProblem("backup_failed", database, backupId, err.message);
       throw err;
     }
 
@@ -267,6 +292,7 @@ export class DatabaseBackupService {
         .update(databaseBackups)
         .set({ uploadError: "The configured backup storage no longer exists or belongs to another organization" })
         .where(eq(databaseBackups.id, backupId));
+      await notifyBackupProblem("backup_upload_failed", database, backupId, "The configured backup storage no longer exists or belongs to another organization");
       return false;
     }
 
@@ -284,6 +310,7 @@ export class DatabaseBackupService {
       const message = describeStorageError(error);
       logger.warn(`Off-site copy of backup ${backupId} failed: ${message}`);
       await db.update(databaseBackups).set({ uploadError: message }).where(eq(databaseBackups.id, backupId));
+      await notifyBackupProblem("backup_upload_failed", database, backupId, message);
       return false;
     }
   }

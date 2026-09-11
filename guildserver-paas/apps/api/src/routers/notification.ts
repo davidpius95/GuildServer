@@ -8,19 +8,9 @@ import {
   members,
 } from "@guildserver/database";
 import { eq, and, desc, sql } from "drizzle-orm";
-
-// All supported notification events
-const NOTIFICATION_EVENTS = [
-  "deployment_success",
-  "deployment_failed",
-  "preview_created",
-  "preview_expired",
-  "certificate_expiring",
-  "certificate_failed",
-  "webhook_failed",
-  "member_added",
-  "member_removed",
-] as const;
+import { NOTIFICATION_EVENTS } from "../services/notifications/events";
+import { DeliveryError, sendToChannel, validateChannelTarget } from "../services/notifications/providers";
+import { defaultProviderDeps } from "../services/notifications/dispatch";
 
 export const notificationRouter = createTRPCRouter({
   // List notifications for the current user
@@ -202,7 +192,17 @@ export const notificationRouter = createTRPCRouter({
         where: eq(slackConfigs.organizationId, input.organizationId),
       });
 
-      return config || null;
+      // The webhook URL is a credential: anyone holding it can post to the
+      // channel. Say whether one is set, never what it is.
+      if (!config) return null;
+      return {
+        id: config.id,
+        organizationId: config.organizationId,
+        channelName: config.channelName,
+        enabled: config.enabled,
+        createdAt: config.createdAt,
+        hasWebhook: Boolean(config.webhookUrl),
+      };
     }),
 
   // Set Slack webhook config for an organization
@@ -228,6 +228,15 @@ export const notificationRouter = createTRPCRouter({
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Admin access required",
+        });
+      }
+
+      try {
+        await validateChannelTarget("slack", {}, { url: input.webhookUrl }, { env: process.env, mailer: null });
+      } catch (error) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: error instanceof DeliveryError ? error.message : "Invalid Slack webhook URL",
         });
       }
 
@@ -267,6 +276,22 @@ export const notificationRouter = createTRPCRouter({
   testSlackNotification: protectedProcedure
     .input(z.object({ organizationId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      // Making the server post to an organization's channel is an admin
+      // action, like configuring it.
+      const member = await ctx.db.query.members.findFirst({
+        where: and(
+          eq(members.userId, ctx.user.id),
+          eq(members.organizationId, input.organizationId)
+        ),
+      });
+
+      if (!member || member.role === "member") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Admin access required",
+        });
+      }
+
       const config = await ctx.db.query.slackConfigs.findFirst({
         where: and(
           eq(slackConfigs.organizationId, input.organizationId),
@@ -281,19 +306,24 @@ export const notificationRouter = createTRPCRouter({
         });
       }
 
-      // Send test message
-      const response = await fetch(config.webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: "🔔 GuildServer test notification — Your Slack integration is working!",
-        }),
-      });
-
-      if (!response.ok) {
+      try {
+        await sendToChannel(
+          "slack",
+          {},
+          { url: config.webhookUrl },
+          {
+            event: "test",
+            title: "GuildServer test notification",
+            message: "Your Slack integration is working.",
+            severity: "info",
+            occurredAt: new Date().toISOString(),
+          },
+          defaultProviderDeps()
+        );
+      } catch (error) {
         throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Slack webhook returned ${response.status}`,
+          code: "BAD_REQUEST",
+          message: error instanceof DeliveryError ? error.message : "Slack test notification failed",
         });
       }
 

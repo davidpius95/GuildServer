@@ -785,6 +785,45 @@ export const slackConfigs = pgTable("slack_configs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Organization-wide notification channels (email, webhook, Discord, Slack,
+// Telegram). Credentials are encrypted JSON in `secret`; `events` lists the
+// events the channel receives.
+export const notificationChannels = pgTable("notification_channels", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: varchar("type", { length: 32 }).notNull(),
+  config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
+  secret: text("secret"),
+  events: jsonb("events").$type<string[]>().notNull().default([]),
+  enabled: boolean("enabled").notNull().default(true),
+  lastDeliveryAt: timestamp("last_delivery_at"),
+  lastDeliveryOk: boolean("last_delivery_ok"),
+  lastError: text("last_error"),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  organizationIdIdx: index("notification_channels_organization_id_idx").on(table.organizationId),
+}));
+
+// One row per (channel, event occurrence). The unique key makes delivery
+// idempotent: reporting the same occurrence twice sends it once.
+export const notificationDeliveries = pgTable("notification_deliveries", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  channelId: uuid("channel_id").notNull().references(() => notificationChannels.id, { onDelete: "cascade" }),
+  event: varchar("event", { length: 100 }).notNull(),
+  dedupeKey: varchar("dedupe_key", { length: 255 }).notNull(),
+  status: varchar("status", { length: 16 }).notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow(),
+  deliveredAt: timestamp("delivered_at"),
+}, (table) => ({
+  channelDedupeIdx: uniqueIndex("notification_deliveries_channel_dedupe_idx").on(table.channelId, table.dedupeKey),
+  createdAtIdx: index("notification_deliveries_created_at_idx").on(table.createdAt),
+}));
+
 // =====================
 // KUBERNETES TABLES
 // =====================

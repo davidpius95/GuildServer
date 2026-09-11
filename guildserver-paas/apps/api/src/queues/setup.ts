@@ -794,6 +794,7 @@ const deploymentWorker = new Worker(
         : "deployment_failed" as const;
       notify(notifyEvent, userId, orgId, {
         appName: app.appName,
+        dedupeKey: deploymentId,
         url: accessUrl,
         commitSha: app.repository ? deploymentId.slice(0, 8) : undefined,
         branch: previewBranch || app.branch || "main",
@@ -868,6 +869,7 @@ const deploymentWorker = new Worker(
       notify("deployment_failed", userId, failOrgId, {
         appName: app?.appName || "Unknown",
         error: error.message,
+        dedupeKey: deploymentId,
         logsUrl: `${process.env.APP_URL || "http://localhost:3000"}/dashboard/applications/${applicationId}`,
       }).catch((err) => logger.warn("Notification error:", err.message));
 

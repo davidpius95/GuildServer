@@ -5,6 +5,7 @@
  */
 const mockStreamExec = jest.fn();
 const mockGetAppContainer = jest.fn();
+jest.mock('../../src/services/notification', () => ({ notifyOrganization: jest.fn().mockResolvedValue(undefined) }));
 jest.mock('../../src/services/docker/container', () => ({
   streamExecInContainer: (...args: any[]) => mockStreamExec(...args),
   getAppContainer: (...args: any[]) => mockGetAppContainer(...args),
@@ -79,6 +80,8 @@ describe('backupDirFor', () => {
 // ---------------------------------------------------------------------------
 
 const stamp = () => `${Date.now()}${Math.floor(Math.random() * 1e6)}`;
+const mockNotifyOrganization = jest.requireMock('../../src/services/notification').notifyOrganization as jest.Mock;
+
 const minio = process.env.GS_MINIO_TESTS === '1';
 const S3 = {
   endpoint: process.env.TEST_S3_ENDPOINT || 'http://127.0.0.1:9100',
@@ -162,6 +165,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   mockStreamExec.mockReset();
+  mockNotifyOrganization.mockClear();
   mockGetAppContainer.mockReset().mockResolvedValue({ id: 'container-1', restart: jest.fn() });
 });
 
@@ -194,6 +198,12 @@ describe('runBackup', () => {
     await expect(DatabaseBackupService.runBackup(record.id)).rejects.toThrow(/connection failed/);
     const r = await row(record.id);
     expect(r.status).toBe('failed');
+    expect(mockNotifyOrganization).toHaveBeenCalledTimes(1);
+    expect(mockNotifyOrganization).toHaveBeenCalledWith(
+      expect.any(String),
+      'backup_failed',
+      expect.objectContaining({ databaseName: database.name, dedupeKey: record.id, error: expect.stringMatching(/connection failed/) }),
+    );
     const dir = path.join(BACKUP_ROOT, database.id);
     expect((await fsp.readdir(dir).catch(() => [])).length).toBe(0);
   });
@@ -303,6 +313,8 @@ describe('restoreBackup', () => {
     expect(r.remoteKey).toBeNull();
     expect(r.uploadError).toBeTruthy();
     expect(r.uploadError).not.toContain('wrong-secret');
+    expect(mockNotifyOrganization).toHaveBeenCalledWith(expect.any(String), 'backup_upload_failed', expect.objectContaining({ dedupeKey: record.id }));
+    expect(JSON.stringify(mockNotifyOrganization.mock.calls)).not.toContain('wrong-secret');
   });
 
   it('refuses a storage that belongs to another organization', async () => {

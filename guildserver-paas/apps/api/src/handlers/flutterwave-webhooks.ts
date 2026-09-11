@@ -47,8 +47,8 @@ flutterwaveWebhookRouter.post("/", async (req: Request, res: Response) => {
           where: and(eq(members.organizationId, txn.organizationId), eq(members.role, "owner")),
         });
         if (owner?.userId) {
-          notify("deployment_failed", owner.userId, txn.organizationId, {
-            appName: "Payment",
+          notify("payment_failed", owner.userId, txn.organizationId, {
+            dedupeKey: `flutterwave:${txn.id}`,
             error: `Payment via Flutterwave failed or could not be verified.`,
             url: `${process.env.APP_URL || "http://localhost:3000"}/dashboard/billing`,
           }).catch((err) => logger.warn("Flutterwave failure notification error:", err.message));

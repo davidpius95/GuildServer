@@ -181,8 +181,8 @@ stripeWebhookRouter.post("/", async (req: Request, res: Response) => {
               where: and(eq(members.organizationId, sub.organizationId), eq(members.role, "owner")),
             });
             if (owner && owner.userId) {
-              notify("deployment_failed", owner.userId, sub.organizationId, {
-                appName: "Payment",
+              notify("payment_failed", owner.userId, sub.organizationId, {
+                dedupeKey: invoice.id,
                 error: `Payment of $${((invoice.amount_due || 0) / 100).toFixed(2)} failed. Please update your payment method.`,
                 url: `${process.env.APP_URL || "http://localhost:3000"}/dashboard/billing`,
               }).catch((err) => logger.warn("Payment failed notification error:", err.message));

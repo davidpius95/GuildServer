@@ -186,7 +186,6 @@ export default function SettingsPage() {
       enabled: !!orgId,
       onSuccess: (data: any) => {
         if (data) {
-          setSlackUrl(data.webhookUrl || "")
           setSlackChannel(data.channelName || "")
         }
       },
@@ -633,6 +632,7 @@ export default function SettingsPage() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Create an incoming webhook in your Slack workspace settings and paste the URL here.
+                  {slackConfig?.hasWebhook && " A webhook is saved; it is not shown again. Paste a new URL only to replace it."}
                 </p>
               </div>
 
@@ -654,7 +654,7 @@ export default function SettingsPage() {
                   <Save className="mr-2 h-4 w-4" />
                   {setSlackConfigMutation.isPending ? "Saving..." : "Save Slack Config"}
                 </Button>
-                {slackConfig?.webhookUrl && (
+                {slackConfig?.hasWebhook && (
                   <Button
                     variant="outline"
                     onClick={() => testSlackMutation.mutate({ organizationId: orgId })}

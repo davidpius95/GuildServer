@@ -98,6 +98,7 @@ export const MIGRATIONS: MigrationManifestEntry[] = [
   { id: "0013_compose_services", file: "0013_compose_services.sql", family: "hand" },
   { id: "0014_api_tokens", file: "0014_api_tokens.sql", family: "hand" },
   { id: "0015_s3_backup_storage", file: "0015_s3_backup_storage.sql", family: "hand" },
+  { id: "0016_notification_channels", file: "0016_notification_channels.sql", family: "hand" },
 ];
 
 export function findMigration(id: string): MigrationManifestEntry | undefined {
