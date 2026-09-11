@@ -26,6 +26,7 @@ import {
   CreditCard,
   Server,
   UserCog,
+  Layers,
 } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageTransition } from "@/components/motion/page-transition"
@@ -34,6 +35,7 @@ import { AnimatePresence, motion } from "framer-motion"
 const navigation = [
   { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { name: "Applications", href: "/dashboard/applications", icon: Rocket },
+  { name: "Stacks", href: "/dashboard/stacks", icon: Layers },
   { name: "Deployments", href: "/dashboard/deployments", icon: History },
   { name: "Databases", href: "/dashboard/databases", icon: Database },
   { name: "VPS Instances", href: "/dashboard/instances", icon: Server },
