@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc/trpc";
-import { deployments, applications, databases, members, projects } from "@guildserver/database";
+import { deployments, applications, databases, members, projects, services } from "@guildserver/database";
 import { eq, desc, or, and, inArray, sql, gte, lte, count } from "drizzle-orm";
 
 export const deploymentRouter = createTRPCRouter({
@@ -130,9 +130,11 @@ export const deploymentRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      // Check if user is a member of the organization
+      // and(...), not &&. The previous `eq(org) && eq(user)` evaluated to just
+      // `eq(user)`, because && returns its second operand, so any member of any
+      // organization passed this check for every organization.
       const member = await ctx.db.query.members.findFirst({
-        where: eq(members.organizationId, input.organizationId) && eq(members.userId, ctx.user.id),
+        where: and(eq(members.organizationId, input.organizationId), eq(members.userId, ctx.user.id)),
       });
 
       if (!member) {
@@ -142,53 +144,46 @@ export const deploymentRouter = createTRPCRouter({
         });
       }
 
-      const organizationDeployments = await ctx.db.query.deployments.findMany({
+      // Scope by ownership explicitly. The previous query fetched every
+      // deployment and relied on a `where` inside a one-to-one `project`
+      // relation, which Drizzle does not support there (it is also a type
+      // error) — so the organization boundary was never expressed in SQL.
+      const orgProjects = await ctx.db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.organizationId, input.organizationId));
+      const projectIds = orgProjects.map((p) => p.id);
+      if (projectIds.length === 0) return [];
+
+      const [appRows, databaseRows, serviceRows] = await Promise.all([
+        ctx.db.select({ id: applications.id }).from(applications).where(inArray(applications.projectId, projectIds)),
+        ctx.db.select({ id: databases.id }).from(databases).where(inArray(databases.projectId, projectIds)),
+        ctx.db.select({ id: services.id }).from(services).where(inArray(services.projectId, projectIds)),
+      ]);
+
+      const ownership = [
+        appRows.length > 0 ? inArray(deployments.applicationId, appRows.map((r) => r.id)) : undefined,
+        databaseRows.length > 0 ? inArray(deployments.databaseId, databaseRows.map((r) => r.id)) : undefined,
+        serviceRows.length > 0 ? inArray(deployments.serviceId, serviceRows.map((r) => r.id)) : undefined,
+      ].filter((condition): condition is NonNullable<typeof condition> => condition !== undefined);
+      if (ownership.length === 0) return [];
+
+      return ctx.db.query.deployments.findMany({
+        where: or(...ownership),
         orderBy: [desc(deployments.createdAt)],
         limit: input.limit,
         offset: input.offset,
         with: {
           application: {
-            columns: {
-              id: true,
-              name: true,
-              appName: true,
-            },
-            with: {
-              project: {
-                where: eq(members.organizationId, input.organizationId),
-                columns: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
+            columns: { id: true, name: true, appName: true },
+            with: { project: { columns: { id: true, name: true } } },
           },
           database: {
-            columns: {
-              id: true,
-              name: true,
-              type: true,
-            },
-            with: {
-              project: {
-                where: eq(members.organizationId, input.organizationId),
-                columns: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
+            columns: { id: true, name: true, type: true },
+            with: { project: { columns: { id: true, name: true } } },
           },
         },
       });
-
-      // Filter deployments that belong to projects in the organization
-      const filteredDeployments = organizationDeployments.filter(
-        (deployment) =>
-          (deployment.application?.project) || (deployment.database?.project)
-      );
-
-      return filteredDeployments;
     }),
 
   getById: protectedProcedure
