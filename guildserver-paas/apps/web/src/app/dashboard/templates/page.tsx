@@ -29,6 +29,7 @@ import { trpc } from "@/components/trpc-provider"
 import { useOrganization, useProjects } from "@/hooks/use-auth"
 import { EnvVarEditor, type EnvVarEntry } from "@/components/env-var-editor"
 import { cn } from "@/lib/utils"
+import { CatalogueViewToggle, ServiceCatalogue, type CatalogueView } from "@/components/templates/service-catalogue"
 import {
   FILTER_SECTIONS,
   GRADIENT_MAP,
@@ -335,6 +336,7 @@ function TemplateCard({
 // ─── Page component ──────────────────────────────────────────────────────────
 
 export default function TemplatesPage() {
+  const [view, setView] = useState<CatalogueView>("apps")
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedFilters, setSelectedFilters] = useState<Record<string, Set<string>>>({
     useCase: new Set(),
@@ -496,8 +498,18 @@ export default function TemplatesPage() {
     }
   }
 
+  if (view === "services") {
+    return (
+      <div className="space-y-6">
+        <CatalogueViewToggle view={view} onChange={setView} />
+        <ServiceCatalogue />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
+      <CatalogueViewToggle view={view} onChange={setView} />
       {/* Page header */}
       <div className="rounded-3xl border border-border/60 bg-gradient-to-br from-background via-background to-muted/25 p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

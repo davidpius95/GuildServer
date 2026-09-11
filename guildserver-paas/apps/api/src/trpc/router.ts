@@ -25,6 +25,7 @@ import { apiTokenRouter } from "../routers/api-token";
 import { backupStorageRouter } from "../routers/backup-storage";
 import { notificationChannelRouter } from "../routers/notification-channel";
 import { logDrainRouter } from "../routers/log-drain";
+import { serviceTemplateRouter } from "../routers/service-template";
 
 export const appRouter = createTRPCRouter({
   auth: authRouter,
@@ -56,6 +57,8 @@ export const appRouter = createTRPCRouter({
   backupStorage: backupStorageRouter,
   notificationChannel: notificationChannelRouter,
   logDrain: logDrainRouter,
+  /** One-click service catalogue built from verified Compose templates. */
+  serviceTemplate: serviceTemplateRouter,
 });
 
 export type AppRouter = typeof appRouter;
