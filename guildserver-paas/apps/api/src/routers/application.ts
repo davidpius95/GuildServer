@@ -789,6 +789,66 @@ export const applicationRouter = createTRPCRouter({
       return { success: true, message: "Application restarted successfully" };
     }),
 
+  /**
+   * Stop the application's running container without changing its replica
+   * count, so a later deploy or restart brings it back as configured.
+   *
+   * Added for POST /api/v1/applications/:id/stop. The REST layer must delegate
+   * authorization to a tRPC procedure rather than reimplement it, and until now
+   * the only way to stop an app was scale({ replicas: 0 }), which also persists
+   * replicas = 0: a configuration write a deploy-scoped token must not make.
+   * Authorization is the same membership walk as restart.
+   */
+  stop: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const application = await ctx.db.query.applications.findFirst({
+        where: eq(applications.id, input.id),
+        with: {
+          project: {
+            with: {
+              organization: {
+                with: {
+                  members: {
+                    where: eq(members.userId, ctx.user.id),
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!application || (application.project?.organization?.members?.length ?? 0) === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Application not found or access denied",
+        });
+      }
+
+      let stopped: boolean;
+      if (application.deploymentTarget === "proxmox" && application.providerId) {
+        const provider = await getProvider(application.providerId);
+        await provider.stop(input.id);
+        stopped = true;
+      } else {
+        stopped = await stopContainer(input.id);
+      }
+      if (!stopped) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "No running container found for this application.",
+        });
+      }
+
+      await ctx.db
+        .update(applications)
+        .set({ status: "stopped", updatedAt: new Date() })
+        .where(eq(applications.id, input.id));
+
+      return { success: true, message: "Application stopped successfully" };
+    }),
+
   scale: protectedProcedure
     .input(
       z.object({

@@ -15,6 +15,7 @@ import { initializeQueues } from "./queues/setup";
 import "./queues/instances"; // self-contained instance provisioning queue/worker
 import "./queues/backups"; // self-contained database backup queue/worker + scheduler
 import { setupSwagger } from "./swagger";
+import { createRestV1Router } from "./rest/v1";
 import { webhookRouter } from "./handlers/webhooks";
 import { flutterwaveV4WebhookRouter } from "./handlers/flutterwave-v4-webhooks";
 import { flutterwaveDispatcherRouter } from "./handlers/flutterwave-dispatcher";
@@ -124,6 +125,11 @@ app.use("/api/auth", oauthRouter);
 
 // Authenticated file downloads (e.g. database backups)
 app.use("/downloads", downloadRouter);
+
+// Public REST API, authenticated by scoped personal access tokens. Mounted
+// before the catch-all 404 so /api/v1/* is reachable, and after the global JSON
+// body parser it relies on.
+app.use("/api/v1", createRestV1Router());
 
 // tRPC middleware
 app.use(

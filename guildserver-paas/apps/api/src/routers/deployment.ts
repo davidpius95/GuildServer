@@ -233,9 +233,26 @@ export const deploymentRouter = createTRPCRouter({
       }
 
       // Check if user has access
-      const hasAccess =
+      let hasAccess =
         (deployment.application?.project.organization.members.length ?? 0) > 0 ||
         (deployment.database?.project.organization.members.length ?? 0) > 0;
+
+      // Compose stack deployments carry serviceId instead, and services has no
+      // drizzle relations, so walk service, project and membership explicitly.
+      // Without this a stack deployment was unreadable even to its own owner.
+      if (!hasAccess && deployment.serviceId) {
+        const service = await ctx.db.query.services.findFirst({
+          where: eq(services.id, deployment.serviceId),
+          columns: { projectId: true },
+        });
+        if (service?.projectId) {
+          const project = await ctx.db.query.projects.findFirst({
+            where: eq(projects.id, service.projectId),
+            with: { organization: { with: { members: { where: eq(members.userId, ctx.user.id) } } } },
+          });
+          hasAccess = (project?.organization?.members?.length ?? 0) > 0;
+        }
+      }
 
       if (!hasAccess) {
         throw new TRPCError({

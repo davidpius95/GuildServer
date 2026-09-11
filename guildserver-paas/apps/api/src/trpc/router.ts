@@ -21,6 +21,7 @@ import { instanceRouter } from "../routers/instance";
 import { infrastructureRouter } from "../routers/infrastructure";
 import { securityRouter } from "../routers/security";
 import { serviceRouter } from "../routers/service";
+import { apiTokenRouter } from "../routers/api-token";
 
 export const appRouter = createTRPCRouter({
   auth: authRouter,
@@ -46,6 +47,8 @@ export const appRouter = createTRPCRouter({
   security: securityRouter,
   /** Docker Compose stacks. */
   service: serviceRouter,
+  /** Personal access tokens for the REST API. JWT-only, like every /trpc route. */
+  apiToken: apiTokenRouter,
 });
 
 export type AppRouter = typeof appRouter;
