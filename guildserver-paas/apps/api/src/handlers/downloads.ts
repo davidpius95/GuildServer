@@ -45,10 +45,15 @@ downloadRouter.get("/backup/:backupId", async (req, res) => {
       return res.status(404).json({ error: "Not found or access denied" });
     }
 
-    const { filePath, fileName } = await DatabaseBackupService.getDownloadFile(req.params.backupId);
-    return res.download(filePath, fileName);
+    // The local copy if it verifies, otherwise the off-site copy fetched to a
+    // temporary file, which is removed once the response has been sent.
+    const { filePath, fileName, cleanup } = await DatabaseBackupService.getDownloadFile(req.params.backupId);
+    return res.download(filePath, fileName, () => {
+      cleanup().catch(() => undefined);
+    });
   } catch (err: any) {
     logger.error(`Backup download failed: ${err.message}`);
-    return res.status(500).json({ error: err.message || "Download failed" });
+    // The internal message can name host paths and storage details; keep it in the log.
+    return res.status(500).json({ error: "Download failed" });
   }
 });

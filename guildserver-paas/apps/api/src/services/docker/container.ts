@@ -1,6 +1,6 @@
 import Docker from "dockerode";
 import { appStorageMount, resolveRuntimePort } from "../app-runtime";
-import { Writable } from "stream";
+import { PassThrough, Writable } from "stream";
 import { logger } from "../../utils/logger";
 import { broadcastToUser } from "../../websocket/server";
 import { docker, NETWORK_NAME, GS_LABELS } from "./client";
@@ -389,7 +389,16 @@ export interface ExecResult {
 export async function execInContainer(
   containerId: string,
   cmd: string[],
-  options?: { stdin?: Buffer; dockerClient?: Docker },
+  options?: {
+    stdin?: Buffer;
+    /**
+     * Environment for the exec, as KEY=value strings. Use this for secrets:
+     * a value passed here never becomes part of a shell command string, so it
+     * cannot inject a command and does not appear in the process argument list.
+     */
+    env?: string[];
+    dockerClient?: Docker;
+  },
 ): Promise<ExecResult> {
   const d = options?.dockerClient || docker;
   const container = d.getContainer(containerId);
@@ -397,6 +406,7 @@ export async function execInContainer(
 
   const exec = await container.exec({
     Cmd: cmd,
+    Env: options?.env,
     AttachStdout: true,
     AttachStderr: true,
     AttachStdin: hasStdin,
@@ -438,6 +448,71 @@ export async function execInContainer(
     stderr: Buffer.concat(stderrChunks).toString("utf8"),
     exitCode: inspect.ExitCode ?? 0,
   };
+}
+
+/**
+ * Run a command in a container and hand its stdout back as a stream.
+ *
+ * execInContainer buffers all of stdout in memory, which is fine for small
+ * outputs and wrong for a database dump: a multi-gigabyte dump would be held
+ * in the API process whole. Here stdout is a PassThrough the caller pipes
+ * onward (to a file, a hash, an upload), and `completed` settles with the exit
+ * code and stderr once the command finishes.
+ *
+ * If `stdin` is given it is piped into the command and closed at its end, so
+ * a restore can stream a dump back in without reading it into memory either.
+ */
+export async function streamExecInContainer(
+  containerId: string,
+  cmd: string[],
+  options?: { env?: string[]; stdin?: NodeJS.ReadableStream; dockerClient?: Docker },
+): Promise<{ stdout: PassThrough; completed: Promise<{ exitCode: number; stderr: string }> }> {
+  const d = options?.dockerClient || docker;
+  const container = d.getContainer(containerId);
+  const hasStdin = !!options?.stdin;
+
+  const exec = await container.exec({
+    Cmd: cmd,
+    Env: options?.env,
+    AttachStdout: true,
+    AttachStderr: true,
+    AttachStdin: hasStdin,
+  });
+  const stream = await exec.start({ hijack: true, stdin: hasStdin });
+
+  const stdout = new PassThrough();
+  const stderrChunks: Buffer[] = [];
+  const stderr = new Writable({
+    write(chunk: Buffer, _enc, next) {
+      // Keep only the tail: stderr is for diagnostics, not for storing a dump.
+      stderrChunks.push(chunk);
+      if (stderrChunks.length > 200) stderrChunks.shift();
+      next();
+    },
+  });
+  d.modem.demuxStream(stream, stdout, stderr);
+
+  if (hasStdin && options?.stdin) {
+    options.stdin.pipe(stream);
+  }
+
+  const completed = new Promise<{ exitCode: number; stderr: string }>((resolve, reject) => {
+    stream.on("error", (error: Error) => {
+      stdout.destroy(error);
+      reject(error);
+    });
+    stream.on("end", async () => {
+      stdout.end();
+      try {
+        const inspect = await exec.inspect();
+        resolve({ exitCode: inspect.ExitCode ?? 0, stderr: Buffer.concat(stderrChunks).toString("utf8") });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+
+  return { stdout, completed };
 }
 
 export async function getAppContainerInfo(applicationId: string, dockerClient?: Docker): Promise<ContainerInfo | null> {

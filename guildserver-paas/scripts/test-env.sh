@@ -12,6 +12,9 @@ COMPOSE=(docker compose -p "$PROJECT" -f "$ROOT/docker-compose.test.yml")
 
 export TEST_DATABASE_URL="postgresql://test:test@localhost:5433/guildserver_test"
 export TEST_REDIS_URL="redis://localhost:6380/0"
+export TEST_S3_ENDPOINT="http://127.0.0.1:9100"
+export TEST_S3_ACCESS_KEY="gs-test-access"
+export TEST_S3_SECRET_KEY="gs-test-secret-key"
 
 case "${1:-up}" in
   up)
@@ -27,6 +30,7 @@ case "${1:-up}" in
     echo "export TEST_DATABASE_URL='$TEST_DATABASE_URL'"
     echo "export DATABASE_URL='$TEST_DATABASE_URL'"
     echo "export REDIS_URL='$TEST_REDIS_URL'"
+    echo "export TEST_S3_ENDPOINT='$TEST_S3_ENDPOINT'"
     ;;
   *)
     echo "usage: $0 {up|down|env}" >&2

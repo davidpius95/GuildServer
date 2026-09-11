@@ -1,62 +1,166 @@
-import { db } from "@guildserver/database";
-import { databaseBackups, databases } from "@guildserver/database";
-import { eq } from "drizzle-orm";
-import * as fs from "fs/promises";
+import { createHash, randomUUID } from "crypto";
+import { createReadStream, createWriteStream, promises as fsp } from "fs";
+import * as os from "os";
 import * as path from "path";
-import { execInContainer, getAppContainer } from "./docker/container";
+import { Transform } from "stream";
+import { pipeline } from "stream/promises";
+import { eq } from "drizzle-orm";
+import { db, databaseBackups, databases, projects, s3Storages } from "@guildserver/database";
+import { getAppContainer, streamExecInContainer } from "./docker/container";
+import { configFromRow, deleteObject, describeStorageError, downloadToFile, objectKey, uploadFile } from "./storage/s3";
 import { logger } from "../utils/logger";
 
 /** Root directory for backup files; overridable via env. */
 const BACKUP_ROOT = process.env.BACKUP_DIR || "/var/lib/guildserver/backups";
 
-interface EngineSpec {
-  /** File extension for the dump. */
-  ext: string;
-  /** Build the dump command (writes the backup to stdout). */
-  dump: (db: { databaseName: string; username: string; password: string }) => string[];
-  /** Build the restore command (reads the backup from stdin). */
-  restore: (db: { databaseName: string; username: string; password: string }) => string[];
+type Credentials = { databaseName: string; username: string; password: string };
+
+/** A command to run inside the database container, with secrets carried in env. */
+export interface EngineCommand {
+  cmd: string[];
+  env: string[];
 }
 
-const ENGINES: Record<string, EngineSpec> = {
+interface EngineSpec {
+  ext: string;
+  dump: (d: Credentials) => EngineCommand;
+  restore: (d: Credentials) => EngineCommand;
+}
+
+/**
+ * Names that are passed to a client as a positional argument must not be able
+ * to look like an option ("--result-file=/…"). Refusing an unusual name is
+ * better than running a dump that does something else.
+ */
+const SAFE_IDENTIFIER = /^[A-Za-z0-9_][A-Za-z0-9_.$-]{0,127}$/;
+
+function requireSafeIdentifier(kind: string, value: string): string {
+  if (!SAFE_IDENTIFIER.test(value)) {
+    throw new Error(`Backups are not supported for this ${kind}: it contains characters that cannot be passed safely`);
+  }
+  return value;
+}
+
+/**
+ * Credentials never appear in a command string.
+ *
+ * The previous commands interpolated the username and password into `sh -c`,
+ * e.g. `mysqldump -u${username} -p${password} …`. Both come straight from the
+ * user when a database is created, so a password such as `$(…)` ran arbitrary
+ * commands inside the database container every time it was backed up, and the
+ * password was visible in the container's process list. Values now travel as
+ * environment variables; where a shell is still needed it only ever references
+ * them as quoted "$VARIABLES", which the shell expands without re-parsing.
+ */
+export const ENGINES: Record<string, EngineSpec> = {
   postgresql: {
     ext: "dump",
-    dump: (d) => ["pg_dump", "-U", d.username, "-Fc", d.databaseName],
-    restore: (d) => ["pg_restore", "-U", d.username, "-d", d.databaseName, "--clean", "--if-exists"],
+    // --opt=value form: a value can never become a separate option.
+    dump: (d) => ({
+      cmd: ["pg_dump", `--username=${d.username}`, "--format=custom", `--dbname=${d.databaseName}`],
+      env: [`PGPASSWORD=${d.password}`],
+    }),
+    restore: (d) => ({
+      cmd: ["pg_restore", `--username=${d.username}`, `--dbname=${d.databaseName}`, "--clean", "--if-exists"],
+      env: [`PGPASSWORD=${d.password}`],
+    }),
   },
   mysql: {
     ext: "sql",
-    dump: (d) => ["sh", "-c", `mysqldump -u${d.username} -p${d.password} ${d.databaseName}`],
-    restore: (d) => ["sh", "-c", `mysql -u${d.username} -p${d.password} ${d.databaseName}`],
+    dump: (d) => ({
+      cmd: ["mysqldump", `--user=${d.username}`, "--single-transaction", requireSafeIdentifier("database name", d.databaseName)],
+      env: [`MYSQL_PWD=${d.password}`],
+    }),
+    restore: (d) => ({
+      cmd: ["mysql", `--user=${d.username}`, requireSafeIdentifier("database name", d.databaseName)],
+      env: [`MYSQL_PWD=${d.password}`],
+    }),
   },
   mariadb: {
     ext: "sql",
-    dump: (d) => ["sh", "-c", `mysqldump -u${d.username} -p${d.password} ${d.databaseName}`],
-    restore: (d) => ["sh", "-c", `mysql -u${d.username} -p${d.password} ${d.databaseName}`],
+    dump: (d) => ({
+      cmd: ["mysqldump", `--user=${d.username}`, "--single-transaction", requireSafeIdentifier("database name", d.databaseName)],
+      env: [`MYSQL_PWD=${d.password}`],
+    }),
+    restore: (d) => ({
+      cmd: ["mysql", `--user=${d.username}`, requireSafeIdentifier("database name", d.databaseName)],
+      env: [`MYSQL_PWD=${d.password}`],
+    }),
   },
   mongodb: {
     ext: "archive.gz",
-    dump: (d) => [
-      "sh",
-      "-c",
-      `mongodump --archive --gzip -u ${d.username} -p ${d.password} --authenticationDatabase admin`,
-    ],
-    restore: (d) => [
-      "sh",
-      "-c",
-      `mongorestore --archive --gzip --drop -u ${d.username} -p ${d.password} --authenticationDatabase admin`,
-    ],
+    // mongodump has no password environment variable; the shell expands the
+    // quoted variables into single arguments without interpreting their content.
+    dump: (d) => ({
+      cmd: ["sh", "-c", 'exec mongodump --archive --gzip --username="$GS_DB_USER" --password="$GS_DB_PASSWORD" --authenticationDatabase=admin'],
+      env: [`GS_DB_USER=${d.username}`, `GS_DB_PASSWORD=${d.password}`],
+    }),
+    restore: (d) => ({
+      cmd: ["sh", "-c", 'exec mongorestore --archive --gzip --drop --username="$GS_DB_USER" --password="$GS_DB_PASSWORD" --authenticationDatabase=admin'],
+      env: [`GS_DB_USER=${d.username}`, `GS_DB_PASSWORD=${d.password}`],
+    }),
   },
   redis: {
     ext: "rdb",
-    dump: (d) => ["sh", "-c", `redis-cli -a ${d.password} --no-auth-warning --rdb /tmp/dump.rdb >/dev/null 2>&1 && cat /tmp/dump.rdb`],
-    restore: (d) => ["sh", "-c", `cat > /data/dump.rdb`],
+    // redis-cli reads REDISCLI_AUTH, so the script contains no user value at all.
+    dump: (d) => ({
+      cmd: ["sh", "-c", "redis-cli --no-auth-warning --rdb /tmp/gs-dump.rdb >/dev/null && cat /tmp/gs-dump.rdb && rm -f /tmp/gs-dump.rdb"],
+      env: [`REDISCLI_AUTH=${d.password}`],
+    }),
+    restore: () => ({ cmd: ["sh", "-c", "cat > /data/dump.rdb"], env: [] }),
   },
 };
 
-/** Resolve the directory backups are written to for a given database. */
-function backupDirFor(database: { id: string; backupDir?: string | null }): string {
-  return database.backupDir || path.join(BACKUP_ROOT, database.id);
+/**
+ * Where a database's backups are written.
+ *
+ * backup_dir used to be accepted from the API and used as-is, which let a user
+ * make the platform write dump files into any directory the API process could
+ * reach. Only a directory inside BACKUP_ROOT is honoured now; anything else
+ * falls back to the default.
+ */
+export function backupDirFor(database: { id: string; backupDir?: string | null }): string {
+  const fallback = path.join(BACKUP_ROOT, database.id);
+  if (!database.backupDir) return fallback;
+  const resolved = path.resolve(database.backupDir);
+  const root = path.resolve(BACKUP_ROOT) + path.sep;
+  return resolved.startsWith(root) ? resolved : fallback;
+}
+
+async function fileExists(filePath: string | null | undefined): Promise<boolean> {
+  if (!filePath) return false;
+  try {
+    await fsp.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function sha256File(filePath: string): Promise<string> {
+  const hash = createHash("sha256");
+  await pipeline(createReadStream(filePath), async function* (source) {
+    for await (const chunk of source) hash.update(chunk as Buffer);
+  });
+  return hash.digest("hex");
+}
+
+async function organizationOfDatabase(database: { projectId: string | null }): Promise<string | null> {
+  if (!database.projectId) return null;
+  const [row] = await db
+    .select({ organizationId: projects.organizationId })
+    .from(projects)
+    .where(eq(projects.id, database.projectId))
+    .limit(1);
+  return row?.organizationId ?? null;
+}
+
+/** The storage row, but only if it belongs to the same organization as the database. */
+async function storageForDatabase(storageId: string, database: { projectId: string | null }) {
+  const storage = await db.query.s3Storages.findFirst({ where: eq(s3Storages.id, storageId) });
+  if (!storage) return null;
+  const organizationId = await organizationOfDatabase(database);
+  return organizationId && storage.organizationId === organizationId ? storage : null;
 }
 
 export class DatabaseBackupService {
@@ -75,74 +179,165 @@ export class DatabaseBackupService {
     return backup;
   }
 
-  /** Perform the actual dump for an existing backup record. */
+  /**
+   * Dump the database to a local file, streaming, while computing its SHA-256;
+   * then, if the database has an off-site storage configured, copy it there.
+   *
+   * The dump is never held in memory. A failed off-site copy does not fail the
+   * backup — the local copy is complete and verified — but it is recorded.
+   */
   static async runBackup(backupId: string): Promise<void> {
-    const backup = await db.query.databaseBackups.findFirst({
-      where: eq(databaseBackups.id, backupId),
-    });
+    const backup = await db.query.databaseBackups.findFirst({ where: eq(databaseBackups.id, backupId) });
     if (!backup) throw new Error(`Backup ${backupId} not found`);
 
-    const database = await db.query.databases.findFirst({
-      where: eq(databases.id, backup.databaseId!),
-    });
+    const database = await db.query.databases.findFirst({ where: eq(databases.id, backup.databaseId!) });
     if (!database) throw new Error(`Database ${backup.databaseId} not found`);
 
     const spec = ENGINES[database.type];
     if (!spec) throw new Error(`Backups not supported for engine: ${database.type}`);
 
+    let filePath: string | null = null;
     try {
       const container = await getAppContainer(database.id);
       if (!container) throw new Error("Database container is not running");
 
-      const result = await execInContainer(container.id, spec.dump(database));
-      if (result.exitCode !== 0) {
-        throw new Error(result.stderr || `dump exited with code ${result.exitCode}`);
-      }
-
+      const command = spec.dump(database);
       const dir = backupDirFor(database);
-      await fs.mkdir(dir, { recursive: true });
-      const fileName = `${database.id}-${Date.now()}.${spec.ext}`;
-      const filePath = path.join(dir, fileName);
-      await fs.writeFile(filePath, result.stdout);
+      await fsp.mkdir(dir, { recursive: true, mode: 0o700 });
+      filePath = path.join(dir, `${database.id}-${Date.now()}.${spec.ext}`);
+
+      const hash = createHash("sha256");
+      let size = 0;
+      const meter = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          hash.update(chunk);
+          size += chunk.length;
+          callback(null, chunk);
+        },
+      });
+
+      const { stdout, completed } = await streamExecInContainer(container.id, command.cmd, { env: command.env });
+      const [, result] = await Promise.all([pipeline(stdout, meter, createWriteStream(filePath, { mode: 0o600 })), completed]);
+
+      if (result.exitCode !== 0) {
+        throw new Error(result.stderr.trim().slice(-2000) || `dump exited with code ${result.exitCode}`);
+      }
+      if (size === 0) throw new Error("dump produced no output");
 
       const retentionDays = database.backupRetentionDays ?? 7;
       const completedAt = new Date();
-      const expiresAt = new Date(completedAt.getTime() + retentionDays * 86400_000);
-
       await db
         .update(databaseBackups)
         .set({
           status: "completed",
-          sizeBytes: result.stdout.length,
+          sizeBytes: size,
           filePath,
+          checksumSha256: hash.digest("hex"),
           completedAt,
-          expiresAt,
+          expiresAt: new Date(completedAt.getTime() + retentionDays * 86400_000),
         })
         .where(eq(databaseBackups.id, backupId));
 
-      logger.info(`Backup ${backupId} completed (${result.stdout.length} bytes) -> ${filePath}`);
+      logger.info(`Backup ${backupId} completed (${size} bytes) -> ${filePath}`);
     } catch (err: any) {
       logger.error(`Backup ${backupId} failed: ${err.message}`);
+      if (filePath) await fsp.rm(filePath, { force: true }).catch(() => undefined);
       await db
         .update(databaseBackups)
         .set({ status: "failed", error: err.message, completedAt: new Date() })
         .where(eq(databaseBackups.id, backupId));
       throw err;
     }
+
+    if (database.backupStorageId) {
+      await DatabaseBackupService.copyOffsite(backupId);
+    }
   }
 
-  /** Restore a database from a completed backup. */
-  static async restoreBackup(backupId: string): Promise<boolean> {
-    const backup = await db.query.databaseBackups.findFirst({
-      where: eq(databaseBackups.id, backupId),
-    });
-    if (!backup || backup.status !== "completed" || !backup.filePath) {
-      throw new Error("Backup is not ready for restore");
+  /** Upload a completed local backup to its database's off-site storage. */
+  static async copyOffsite(backupId: string): Promise<boolean> {
+    const backup = await db.query.databaseBackups.findFirst({ where: eq(databaseBackups.id, backupId) });
+    if (!backup?.filePath || backup.status !== "completed") return false;
+    const database = await db.query.databases.findFirst({ where: eq(databases.id, backup.databaseId!) });
+    if (!database?.backupStorageId) return false;
+
+    const storage = await storageForDatabase(database.backupStorageId, database);
+    if (!storage) {
+      await db
+        .update(databaseBackups)
+        .set({ uploadError: "The configured backup storage no longer exists or belongs to another organization" })
+        .where(eq(databaseBackups.id, backupId));
+      return false;
     }
 
-    const database = await db.query.databases.findFirst({
-      where: eq(databases.id, backup.databaseId!),
-    });
+    try {
+      const cfg = configFromRow(storage);
+      const key = objectKey(cfg, "database-backups", database.id, path.basename(backup.filePath));
+      await uploadFile(cfg, key, backup.filePath);
+      await db
+        .update(databaseBackups)
+        .set({ storageId: storage.id, remoteKey: key, uploadedAt: new Date(), uploadError: null })
+        .where(eq(databaseBackups.id, backupId));
+      logger.info(`Backup ${backupId} copied off-site to ${storage.bucket}/${key}`);
+      return true;
+    } catch (error) {
+      const message = describeStorageError(error);
+      logger.warn(`Off-site copy of backup ${backupId} failed: ${message}`);
+      await db.update(databaseBackups).set({ uploadError: message }).where(eq(databaseBackups.id, backupId));
+      return false;
+    }
+  }
+
+  /**
+   * Obtain a verified copy of a backup: the local file if it matches its
+   * checksum, otherwise the off-site copy downloaded to a temporary file.
+   * `cleanup` removes any temporary file.
+   */
+  static async obtainVerifiedCopy(
+    backup: typeof databaseBackups.$inferSelect,
+    database: { projectId: string | null },
+  ): Promise<{ filePath: string; cleanup: () => Promise<void> }> {
+    const noop = async () => undefined;
+    const problems: string[] = [];
+
+    if (await fileExists(backup.filePath)) {
+      if (!backup.checksumSha256 || (await sha256File(backup.filePath!)) === backup.checksumSha256) {
+        return { filePath: backup.filePath!, cleanup: noop };
+      }
+      problems.push("the local copy does not match its checksum");
+    } else {
+      problems.push("there is no local copy");
+    }
+
+    if (backup.storageId && backup.remoteKey) {
+      const storage = await storageForDatabase(backup.storageId, database);
+      if (!storage) {
+        problems.push("its off-site storage no longer exists");
+      } else {
+        const temp = path.join(os.tmpdir(), `gs-backup-${randomUUID()}`);
+        const cleanup = () => fsp.rm(temp, { force: true }).then(() => undefined);
+        try {
+          await downloadToFile(configFromRow(storage), backup.remoteKey, temp);
+          if (!backup.checksumSha256 || (await sha256File(temp)) === backup.checksumSha256) {
+            return { filePath: temp, cleanup };
+          }
+          problems.push("the off-site copy does not match its checksum");
+        } catch (error) {
+          problems.push(`the off-site copy could not be downloaded (${describeStorageError(error)})`);
+        }
+        await cleanup();
+      }
+    }
+
+    throw new Error(`Backup is not usable: ${problems.join("; ")}`);
+  }
+
+  /** Restore a database from a completed backup, refusing a corrupt or altered file. */
+  static async restoreBackup(backupId: string): Promise<boolean> {
+    const backup = await db.query.databaseBackups.findFirst({ where: eq(databaseBackups.id, backupId) });
+    if (!backup || backup.status !== "completed") throw new Error("Backup is not ready for restore");
+
+    const database = await db.query.databases.findFirst({ where: eq(databases.id, backup.databaseId!) });
     if (!database) throw new Error("Database not found");
 
     const spec = ENGINES[database.type];
@@ -151,10 +346,20 @@ export class DatabaseBackupService {
     const container = await getAppContainer(database.id);
     if (!container) throw new Error("Database container is not running");
 
-    const data = await fs.readFile(backup.filePath);
-    const result = await execInContainer(container.id, spec.restore(database), { stdin: data });
-    if (result.exitCode !== 0) {
-      throw new Error(result.stderr || `restore exited with code ${result.exitCode}`);
+    const copy = await DatabaseBackupService.obtainVerifiedCopy(backup, database);
+    try {
+      const command = spec.restore(database);
+      const { stdout, completed } = await streamExecInContainer(container.id, command.cmd, {
+        env: command.env,
+        stdin: createReadStream(copy.filePath),
+      });
+      stdout.resume();
+      const result = await completed;
+      if (result.exitCode !== 0) {
+        throw new Error(result.stderr.trim().slice(-2000) || `restore exited with code ${result.exitCode}`);
+      }
+    } finally {
+      await copy.cleanup();
     }
 
     // Redis loads its RDB on restart.
@@ -166,27 +371,47 @@ export class DatabaseBackupService {
     return true;
   }
 
-  /** Return the absolute path of a completed backup file for streaming. */
+  /** A verified file to stream to a user, plus cleanup for any temporary copy. */
   static async getDownloadFile(
     backupId: string,
-  ): Promise<{ filePath: string; fileName: string }> {
-    const backup = await db.query.databaseBackups.findFirst({
-      where: eq(databaseBackups.id, backupId),
-    });
-    if (!backup || !backup.filePath || backup.status !== "completed") {
-      throw new Error("Backup file not available");
-    }
-    await fs.access(backup.filePath);
-    return { filePath: backup.filePath, fileName: path.basename(backup.filePath) };
+  ): Promise<{ filePath: string; fileName: string; cleanup: () => Promise<void> }> {
+    const backup = await db.query.databaseBackups.findFirst({ where: eq(databaseBackups.id, backupId) });
+    if (!backup || backup.status !== "completed") throw new Error("Backup file not available");
+    const database = await db.query.databases.findFirst({ where: eq(databases.id, backup.databaseId!) });
+    if (!database) throw new Error("Backup file not available");
+
+    const copy = await DatabaseBackupService.obtainVerifiedCopy(backup, database);
+    const fileName = path.basename(backup.filePath || backup.remoteKey || `${backup.id}.backup`);
+    return { filePath: copy.filePath, fileName, cleanup: copy.cleanup };
   }
 
   /** Delete a backup's file from disk (best-effort). */
   static async deleteBackupFile(filePath?: string | null): Promise<void> {
     if (!filePath) return;
     try {
-      await fs.unlink(filePath);
+      await fsp.unlink(filePath);
     } catch (err: any) {
       if (err.code !== "ENOENT") logger.warn(`Failed to delete backup file ${filePath}: ${err.message}`);
+    }
+  }
+
+  /**
+   * Remove every copy of a backup. Returns false if an off-site copy could not
+   * be deleted, so the caller can keep the record and retry rather than
+   * orphaning an object nobody can find again.
+   */
+  static async deleteBackupArtifacts(backup: typeof databaseBackups.$inferSelect): Promise<boolean> {
+    await DatabaseBackupService.deleteBackupFile(backup.filePath);
+    if (!backup.storageId || !backup.remoteKey) return true;
+
+    const storage = await db.query.s3Storages.findFirst({ where: eq(s3Storages.id, backup.storageId) });
+    if (!storage) return true; // Nothing left that could hold the object.
+    try {
+      await deleteObject(configFromRow(storage), backup.remoteKey);
+      return true;
+    } catch (error) {
+      logger.warn(`Failed to delete off-site copy of backup ${backup.id}: ${describeStorageError(error)}`);
+      return false;
     }
   }
 }

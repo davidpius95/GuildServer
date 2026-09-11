@@ -76,7 +76,6 @@ export default function DatabasesPage() {
   const [backupFrequency, setBackupFrequency] = useState<"hourly" | "daily" | "weekly">("daily")
   const [backupHour, setBackupHour] = useState("3")
   const [backupRetentionDays, setBackupRetentionDays] = useState("7")
-  const [backupDir, setBackupDir] = useState("")
 
   // Settings form state
   const [settingsMemory, setSettingsMemory] = useState("")
@@ -180,7 +179,6 @@ export default function DatabasesPage() {
     setBackupFrequency("daily")
     setBackupHour("3")
     setBackupRetentionDays("7")
-    setBackupDir("")
   }
 
   const handleCreate = () => {
@@ -199,7 +197,6 @@ export default function DatabasesPage() {
       backupFrequency,
       backupHour: parseInt(backupHour) || 3,
       backupRetentionDays: parseInt(backupRetentionDays) || 7,
-      backupDir: backupDir || undefined,
     })
   }
 
@@ -249,7 +246,6 @@ export default function DatabasesPage() {
     setBackupFrequency(db.backupFrequency || "daily")
     setBackupHour(db.backupHour?.toString() || "3")
     setBackupRetentionDays(db.backupRetentionDays?.toString() || "7")
-    setBackupDir(db.backupDir || "")
     setShowSettingsModal(true)
   }
 
@@ -271,7 +267,6 @@ export default function DatabasesPage() {
       backupFrequency,
       backupHour: parseInt(backupHour) || 3,
       backupRetentionDays: parseInt(backupRetentionDays) || 7,
-      backupDir: backupDir || undefined,
     })
   }
 
@@ -338,15 +333,6 @@ export default function DatabasesPage() {
           </div>
         </div>
       )}
-      <div className="space-y-2">
-        <Label>Backup Directory (optional)</Label>
-        <Input
-          value={backupDir}
-          onChange={e => setBackupDir(e.target.value)}
-          placeholder="Default: /var/lib/guildserver/backups/<db-id>"
-        />
-        <p className="text-xs text-muted-foreground">Host path where dump files are stored.</p>
-      </div>
     </div>
   )
 

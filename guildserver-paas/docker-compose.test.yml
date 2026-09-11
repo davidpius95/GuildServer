@@ -43,3 +43,26 @@ services:
       retries: 20
     labels:
       gs.test-owned: "true"
+
+  # S3-compatible object storage for off-site backup tests. Loopback-only on a
+  # non-default port, data in memory, and fixed throwaway credentials that are
+  # meaningful nowhere else.
+  minio-test:
+    image: minio/minio:latest
+    container_name: guildserver-minio-test
+    command: server /data --address :9000
+    environment:
+      MINIO_ROOT_USER: gs-test-access
+      MINIO_ROOT_PASSWORD: gs-test-secret-key
+    ports:
+      - "127.0.0.1:9100:9000"
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -c ':> /dev/tcp/127.0.0.1/9000' || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    labels:
+      gs.test-owned: "true"
+

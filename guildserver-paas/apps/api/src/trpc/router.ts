@@ -22,6 +22,7 @@ import { infrastructureRouter } from "../routers/infrastructure";
 import { securityRouter } from "../routers/security";
 import { serviceRouter } from "../routers/service";
 import { apiTokenRouter } from "../routers/api-token";
+import { backupStorageRouter } from "../routers/backup-storage";
 
 export const appRouter = createTRPCRouter({
   auth: authRouter,
@@ -49,6 +50,8 @@ export const appRouter = createTRPCRouter({
   service: serviceRouter,
   /** Personal access tokens for the REST API. JWT-only, like every /trpc route. */
   apiToken: apiTokenRouter,
+  /** Off-site (S3-compatible) destinations for database backups. */
+  backupStorage: backupStorageRouter,
 });
 
 export type AppRouter = typeof appRouter;

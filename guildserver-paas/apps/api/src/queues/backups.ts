@@ -117,11 +117,17 @@ async function runRetentionSweep(): Promise<void> {
   const expired = await db.query.databaseBackups.findMany({
     where: lt(databaseBackups.expiresAt, new Date()),
   });
+  let removed = 0;
   for (const backup of expired) {
-    await DatabaseBackupService.deleteBackupFile(backup.filePath);
-    await db.delete(databaseBackups).where(eq(databaseBackups.id, backup.id));
+    // Keep the record when an off-site copy could not be deleted, so the next
+    // sweep retries instead of leaving an object nothing points at any more.
+    if (await DatabaseBackupService.deleteBackupArtifacts(backup)) {
+      await db.delete(databaseBackups).where(eq(databaseBackups.id, backup.id));
+      removed++;
+    }
   }
-  if (expired.length > 0) logger.info(`Retention sweep removed ${expired.length} expired backup(s)`);
+  if (removed > 0) logger.info(`Retention sweep removed ${removed} expired backup(s)`);
+  if (removed < expired.length) logger.warn(`Retention sweep kept ${expired.length - removed} backup(s) whose off-site copy could not be deleted`);
 }
 
 const backupWorker = new Worker(

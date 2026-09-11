@@ -1,7 +1,8 @@
+import * as path from "path";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc/trpc";
-import { databases, projects, members, databaseBackups, applications, environmentVariables } from "@guildserver/database";
+import { databases, projects, members, databaseBackups, applications, environmentVariables, s3Storages } from "@guildserver/database";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { DatabaseBackupService } from "../services/db-backup";
 import { provisionDatabaseContainer, removeDatabaseVolume } from "../services/database-provision";
@@ -27,7 +28,8 @@ const backupSettingsSchema = z.object({
   backupFrequency: z.enum(["hourly", "daily", "weekly"]).optional(),
   backupHour: z.number().int().min(0).max(23).optional(),
   backupRetentionDays: z.number().int().min(1).max(365).optional(),
-  backupDir: z.string().optional(),
+  /** Off-site destination for this database's backups; null keeps them local. */
+  backupStorageId: z.string().uuid().nullable().optional(),
 });
 
 const createDatabaseSchema = z.object({
@@ -45,7 +47,6 @@ const createDatabaseSchema = z.object({
   backupFrequency: z.enum(["hourly", "daily", "weekly"]).optional(),
   backupHour: z.number().int().min(0).max(23).optional(),
   backupRetentionDays: z.number().int().min(1).max(365).optional(),
-  backupDir: z.string().optional(),
 });
 
 const updateDatabaseSchema = z.object({
@@ -308,6 +309,14 @@ export const databaseRouter = createTRPCRouter({
 
       if (!database || database.project.organization.members.length === 0) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Database not found or access denied" });
+      }
+
+      if (settings.backupStorageId) {
+        const storage = await ctx.db.query.s3Storages.findFirst({ where: eq(s3Storages.id, settings.backupStorageId) });
+        // Another organization's storage is treated exactly like a missing one.
+        if (!storage || !database.project || storage.organizationId !== database.project.organizationId) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Backup storage not found" });
+        }
       }
 
       const [updated] = await ctx.db
@@ -702,8 +711,16 @@ export const databaseRouter = createTRPCRouter({
         });
       }
 
-      const { filePath, fileName } = await DatabaseBackupService.getDownloadFile(input.backupId);
-      return { filePath, fileName };
+      if (backup.status !== "completed") {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Backup is not complete" });
+      }
+      // The file itself is served by GET /downloads/backup/:id, which verifies
+      // its checksum and can fetch the off-site copy. This used to return the
+      // absolute host path of the dump, revealing the server's filesystem layout.
+      return {
+        fileName: path.basename(backup.filePath || backup.remoteKey || `${backup.id}.backup`),
+        downloadPath: `/downloads/backup/${backup.id}`,
+      };
     }),
 });
 
