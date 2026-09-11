@@ -1,6 +1,37 @@
 # GuildServer ← Coolify parity programme: implementation plan
 
-**Status:** proposed, awaiting approval. Nothing in this plan has been executed.
+**Status:** executed. See "Execution status" below (updated 2026-09-11); the rest of this
+document is the original plan, kept for reference.
+
+## Execution status (2026-09-11)
+
+| ID | State | How it is proven |
+|---|---|---|
+| W0 | CI gates every production deploy (`GUILDSERVER_REQUIRE_CI=enforce`): lint, zero type errors in api and web (baselines 0; the web build no longer ignores type or lint errors), backend (1,216 tests against real Postgres, Redis, MinIO), frontend (77). A Playwright suite exists and is being proven on an `acceptance/**` branch before it becomes a gate. | CI on every push to `main` |
+| W1 | Rolling deploys with health gate, overlap/serial promotion, per-router retry middleware and a 2s Traefik dial timeout. Off unless `GS_ZERO_DOWNTIME=1`; apps with persistent storage stay on recreate unless `GS_ZERO_DOWNTIME_SHARED_VOLUME=1`. | `docker-acceptance.yml`: a swap under continuous load behind real Traefik returns no non-2xx; an unhealthy candidate leaves the old version serving |
+| W2 | Compose stacks (API, UI, deploy, logs, status, delete). | `docker-acceptance.yml`: web + Postgres + Redis stack deploys, keeps data across redeploy, deletes only its own resources |
+| W3 | 302 Coolify templates imported; 192 passed the deployment gate on scratch runners; 182 offered in the One-click services catalogue (the rest need `cap_add`, `security_opt`, a fixed `container_name`, or have an unparseable port). | `verify-templates.yml` (weekly); a unit test plans every offered template |
+| W4 | REST API v1 with scoped, revocable tokens. | router and isolation tests |
+| W5 | S3-compatible off-site database backups with verified round trip. | tests against MinIO in CI |
+| W6 | Disk report, cleanup (dry run by default, re-checked against a fresh plan, never volumes or containers) and an admin UI card. | unit tests with a Docker client that fails on any other call |
+| W7 | Notification channels (Slack, Discord, webhook, Telegram, email) and log drains. | router, provider and shipper tests |
+| W8 | Remote Docker hosts over SSH with pinned host keys. | provider and router tests |
+
+The per-workstream feature flags proposed below were not all needed: only `GS_ZERO_DOWNTIME`
+exists, because the other workstreams are additive and invisible until used.
+
+Kubernetes and SSO were not built. The Kubernetes provider is shown as not implemented and its
+workflow template is labelled Experimental; SSO is shown as "coming soon" on billing and pricing.
+
+Problems found and fixed along the way: jsonb values were stored as JSON strings (drizzle 0.29;
+fixed by drizzle 0.45.2 and a batched backfill of 7.9M production rows); 307 type errors (0 now,
+several of them real bugs); a GitHub connection that GitHub had revoked still showed "Connected"
+(the settings page now detects it and offers Reconnect); metrics retention never ran (now nightly,
+30 days).
+
+Still open: the Playwright suite as a CI gate; enabling `GS_ZERO_DOWNTIME` in production;
+GitHub App installation tokens (repository access that does not depend on one user's login) need
+the App ID and private key configured.
 **Author:** Claude Opus 5, 9 September 2026
 **Worktree:** `Davidcode/guildserver-coolify-gaps-0978cc` @ `306545a`
 **Source of requirements:** the GuildServer vs Coolify gap analysis dated 9 September 2026.
