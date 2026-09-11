@@ -112,6 +112,9 @@ services:
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
       CLOUDFLARE_TUNNEL: ${CLOUDFLARE_TUNNEL:-false}
+      CLOUDFLARE_ZONE_ID: ${CLOUDFLARE_ZONE_ID:-${CF_ZONES:-}}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+      CLOUDFLARE_FALLBACK_ORIGIN: ${CLOUDFLARE_FALLBACK_ORIGIN:-}
       # Flutterwave v4. Empty defaults keep the stack bootable without them —
       # isFlutterwaveV4Configured() gates every call site.
       FLW_V4_CLIENT_ID: ${FLW_V4_CLIENT_ID:-}

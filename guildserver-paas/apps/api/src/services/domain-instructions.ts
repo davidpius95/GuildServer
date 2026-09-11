@@ -171,6 +171,10 @@ export interface DnsInstructionsResult {
  * Build DNS instructions for a true "vanity" custom domain: the user points a
  * CNAME (subdomain) or A record (apex) at our server, and Traefik then serves
  * the domain directly with its own Let's Encrypt certificate.
+ *
+ * When running behind a Cloudflare Tunnel (CLOUDFLARE_TUNNEL=true), we always
+ * use CNAME because there is no public IP to point an A record at. SSL is
+ * handled by Cloudflare for SaaS, not Let's Encrypt.
  */
 export function buildDnsInstructions(input: {
   domain: string;
@@ -183,10 +187,12 @@ export function buildDnsInstructions(input: {
   const cleanDomain = isWildcard ? input.domain.slice(2) : input.domain;
   const parts = cleanDomain.split(".");
   const isApex = parts.length === 2;
+  const behindTunnel = process.env.CLOUDFLARE_TUNNEL === "true";
 
-  // Apex domains can't use CNAME — they need an A record to the server IP.
-  // Subdomains (and wildcards) use a CNAME to the canonical app host.
-  const useApexARecord = isApex && !isWildcard && !!input.apexIp;
+  // Behind a Cloudflare Tunnel there is no public IP, so apex A records are
+  // impossible. We always use CNAME. Without a tunnel, apex domains still
+  // need an A record because CNAMEs aren't allowed at the root.
+  const useApexARecord = isApex && !isWildcard && !!input.apexIp && !behindTunnel;
 
   const host = isWildcard ? "*" : isApex ? "@" : parts.slice(0, -2).join(".");
 
@@ -195,6 +201,31 @@ export function buildDnsInstructions(input: {
     : { type: "CNAME", name: host, value: input.cnameTarget };
 
   const recordLine = `Type: \`${record.type}\`, Host/Name: \`${record.name}\`, Value: \`${record.value}\``;
+
+  // Cloudflare registrar instructions differ based on whether we're behind a
+  // tunnel. If we are, users whose domain is also on Cloudflare should keep
+  // "DNS only" (grey cloud) — the CNAME target already resolves through our
+  // Cloudflare zone. If we're NOT behind a tunnel, they must use DNS only so
+  // Let's Encrypt can issue a certificate.
+  const cloudflareSteps = behindTunnel
+    ? [
+        "Log in to Cloudflare and select your domain.",
+        "Go to DNS > Records > Add record.",
+        `Create: ${recordLine}.`,
+        "Set Proxy status to 'DNS only' (grey cloud) — the CNAME target already goes through Cloudflare.",
+        "Save.",
+      ]
+    : [
+        "Log in to Cloudflare and select your domain.",
+        "Go to DNS > Records > Add record.",
+        `Create: ${recordLine}.`,
+        "Set Proxy status to 'DNS only' (grey cloud) so the certificate can be issued.",
+        "Save.",
+      ];
+
+  const cloudflareNotes = behindTunnel
+    ? "Keep the grey cloud (DNS only). Your domain's traffic is proxied through the GuildServer zone's Cloudflare for SaaS, which handles SSL automatically."
+    : "The grey cloud (DNS only) is required — the orange proxy will break Let's Encrypt validation and domain verification.";
 
   const registrars = [
     {
@@ -219,14 +250,8 @@ export function buildDnsInstructions(input: {
     },
     {
       name: "Cloudflare",
-      steps: [
-        "Log in to Cloudflare and select your domain.",
-        "Go to DNS > Records > Add record.",
-        `Create: ${recordLine}.`,
-        "Set Proxy status to 'DNS only' (grey cloud) so the certificate can be issued.",
-        "Save.",
-      ],
-      notes: "The grey cloud (DNS only) is required — the orange proxy will break Let's Encrypt validation and domain verification.",
+      steps: cloudflareSteps,
+      notes: cloudflareNotes,
     },
     {
       name: "Porkbun",
@@ -247,21 +272,33 @@ export function buildDnsInstructions(input: {
       notes: useApexARecord
         ? undefined
         : isApex
-        ? "Apex domains often need an ALIAS/ANAME record instead of CNAME if your registrar doesn't support apex CNAMEs."
+        ? behindTunnel
+          ? "Apex/root domains cannot use CNAME records. Use a subdomain (e.g. www or app) instead, or choose the URL redirect method. Some registrars (Cloudflare, Porkbun, Route53) support CNAME flattening or ALIAS records at the apex."
+          : "Apex domains often need an ALIAS/ANAME record instead of CNAME if your registrar doesn't support apex CNAMEs."
         : undefined,
     },
   ];
 
+  const sslNote = behindTunnel
+    ? `SSL is handled automatically by Cloudflare — no Let's Encrypt certificate is needed.`
+    : `a free Let's Encrypt certificate is issued automatically.`;
+
   const description =
     `Connecting via DNS points ${input.domain} directly at your app so the domain stays ` +
-    `in the browser's address bar with its own automatically-issued SSL certificate. ` +
+    `in the browser's address bar with its own SSL certificate. ` +
     `Add the ${record.type} record shown below in your domain registrar's DNS settings ` +
     (record.type === "A"
       ? `(apex/root domains need an A record because CNAMEs aren't allowed at the root). `
       : `(this points the subdomain at your app's GuildServer host). `) +
+    (isApex && behindTunnel
+      ? `Note: this platform runs behind a Cloudflare Tunnel with no public IP. Apex/root domains ` +
+        `cannot use CNAME records at most registrars. Consider using a subdomain (e.g. www.${cleanDomain} ` +
+        `or app.${cleanDomain}) or the URL redirect method instead. Some registrars (Cloudflare, Porkbun, ` +
+        `Route53) support CNAME flattening or ALIAS records at the apex. `
+      : ``) +
     `DNS changes can take a few minutes to ~1 hour to propagate. Once you've saved the record, ` +
-    `click Verify — we'll confirm it resolves to our servers, then you redeploy the app once to ` +
-    `start serving the domain (and a free Let's Encrypt certificate is issued automatically).`;
+    `click Verify — we'll confirm it resolves correctly, then you redeploy the app once to ` +
+    `start serving the domain (${sslNote})`;
 
   return {
     method: "dns",
@@ -276,3 +313,4 @@ export function buildDnsInstructions(input: {
     })),
   };
 }
+

@@ -13,6 +13,14 @@ import * as dnsPromises from "dns/promises";
 import { isLocalhostDomain } from "../services/docker";
 import { verifyRedirect, verifyDns } from "../services/domain-verifier";
 import { buildForwardingInstructions, buildDnsInstructions } from "../services/domain-instructions";
+import {
+  isCloudflareSaasConfigured,
+  createCustomHostname,
+  getCustomHostnameStatus,
+  deleteCustomHostname,
+  isHostnameActive,
+  getVerificationInfo,
+} from "../services/cloudflare-saas";
 
 const BASE_DOMAIN = process.env.BASE_DOMAIN || "guildserver.localhost";
 
@@ -165,6 +173,38 @@ export const domainRouter = createTRPCRouter({
       }
 
       if (input.method === "dns") {
+        // If Cloudflare for SaaS is configured, register the custom hostname
+        // so Cloudflare will accept traffic for this external domain and route
+        // it through our tunnel.
+        let cfHostnameId: string | null = null;
+        let cfHostnameStatus: string | null = null;
+        let cfOwnershipVerification: { name: string; value: string } | undefined;
+        let cfSslValidationRecords: any[] | undefined;
+
+        if (isCloudflareSaasConfigured()) {
+          try {
+            const cfResult = await createCustomHostname({
+              hostname: input.domain,
+              sslMethod: "http",
+            });
+            cfHostnameId = cfResult.id;
+            cfHostnameStatus = cfResult.status;
+            cfOwnershipVerification = cfResult.ownershipVerification;
+            cfSslValidationRecords = cfResult.sslValidationRecords;
+          } catch (error: any) {
+            // If the hostname already exists on Cloudflare, extract the ID
+            if (error?.message?.includes("already exists")) {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: `Domain ${input.domain} is already registered on Cloudflare. Remove it from the Cloudflare dashboard first, or contact support.`,
+              });
+            }
+            // For other errors, log but don't block — the user can still set
+            // up DNS manually and verify later.
+            console.error(`Cloudflare custom hostname creation failed: ${error.message}`);
+          }
+        }
+
         const [domain] = await ctx.db
           .insert(domains)
           .values({
@@ -177,6 +217,8 @@ export const domainRouter = createTRPCRouter({
             status: "pending",
             forceHttps: true,
             redirectsTo: null,
+            cfCustomHostnameId: cfHostnameId,
+            cfCustomHostnameStatus: cfHostnameStatus,
           })
           .returning();
 
@@ -188,6 +230,9 @@ export const domainRouter = createTRPCRouter({
             cnameTarget: canonicalHost(app),
             apexIp: serverIps[0] ?? null,
           }),
+          // Surface Cloudflare verification info so the UI can show it
+          cfOwnershipVerification,
+          cfSslValidationRecords,
         };
       }
 
@@ -264,20 +309,50 @@ export const domainRouter = createTRPCRouter({
 
       // DNS / vanity domains: confirm the CNAME/A record points at our servers.
       if (domain.verificationMethod === "dns" || domain.verificationMethod === "cname") {
+        // Step 1: Check if DNS resolves to our servers
         const serverIps = await getServerIps();
-        const result = await verifyDns({
+        const dnsResult = await verifyDns({
           domain: domain.domain,
           cnameTarget: canonicalHost(app),
           serverIps,
         });
 
+        // Step 2: If Cloudflare for SaaS is configured and we have a hostname ID,
+        // also check the custom hostname status on Cloudflare's side.
+        let cfStatus: string | null = null;
+        let cfVerificationInfo: ReturnType<typeof getVerificationInfo> | null = null;
+
+        if (isCloudflareSaasConfigured() && domain.cfCustomHostnameId) {
+          try {
+            const cfHostname = await getCustomHostnameStatus(domain.cfCustomHostnameId);
+            if (cfHostname) {
+              cfStatus = cfHostname.status;
+              cfVerificationInfo = getVerificationInfo(cfHostname);
+            }
+          } catch {
+            // Non-fatal — DNS verification alone is still useful
+          }
+        }
+
+        // Domain is fully verified when DNS resolves AND (CF is not configured
+        // OR CF reports the hostname as active).
+        const dnsOk = dnsResult.status === "active";
+        const cfOk = !isCloudflareSaasConfigured() || !domain.cfCustomHostnameId || cfStatus === "active";
+        const isVerified = dnsOk && cfOk;
+
+        let verificationError = dnsResult.reason || null;
+        if (dnsOk && !cfOk && cfStatus) {
+          verificationError = `DNS is correct but Cloudflare SSL is still ${cfStatus}. This usually resolves automatically within a few minutes.`;
+        }
+
         const [updated] = await ctx.db
           .update(domains)
           .set({
-            verified: result.status === "active",
-            status: result.status,
+            verified: isVerified,
+            status: isVerified ? "active" : "failed",
             lastCheckedAt: new Date(),
-            verificationError: result.reason || null,
+            verificationError,
+            cfCustomHostnameStatus: cfStatus,
             updatedAt: new Date(),
           })
           .where(eq(domains.id, input.id))
@@ -288,6 +363,7 @@ export const domainRouter = createTRPCRouter({
           domain: updated,
           // Traefik only routes the domain after the container is re-labeled on deploy.
           needsRedeploy: updated.verified,
+          cfVerificationInfo,
         };
       }
 
@@ -383,6 +459,17 @@ export const domainRouter = createTRPCRouter({
         });
       }
 
+      // Clean up the Cloudflare custom hostname if one was created
+      if (domain.cfCustomHostnameId && isCloudflareSaasConfigured()) {
+        try {
+          await deleteCustomHostname(domain.cfCustomHostnameId);
+        } catch (error: any) {
+          // Log but don't block deletion — the CF hostname may have been
+          // removed manually from the dashboard.
+          console.error(`Failed to delete CF custom hostname ${domain.cfCustomHostnameId}: ${error.message}`);
+        }
+      }
+
       await ctx.db.delete(domains).where(eq(domains.id, input.id));
 
       return { success: true };
@@ -430,6 +517,20 @@ export const domainRouter = createTRPCRouter({
             domain: domain.domain,
             sslStatus: "pending_verification" as const,
             sslMessage: "Domain must be verified before SSL can be provisioned",
+            isLocal: false,
+          };
+        }
+
+        // Cloudflare for SaaS custom domains: SSL is managed by Cloudflare
+        if (domain.cfCustomHostnameId) {
+          const cfSslActive = domain.cfCustomHostnameStatus === "active";
+          return {
+            domainId: domain.id,
+            domain: domain.domain,
+            sslStatus: cfSslActive ? ("active" as const) : ("provisioning" as const),
+            sslMessage: cfSslActive
+              ? "SSL certificate auto-managed by Cloudflare for SaaS"
+              : `Cloudflare SSL provisioning in progress (status: ${domain.cfCustomHostnameStatus || "pending"})`,
             isLocal: false,
           };
         }

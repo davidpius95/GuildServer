@@ -680,6 +680,10 @@ export const domains = pgTable("domains", {
   certificateId: uuid("certificate_id"),
   forceHttps: boolean("force_https").default(true),
 
+  // Cloudflare for SaaS (Custom Hostnames)
+  cfCustomHostnameId: varchar("cf_custom_hostname_id", { length: 64 }),
+  cfCustomHostnameStatus: varchar("cf_custom_hostname_status", { length: 32 }),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
