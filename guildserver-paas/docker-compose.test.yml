@@ -48,7 +48,7 @@ services:
   # non-default port, data in memory, and fixed throwaway credentials that are
   # meaningful nowhere else.
   minio-test:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: guildserver-minio-test
     command: server /data --address :9000
     environment:

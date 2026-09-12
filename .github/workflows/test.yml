@@ -145,14 +145,16 @@ jobs:
 
       # Off-site backup tests talk to a real S3 API. MinIO needs a command
       # (`server /data`), which service containers cannot be given, so it is
-      # started here instead of under `services:`.
+      # started here instead of under `services:`. The image comes from quay.io:
+      # Docker Hub now refuses `minio/minio` pulls ("pull access denied"), which
+      # failed this step with exit 125 and blocked every production deploy.
       - name: Start MinIO
         working-directory: .
         run: |
           docker run -d --name minio -p 127.0.0.1:9000:9000 \
             -e MINIO_ROOT_USER=gs-test-access \
             -e MINIO_ROOT_PASSWORD=gs-test-secret-key \
-            minio/minio:latest server /data
+            quay.io/minio/minio:latest server /data
           for i in $(seq 1 30); do
             curl -fsS http://127.0.0.1:9000/minio/health/live && exit 0
             sleep 2

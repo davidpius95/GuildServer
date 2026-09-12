@@ -310,7 +310,7 @@ export const TEMPLATES: Template[] = [
     category: "Storage",
     sourceKind: "docker",
     track: "ops",
-    dockerImage: "minio/minio:latest",
+    dockerImage: "quay.io/minio/minio:latest",
     containerPort: 9000,
     envVars: { MINIO_ROOT_USER: "admin", MINIO_ROOT_PASSWORD: "changeme123" },
     tags: ["storage", "s3", "object store"],
