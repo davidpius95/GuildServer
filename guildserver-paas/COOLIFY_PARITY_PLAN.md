@@ -17,6 +17,16 @@ document is the original plan, kept for reference.
 | W7 | Notification channels (Slack, Discord, webhook, Telegram, email) and log drains. | router, provider and shipper tests |
 | W8 | Remote Docker hosts over SSH with pinned host keys. | provider and router tests |
 
+Off-site database backups were verified on production on 2026-09-12 in the same way: MinIO
+deployed as a Compose stack on a public hostname, backup storage pointed at it (its own
+write/read/delete test passing), a PostgreSQL database provisioned, and a manual backup
+completed and uploaded — 882 bytes with a recorded checksum and a remote key in the bucket.
+Two bugs that only a live check could find were fixed on the way: a database was reported
+"running" the moment its container started, so a backup taken seconds later failed with
+`database "..." does not exist`; and the off-site upload decision read a snapshot of the
+database row taken before the dump, so storage attached while a backup was queued was
+silently ignored and the backup stayed on this host.
+
 Verified on production (guild-technologies.com) on 2026-09-12 with a throwaway labelled
 account, then cleaned up: sign-up, deploying an application from an image on its auto URL,
 webhook notification channels, log drains, REST API tokens and their revocation, a one-click
