@@ -1,6 +1,6 @@
 # GuildServer ← Coolify parity programme: implementation plan
 
-**Status:** executed. See "Execution status" below (updated 2026-09-11); the rest of this
+**Status:** executed. See "Execution status" below (updated 2026-09-12); the rest of this
 document is the original plan, kept for reference.
 
 ## Execution status (2026-09-11)
@@ -36,21 +36,30 @@ answering on its domain. Rolling deploys are enabled in production (`GS_ZERO_DOW
 The per-workstream feature flags proposed below were not all needed: only `GS_ZERO_DOWNTIME`
 exists, because the other workstreams are additive and invisible until used.
 
-Kubernetes and SSO were not built. The Kubernetes provider is shown as not implemented and its
-workflow template is labelled Experimental; SSO is shown as "coming soon" on billing and pricing.
-
 Problems found and fixed along the way: jsonb values were stored as JSON strings (drizzle 0.29;
 fixed by drizzle 0.45.2 and a batched backfill of 7.9M production rows); 307 type errors (0 now,
 several of them real bugs); a GitHub connection that GitHub had revoked still showed "Connected"
 (the settings page now detects it and offers Reconnect); metrics retention never ran (now nightly,
 30 days).
 
-GitHub App installation tokens are implemented (2026-09-12): when `GITHUB_APP_ID` and
-`GITHUB_APP_PRIVATE_KEY` are set, a deploy clones with an installation token belonging to the App
-instead of to whoever connected the repository, so deploys survive that person revoking access or
-leaving. Unconfigured, not installed on a repository, or refused by GitHub, it falls back to the
-user's OAuth token, so it can never make deploys worse than before. See docs/github-app.md.
-Nothing else from this plan is outstanding.
+GitHub App repository access is implemented and self-service (2026-09-12). One App serves every
+tenant: a customer installs it on their own GitHub account from Settings, and the installation is
+recorded against their organization, so deploys use a credential belonging to the installation
+rather than to whoever connected the repository and keep working after that person revokes access
+or leaves. Nothing is configured per tenant by an operator.
+
+The tenant boundary is explicit, because one App could otherwise widen what a tenant can reach: an
+installation token is only ever used for a repository the deploying user can read with their own
+GitHub identity; an installation recorded by one organization is never offered to another; the
+post-install redirect carries no identity, so without a valid, unredeemed nonce the callback
+records nothing rather than guessing an owner; and a webhook never moves an installation between
+organizations. Uninstall, suspend and repository-scope changes are handled. Where no App is
+configured, none is installed for a repository, or GitHub refuses, deploys fall back to the user's
+OAuth token exactly as before. See docs/github-app.md.
+
+Not built, and shown as such rather than hidden: Kubernetes (the provider reports itself
+unimplemented, its workflow template is labelled Experimental) and SSO ("coming soon" on billing
+and pricing). Nothing else from this plan is outstanding.
 **Author:** Claude Opus 5, 9 September 2026
 **Worktree:** `Davidcode/guildserver-coolify-gaps-0978cc` @ `306545a`
 **Source of requirements:** the GuildServer vs Coolify gap analysis dated 9 September 2026.
