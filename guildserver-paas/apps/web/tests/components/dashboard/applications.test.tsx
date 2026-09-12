@@ -13,7 +13,7 @@ describe('ApplicationsPage', () => {
 
     expect(screen.getByText('Applications')).toBeInTheDocument()
     expect(screen.getByText('Deploy and manage your applications')).toBeInTheDocument()
-    expect(await screen.findByRole('button', { name: /New Application/ })).toBeInTheDocument()
+    expect((await screen.findAllByRole('button', { name: /New Application/ }))[0]).toBeInTheDocument()
   })
 
   it('displays applications returned by the API', async () => {

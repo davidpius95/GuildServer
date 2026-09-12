@@ -143,6 +143,7 @@ export interface ContainerSpec {
   mounts?: Docker.MountSettings[];
   memoryBytes?: number;
   nanoCpus?: number;
+  cmd?: string[];
 }
 
 export function buildContainerConfig(
@@ -162,6 +163,9 @@ export function buildContainerConfig(
     },
   };
 
+  if (spec.cmd && spec.cmd.length > 0) {
+    config.Cmd = spec.cmd;
+  }
   if (spec.mounts && spec.mounts.length > 0) {
     config.HostConfig!.Mounts = spec.mounts;
   }

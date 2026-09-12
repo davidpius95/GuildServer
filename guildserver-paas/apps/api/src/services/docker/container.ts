@@ -228,6 +228,24 @@ export async function deployContainer(
       log(`Persistent storage mounted at ${mount.Target}`);
     }
 
+    let cmd: string[] | undefined;
+    const rawCmd = opts.environment.CONTAINER_CMD || opts.environment.GS_CONTAINER_CMD || opts.environment.START_COMMAND;
+    if (rawCmd) {
+      const trimmed = rawCmd.trim();
+      if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+        try {
+          cmd = JSON.parse(trimmed);
+        } catch {
+          cmd = trimmed.split(/\s+/);
+        }
+      } else {
+        cmd = trimmed.split(/\s+/);
+      }
+    } else if (opts.dockerImage.includes("hermes-agent") || opts.environment.HERMES_DASHBOARD === "1") {
+      // nousresearch/hermes-agent runs interactive CLI by default and exits in non-interactive containers unless a long-running CMD is passed
+      cmd = ["sleep", "infinity"];
+    }
+
     const spec: ContainerSpec = {
       fullImage,
       servicePort,
@@ -238,6 +256,7 @@ export async function deployContainer(
       nanoCpus: opts.cpuLimit
         ? Math.floor((typeof opts.cpuLimit === "string" ? parseFloat(opts.cpuLimit) : opts.cpuLimit) * 1e9)
         : undefined,
+      cmd,
     };
 
     const decision = resolveDeploymentStrategy({
