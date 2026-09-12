@@ -106,9 +106,16 @@ export function runCompose(options: RunComposeOptions): Promise<ComposeCommandRe
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      // ENOENT from spawn means either the binary is missing OR the working
+      // directory does not exist. Reporting only the first sent a real
+      // investigation down the wrong path, so say which command, from where.
+      const errno = error as NodeJS.ErrnoException;
       reject(
-        (error as NodeJS.ErrnoException).code === "ENOENT"
-          ? new Error("The `docker` CLI is not available on this host, so Compose stacks cannot be deployed.")
+        errno.code === "ENOENT"
+          ? new Error(
+              `Could not run \`docker ${argv.join(" ")}\` in ${options.cwd}: ENOENT. ` +
+                "Either the `docker` CLI is not on PATH or that working directory no longer exists.",
+            )
           : error,
       );
     });

@@ -515,3 +515,12 @@ describe('stackDirectory', () => {
     expect(stackDirectory('abc')).not.toBe(stackDirectory('abd'));
   });
 });
+
+describe('runCompose error reporting', () => {
+  it('names the command and the working directory when spawn fails with ENOENT', async () => {
+    const missing = `/tmp/gs-does-not-exist-${Date.now()}`;
+    await expect(
+      runCompose({ project: 'gs-test', file: `${missing}/docker-compose.yaml`, cwd: missing, args: ['up'] }),
+    ).rejects.toThrow(new RegExp(`docker compose .*up.* in ${missing}: ENOENT`));
+  });
+});
