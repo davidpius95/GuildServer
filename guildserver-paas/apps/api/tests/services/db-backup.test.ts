@@ -370,3 +370,39 @@ describe('runBackup waits for the engine', () => {
     expect(row.error).toMatch(/retried/i);
   });
 });
+
+describe('off-site copies follow the database as it is configured', () => {
+  it('uploads when storage is attached after the backup was already queued', async () => {
+    const { database, storageId } = await world({ storage: 'good' });
+    // Queued first, storage attached afterwards: runBackup's snapshot of the
+    // database row predates the change.
+    const record = await DatabaseBackupService.triggerBackup(database.id, 'manual');
+    await db.update(databases).set({ backupStorageId: storageId }).where(eq(databases.id, database.id));
+
+    mockGetAppContainer.mockResolvedValue({ id: 'container-1' });
+    execReturning(Buffer.from('PGDMP late-attach dump'));
+    await DatabaseBackupService.runBackup(record.id, { waitForReady: readyEngine });
+
+    const [row] = await db.select().from(databaseBackups).where(eq(databaseBackups.id, record.id));
+    expect(row.status).toBe('completed');
+    expect(row.remoteKey).toBeTruthy();
+    expect(row.uploadedAt).toBeTruthy();
+    expect(row.uploadError).toBeNull();
+  });
+
+  it('leaves a local-only backup with no remote key and no upload error', async () => {
+    const { database } = await world({ storage: 'none' });
+    const record = await DatabaseBackupService.triggerBackup(database.id, 'manual');
+
+    mockGetAppContainer.mockResolvedValue({ id: 'container-1' });
+    execReturning(Buffer.from('PGDMP local only dump'));
+    await DatabaseBackupService.runBackup(record.id, { waitForReady: readyEngine });
+
+    const [row] = await db.select().from(databaseBackups).where(eq(databaseBackups.id, record.id));
+    expect(row.status).toBe('completed');
+    expect(row.remoteKey).toBeNull();
+    expect(row.storageId).toBeNull();
+    // Not an error: nothing was attempted, so nothing failed.
+    expect(row.uploadError).toBeNull();
+  });
+});

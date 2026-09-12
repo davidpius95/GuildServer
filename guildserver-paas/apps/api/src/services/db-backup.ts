@@ -285,9 +285,11 @@ export class DatabaseBackupService {
       throw err;
     }
 
-    if (database.backupStorageId) {
-      await DatabaseBackupService.copyOffsite(backupId);
-    }
+    // Always ask copyOffsite, which re-reads the database row. The row loaded
+    // at the top of this method is a snapshot taken before the dump ran, so
+    // storage attached while the backup was queued or dumping was ignored and
+    // an "off-site" backup silently stayed on this host.
+    await DatabaseBackupService.copyOffsite(backupId);
   }
 
   /** Upload a completed local backup to its database's off-site storage. */
@@ -295,6 +297,9 @@ export class DatabaseBackupService {
     const backup = await db.query.databaseBackups.findFirst({ where: eq(databaseBackups.id, backupId) });
     if (!backup?.filePath || backup.status !== "completed") return false;
     const database = await db.query.databases.findFirst({ where: eq(databases.id, backup.databaseId!) });
+    // No off-site storage configured: the backup is local only, which a null
+    // storageId/remoteKey already says. uploadError stays null — it means an
+    // upload was attempted and failed, and the retention sweep reads it that way.
     if (!database?.backupStorageId) return false;
 
     const storage = await storageForDatabase(database.backupStorageId, database);
