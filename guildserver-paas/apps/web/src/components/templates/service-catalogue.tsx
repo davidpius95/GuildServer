@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { AlertTriangle, BookOpen, Boxes, Globe, Loader2, Search, ShieldCheck } from "lucide-react"
+import { AlertTriangle, BookOpen, Boxes, ChevronDown, ChevronRight, Globe, Loader2, Search, ShieldCheck, Sparkles } from "lucide-react"
 import { trpc } from "@/components/trpc-provider"
 import { useOrganization, useProjects } from "@/hooks/use-auth"
 import { Badge } from "@/components/ui/badge"
@@ -14,6 +14,42 @@ import { Label } from "@/components/ui/label"
 import { ResponsiveModal } from "@/components/ui/responsive-modal"
 import { getFriendlyMessage } from "@/lib/errors"
 import { cn } from "@/lib/utils"
+
+const FRIENDLY_VARIABLE_LABELS: Record<string, string> = {
+  OPENAI_API_KEY: "OpenAI API Key",
+  ANTHROPIC_API_KEY: "Anthropic API Key",
+  DEEPSEEK_API_KEY: "DeepSeek API Key",
+  GEMINI_API_KEY: "Google Gemini API Key",
+  GROQ_API_KEY: "Groq API Key",
+  OPENROUTER_API_KEY: "OpenRouter API Key",
+  OPENCLAW_PRIMARY_MODEL: "Primary AI Model",
+  DISCORD_BOT_TOKEN: "Discord Bot Token",
+  TELEGRAM_BOT_TOKEN: "Telegram Bot Token",
+  SLACK_BOT_TOKEN: "Slack Bot Token",
+  SLACK_APP_TOKEN: "Slack App Token",
+  WHATSAPP_ENABLED: "Enable WhatsApp Integration",
+  MISTRAL_API_KEY: "Mistral API Key",
+  VOYAGE_API_KEY: "Voyage API Key",
+  COHERE_API_KEY: "Cohere API Key",
+  CEREBRAS_API_KEY: "Cerebras API Key",
+  KIMI_API_KEY: "Kimi API Key",
+  MINIMAX_API_KEY: "MiniMax API Key",
+  MOONSHOT_API_KEY: "Moonshot API Key",
+}
+
+function getVariableLabel(key: string): string {
+  if (FRIENDLY_VARIABLE_LABELS[key]) return FRIENDLY_VARIABLE_LABELS[key]
+  return key
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+}
+
+function isSecretKey(key: string): boolean {
+  const upper = key.toUpperCase()
+  return upper.includes("KEY") || upper.includes("SECRET") || upper.includes("PASSWORD") || upper.includes("TOKEN")
+}
 
 interface CatalogueEntry {
   id: string
@@ -73,6 +109,7 @@ export function ServiceCatalogue() {
   const [selected, setSelected] = useState<CatalogueEntry | null>(null)
   const [stackName, setStackName] = useState("")
   const [values, setValues] = useState<Record<string, string>>({})
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   const listQuery = trpc.serviceTemplate.list.useQuery(undefined, { staleTime: 5 * 60 * 1000 })
   const deployMutation = trpc.serviceTemplate.deploy.useMutation({
@@ -101,6 +138,7 @@ export function ServiceCatalogue() {
 
   const openDeploy = (entry: CatalogueEntry) => {
     setSelected(entry)
+    setShowAdvanced(false)
     setStackName(entry.id.slice(0, 63))
     setValues(Object.fromEntries(entry.userVariables.map((v) => [v.key, v.defaultValue ?? ""])))
   }
@@ -232,24 +270,84 @@ export function ServiceCatalogue() {
               <Input id="catalogue-stack-name" value={stackName} onChange={(e) => setStackName(e.target.value)} />
               {nameError && <p className="text-xs text-destructive">{nameError}</p>}
             </div>
-            {selected.userVariables.length > 0 && (
-              <div className="space-y-3">
-                <p className="text-sm font-medium">Settings</p>
-                {selected.userVariables.map((variable) => (
-                  <div key={variable.key} className="space-y-1.5">
-                    <Label htmlFor={`catalogue-var-${variable.key}`} className="font-mono text-xs">
-                      {variable.key}
-                      {variable.required && <span className="text-destructive"> *</span>}
-                    </Label>
-                    <Input
-                      id={`catalogue-var-${variable.key}`}
-                      value={values[variable.key] ?? ""}
-                      onChange={(e) => setValues((prev) => ({ ...prev, [variable.key]: e.target.value }))}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
+            {selected.userVariables.length > 0 && (() => {
+              const requiredVars = selected.userVariables.filter((v) => v.required)
+              const optionalVars = selected.userVariables.filter((v) => !v.required)
+
+              return (
+                <div className="space-y-4">
+                  {requiredVars.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                        <Sparkles className="h-3.5 w-3.5 text-primary" />
+                        Required Configuration
+                      </div>
+                      {requiredVars.map((variable) => (
+                        <div key={variable.key} className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor={`catalogue-var-${variable.key}`} className="text-xs font-medium">
+                              {getVariableLabel(variable.key)} <span className="text-destructive">*</span>
+                            </Label>
+                            <span className="font-mono text-[10px] text-muted-foreground">{variable.key}</span>
+                          </div>
+                          <Input
+                            id={`catalogue-var-${variable.key}`}
+                            type={isSecretKey(variable.key) ? "password" : "text"}
+                            placeholder="Required"
+                            value={values[variable.key] ?? ""}
+                            onChange={(e) => setValues((prev) => ({ ...prev, [variable.key]: e.target.value }))}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {optionalVars.length > 0 && (
+                    <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowAdvanced(!showAdvanced)}
+                        className="flex items-center justify-between w-full text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          {showAdvanced ? (
+                            <ChevronDown className="h-3.5 w-3.5 text-primary" />
+                          ) : (
+                            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                          )}
+                          Optional settings & integrations ({optionalVars.length})
+                        </span>
+                        <span className="text-[10px] text-muted-foreground/80">
+                          {showAdvanced ? "Collapse" : "Expand"}
+                        </span>
+                      </button>
+
+                      {showAdvanced && (
+                        <div className="mt-3 space-y-3 pt-2 border-t border-border/40">
+                          {optionalVars.map((variable) => (
+                            <div key={variable.key} className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <Label htmlFor={`catalogue-var-${variable.key}`} className="text-xs font-medium">
+                                  {getVariableLabel(variable.key)}
+                                </Label>
+                                <span className="font-mono text-[10px] text-muted-foreground">{variable.key}</span>
+                              </div>
+                              <Input
+                                id={`catalogue-var-${variable.key}`}
+                                type={isSecretKey(variable.key) ? "password" : "text"}
+                                placeholder={variable.defaultValue ? `Default: ${variable.defaultValue}` : "Optional"}
+                                value={values[variable.key] ?? ""}
+                                onChange={(e) => setValues((prev) => ({ ...prev, [variable.key]: e.target.value }))}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
             <p className="text-xs text-muted-foreground">
               Passwords and keys are generated and stored encrypted with the stack. Services:{" "}
               {selected.services.map((s) => s.name).join(", ")}.

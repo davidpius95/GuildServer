@@ -192,9 +192,19 @@ function TemplateCard({
   projectId: string | null
   onDeploy: (t: Template) => void
 }) {
-  const gradient = template.framework
-    ? GRADIENT_MAP[template.framework] || GRADIENT_MAP.default
-    : GRADIENT_MAP.default
+  const gradient =
+    (template.framework && GRADIENT_MAP[template.framework]) ||
+    (template.category === "AI Agents" && (
+      (template.id.includes("hermes") && GRADIENT_MAP["Hermes"]) ||
+      (template.id.includes("deepseek") && GRADIENT_MAP["DeepSeek"]) ||
+      (template.id.includes("openclaw") && GRADIENT_MAP["OpenClaw"]) ||
+      (template.id.includes("ollama") && GRADIENT_MAP["Ollama"]) ||
+      (template.id.includes("dify") && GRADIENT_MAP["Dify"]) ||
+      (template.id.includes("bolt") && GRADIENT_MAP["Bolt"]) ||
+      (template.id.includes("n8n") && GRADIENT_MAP["n8n"]) ||
+      GRADIENT_MAP["AI Agent"]
+    )) ||
+    GRADIENT_MAP.default
   const sourceLabel = SOURCE_LABELS[template.sourceKind]
 
   return (
