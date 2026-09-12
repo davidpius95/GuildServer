@@ -2,6 +2,7 @@ import { docker, NETWORK_NAME, GS_LABELS } from "./docker/client";
 import { ensureNetwork } from "./docker/networks";
 import { pullImage } from "./docker/images";
 import { removeExistingContainers } from "./docker/container";
+import { waitForEngineReady } from "./database-readiness";
 import { logger } from "../utils/logger";
 
 /** Native listen port per database engine. */
@@ -184,6 +185,21 @@ export async function provisionDatabaseContainer(opts: {
   });
 
   await container.start();
+
+  // A started container is not yet a working database: PostgreSQL creates the
+  // requested database at the end of initdb. Returning before it can answer
+  // made the row say "running" while backups and connections still failed.
+  const ready = await waitForEngineReady(container.id, opts.type, {
+    databaseName: opts.databaseName,
+    username: opts.username,
+    password: opts.password,
+  });
+  if (!ready) {
+    throw new Error(
+      `${opts.type} database ${opts.name} started but never became ready; it cannot serve queries yet.`,
+    );
+  }
+
   logger.info(`Provisioned ${opts.type} database ${opts.name} (${opts.databaseId}) on host port ${hostPort}`);
   return { containerId: container.id, hostPort, volumeName };
 }

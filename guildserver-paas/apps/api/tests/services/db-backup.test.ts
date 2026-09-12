@@ -28,6 +28,9 @@ process.env.BACKUP_DIR = BACKUP_ROOT;
 const backup = require('../../src/services/db-backup') as typeof import('../../src/services/db-backup');
 const { DatabaseBackupService, ENGINES, backupDirFor } = backup;
 
+/** The engine is up and serving; readiness has its own tests. */
+const readyEngine = async () => true;
+
 const HOSTILE = { databaseName: 'appdb', username: 'app', password: `p'"; $(touch /tmp/pwned) \`id\` $HOME` };
 
 describe('engine commands', () => {
@@ -176,7 +179,7 @@ describe('runBackup', () => {
     execReturning(dump);
     const record = await DatabaseBackupService.triggerBackup(database.id);
 
-    await DatabaseBackupService.runBackup(record.id);
+    await DatabaseBackupService.runBackup(record.id, { waitForReady: readyEngine });
 
     const r = await row(record.id);
     expect(r.status).toBe('completed');
@@ -195,7 +198,7 @@ describe('runBackup', () => {
     execReturning(Buffer.from('partial'), 1, 'pg_dump: error: connection failed');
     const record = await DatabaseBackupService.triggerBackup(database.id);
 
-    await expect(DatabaseBackupService.runBackup(record.id)).rejects.toThrow(/connection failed/);
+    await expect(DatabaseBackupService.runBackup(record.id, { waitForReady: readyEngine })).rejects.toThrow(/connection failed/);
     const r = await row(record.id);
     expect(r.status).toBe('failed');
     expect(mockNotifyOrganization).toHaveBeenCalledTimes(1);
@@ -212,7 +215,7 @@ describe('runBackup', () => {
     const { database } = await world();
     execReturning(Buffer.alloc(0));
     const record = await DatabaseBackupService.triggerBackup(database.id);
-    await expect(DatabaseBackupService.runBackup(record.id)).rejects.toThrow(/no output/);
+    await expect(DatabaseBackupService.runBackup(record.id, { waitForReady: readyEngine })).rejects.toThrow(/no output/);
     expect((await row(record.id)).status).toBe('failed');
   });
 });
@@ -222,7 +225,7 @@ describe('restoreBackup', () => {
     const w = await world({ storage });
     execReturning(bytes);
     const record = await DatabaseBackupService.triggerBackup(w.database.id);
-    await DatabaseBackupService.runBackup(record.id);
+    await DatabaseBackupService.runBackup(record.id, { waitForReady: readyEngine });
     return { ...w, backup: await row(record.id) };
   }
 
@@ -257,7 +260,7 @@ describe('restoreBackup', () => {
     const { database } = await world({ storage: 'good' });
     execReturning(data);
     const record = await DatabaseBackupService.triggerBackup(database.id);
-    await DatabaseBackupService.runBackup(record.id);
+    await DatabaseBackupService.runBackup(record.id, { waitForReady: readyEngine });
 
     const r = await row(record.id);
     expect(r.remoteKey).toContain(`database-backups/${database.id}/`);
@@ -275,7 +278,7 @@ describe('restoreBackup', () => {
     const { database } = await world({ storage: 'good' });
     execReturning(data);
     const record = await DatabaseBackupService.triggerBackup(database.id);
-    await DatabaseBackupService.runBackup(record.id);
+    await DatabaseBackupService.runBackup(record.id, { waitForReady: readyEngine });
     const r = await row(record.id);
     await fsp.writeFile(r.filePath!, 'bit rot');
 
@@ -288,7 +291,7 @@ describe('restoreBackup', () => {
     const { database } = await world({ storage: 'good' });
     execReturning(Buffer.from(`honest dump ${randomUUID()}`));
     const record = await DatabaseBackupService.triggerBackup(database.id);
-    await DatabaseBackupService.runBackup(record.id);
+    await DatabaseBackupService.runBackup(record.id, { waitForReady: readyEngine });
     const r = await row(record.id);
 
     // Local copy gone, and the object in the bucket replaced behind our back.
@@ -306,7 +309,7 @@ describe('restoreBackup', () => {
     const { database } = await world({ storage: 'bad' });
     execReturning(Buffer.from('dump'));
     const record = await DatabaseBackupService.triggerBackup(database.id);
-    await DatabaseBackupService.runBackup(record.id);
+    await DatabaseBackupService.runBackup(record.id, { waitForReady: readyEngine });
 
     const r = await row(record.id);
     expect(r.status).toBe('completed');
@@ -323,7 +326,7 @@ describe('restoreBackup', () => {
     await db.update(databases).set({ backupStorageId: theirs.storageId }).where(eq(databases.id, mine.database.id));
     execReturning(Buffer.from('dump'));
     const record = await DatabaseBackupService.triggerBackup(mine.database.id);
-    await DatabaseBackupService.runBackup(record.id);
+    await DatabaseBackupService.runBackup(record.id, { waitForReady: readyEngine });
 
     const r = await row(record.id);
     expect(r.remoteKey).toBeNull();
@@ -334,7 +337,7 @@ describe('restoreBackup', () => {
     const { database, storageId } = await world({ storage: 'good' });
     execReturning(Buffer.from('dump'));
     const record = await DatabaseBackupService.triggerBackup(database.id);
-    await DatabaseBackupService.runBackup(record.id);
+    await DatabaseBackupService.runBackup(record.id, { waitForReady: readyEngine });
     const r = await row(record.id);
 
     await expect(DatabaseBackupService.deleteBackupArtifacts(r)).resolves.toBe(true);
@@ -343,9 +346,27 @@ describe('restoreBackup', () => {
     // A second backup whose storage credentials have since broken.
     execReturning(Buffer.from('dump2'));
     const second = await DatabaseBackupService.triggerBackup(database.id);
-    await DatabaseBackupService.runBackup(second.id);
+    await DatabaseBackupService.runBackup(second.id, { waitForReady: readyEngine });
     const r2 = await row(second.id);
     await db.update(s3Storages).set({ secretAccessKey: encryptSecret('now-wrong')! }).where(eq(s3Storages.id, storageId!));
     await expect(DatabaseBackupService.deleteBackupArtifacts(r2)).resolves.toBe(false);
+  });
+});
+
+describe('runBackup waits for the engine', () => {
+  it('fails retryably and never dumps when the engine is still initialising', async () => {
+    const { database } = await world();
+    const record = await DatabaseBackupService.triggerBackup(database.id, 'manual');
+    mockGetAppContainer.mockResolvedValue({ id: 'container-not-ready' });
+    mockStreamExec.mockClear();
+
+    await expect(
+      DatabaseBackupService.runBackup(record.id, { waitForReady: async () => false }),
+    ).rejects.toThrow(/not ready/i);
+
+    expect(mockStreamExec).not.toHaveBeenCalled();
+    const [row] = await db.select().from(databaseBackups).where(eq(databaseBackups.id, record.id));
+    expect(row.status).toBe('failed');
+    expect(row.error).toMatch(/retried/i);
   });
 });

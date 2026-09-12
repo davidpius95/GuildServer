@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { db, databaseBackups, databases, projects, s3Storages } from "@guildserver/database";
 import { getAppContainer, streamExecInContainer } from "./docker/container";
 import { configFromRow, deleteObject, describeStorageError, downloadToFile, objectKey, uploadFile } from "./storage/s3";
+import { waitForEngineReady } from "./database-readiness";
 import { logger } from "../utils/logger";
 
 /** Root directory for backup files; overridable via env. */
@@ -210,7 +211,10 @@ export class DatabaseBackupService {
    * The dump is never held in memory. A failed off-site copy does not fail the
    * backup — the local copy is complete and verified — but it is recorded.
    */
-  static async runBackup(backupId: string): Promise<void> {
+  static async runBackup(
+    backupId: string,
+    options: { waitForReady?: typeof waitForEngineReady } = {},
+  ): Promise<void> {
     const backup = await db.query.databaseBackups.findFirst({ where: eq(databaseBackups.id, backupId) });
     if (!backup) throw new Error(`Backup ${backupId} not found`);
 
@@ -224,6 +228,13 @@ export class DatabaseBackupService {
     try {
       const container = await getAppContainer(database.id);
       if (!container) throw new Error("Database container is not running");
+
+      // A backup taken seconds after creation used to fail with "database does
+      // not exist" because the engine was still initialising. Waiting briefly
+      // turns that into a retry (the queue retries) instead of a failed backup.
+      const waitReady = options.waitForReady ?? waitForEngineReady;
+      const ready = await waitReady(container.id, database.type, database, { timeoutMs: 60_000 });
+      if (!ready) throw new Error("Database engine is not ready yet; the backup will be retried.");
 
       const command = spec.dump(database);
       const dir = backupDirFor(database);
