@@ -461,7 +461,7 @@ export const databaseRouter = createTRPCRouter({
     }),
 
   getConnectionInfo: protectedProcedure
-    .input(z.object({ id: z.string().uuid(), target: z.enum(["internal", "external"]).default("internal") }))
+    .input(z.object({ id: z.string().uuid(), target: z.enum(["internal", "external"]).default("internal"), includePassword: z.boolean().default(false) }))
     .query(async ({ ctx, input }) => {
       const database = await ctx.db.query.databases.findFirst({
         where: eq(databases.id, input.id),
@@ -499,7 +499,7 @@ export const databaseRouter = createTRPCRouter({
         database: database.databaseName,
         username: database.username,
         // Don't return password in plain text
-        connectionString: generateConnectionString(database.type, host, port, database.databaseName, database.username),
+        connectionString: generateConnectionString(database.type, host, port, database.databaseName, database.username, input.includePassword ? database.password : "***"),
       };
 
       return connectionInfo;

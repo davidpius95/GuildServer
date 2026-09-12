@@ -1,5 +1,6 @@
 "use client"
 
+import { ContainerTerminal } from "@/components/container-terminal"
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
@@ -265,6 +266,7 @@ export default function StackDetailPage() {
                           {container.hostPort ? ` · port ${container.hostPort} → ${container.containerPort ?? "?"}` : ""}
                         </p>
                       </div>
+                      <ContainerTerminal target={{ kind: "stack", id, service: container.composeServiceName }} name={container.composeServiceName} />
                       <Button
                         variant="ghost"
                         size="sm"

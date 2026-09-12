@@ -43,3 +43,8 @@ it.each([{projectId:'different'}, {deploymentTarget:'proxmox'}, {project:{organi
  await expect((c.caller as any).connectToApp({id,applicationId:appId})).rejects.toThrow();
  expect(c.saved()).toBeUndefined();
 });
+it('reveals an encoded working URL only when explicitly requested by an authorized caller', async () => {
+ const info = await caller({...record,password:'a@b:c/?'}).getConnectionInfo({id,target:'external',includePassword:true});
+ expect(info.connectionString).toContain('a%40b%3Ac%2F%3F@');
+ await expect(caller({...record,project:{organization:{members:[]}}}).getConnectionInfo({id,includePassword:true})).rejects.toMatchObject({code:'NOT_FOUND'});
+});

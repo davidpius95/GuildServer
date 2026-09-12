@@ -27,7 +27,10 @@ import { notificationChannelRouter } from "../routers/notification-channel";
 import { logDrainRouter } from "../routers/log-drain";
 import { serviceTemplateRouter } from "../routers/service-template";
 
+import { terminalRouter } from "../routers/terminal";
+
 export const appRouter = createTRPCRouter({
+  terminal: terminalRouter,
   auth: authRouter,
   organization: organizationRouter,
   project: projectRouter,

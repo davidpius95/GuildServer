@@ -14,13 +14,20 @@ import {
   Edit, Trash2, Loader2
 } from "lucide-react"
 import { trpc } from "@/components/trpc-provider"
-import { useOrganization } from "@/hooks/use-auth"
+import { useOrganization, useProjects } from "@/hooks/use-auth"
 import { toast } from "sonner"
 import { ConfirmDialog, useConfirmDialog } from "@/components/ui/confirm-dialog"
 import { ResponsiveModal } from "@/components/ui/responsive-modal"
 import { EmptyState } from "@/components/empty-state"
 import { formatDateTime } from "@/lib/utils"
 import { getFriendlyMessage } from "@/lib/errors"
+
+const ACTIONS = [
+  ["application.deploy", "Deploy application"], ["stack.deploy", "Deploy stack"],
+  ["database.backup", "Back up database"], ["approval", "Wait for my approval"],
+  ["http", "HTTP health check"], ["log", "Record a message"], ["delay", "Wait briefly"],
+] as const
+type DraftStep = { id: string; action: string; value: string }
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -72,9 +79,16 @@ export default function WorkflowsPage() {
   // Form state
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [steps, setSteps] = useState<DraftStep[]>([{ id: "step-1", action: "application.deploy", value: "" }])
   
   const { confirm: showConfirm, dialogProps: confirmDialogProps } = useConfirmDialog()
   const { orgId, currentOrg, isLoading: orgLoading } = useOrganization()
+
+  const { projectId } = useProjects(orgId)
+  const appsQuery = trpc.application.list.useQuery({ projectId: projectId || "" }, { enabled: !!projectId && showCreateModal })
+  const stacksQuery = trpc.service.list.useQuery({ projectId: projectId || "" }, { enabled: !!projectId && showCreateModal })
+  const databasesQuery = trpc.database.list.useQuery({ projectId: projectId || "" }, { enabled: !!projectId && showCreateModal })
 
   const isValidUUID = (s: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
@@ -83,17 +97,17 @@ export default function WorkflowsPage() {
 
   const templatesQuery = trpc.workflow.listTemplates.useQuery(
     { organizationId: orgId },
-    { enabled: isValidUUID(orgId), refetchInterval: 30000 }
+    { enabled: isValidUUID(orgId), refetchInterval: 5000 }
   )
 
   const executionsQuery = trpc.workflow.listExecutions.useQuery(
     { organizationId: orgId },
-    { enabled: isValidUUID(orgId), refetchInterval: 30000 }
+    { enabled: isValidUUID(orgId), refetchInterval: 5000 }
   )
 
   const executionDetailsQuery = trpc.workflow.getExecutionById.useQuery(
     { id: selectedExecutionId || "" },
-    { enabled: !!selectedExecutionId }
+    { enabled: !!selectedExecutionId && showExecutionModal, refetchInterval: showExecutionModal ? 2000 : false }
   )
 
   const createTemplate = trpc.workflow.createTemplate.useMutation({
@@ -110,6 +124,7 @@ export default function WorkflowsPage() {
   const updateTemplate = trpc.workflow.updateTemplate.useMutation({
     onSuccess: () => {
       toast.success("Workflow updated!")
+      setShowCreateModal(false)
       utils.workflow.listTemplates.invalidate()
     },
     onError: (err) => toast.error(getFriendlyMessage(err)),
@@ -131,17 +146,30 @@ export default function WorkflowsPage() {
     onError: (err) => toast.error(getFriendlyMessage(err)),
   })
 
+  const approve = trpc.workflow.approveRequest.useMutation({
+    onSuccess: () => { utils.workflow.getExecutionById.invalidate(); utils.workflow.listExecutions.invalidate() },
+    onError: err => toast.error(getFriendlyMessage(err)),
+  })
+  const openEditor = (workflow?: any, action = "application.deploy") => {
+    setEditingId(workflow?.id || null); setName(workflow?.name || ""); setDescription(workflow?.description || "")
+    const existing = workflow?.definition?.steps
+    setSteps(existing?.length ? existing.map((step: any) => ({ id: step.id, action: step.type === "approval" ? "approval" : step.config.action || "log", value: String(step.config.resourceId || step.config.url || step.config.message || step.config.ms || "") })) : [{ id: "step-1", action, value: "" }])
+    setShowCreateModal(true)
+  }
   const handleCreate = () => {
-    if (!name) {
-      toast.error("Please provide a workflow name.")
-      return
+    if (!name.trim() || !steps.length || steps.some(step => step.action !== "approval" && !step.value.trim())) {
+      toast.error("Give the workflow a name and configure every step."); return
     }
-    createTemplate.mutate({
-      organizationId: orgId,
-      name,
-      description,
-      definition: { steps: [], triggers: [] }
-    })
+    const definition = { triggers: [{ type: "manual" as const, config: {} }], steps: steps.map(step => ({
+      id: step.id, name: ACTIONS.find(a => a[0] === step.action)?.[1] || step.action,
+      type: step.action === "approval" ? "approval" as const : "action" as const, nextSteps: [],
+      config: step.action.endsWith(".deploy") || step.action === "database.backup" ? { action: step.action, resourceId: step.value }
+        : step.action === "http" ? { action: "http", url: step.value, method: "GET" }
+        : step.action === "delay" ? { action: "delay", ms: Number(step.value) }
+        : { action: "log", message: step.value },
+    })) }
+    if (editingId) updateTemplate.mutate({ id: editingId, name, description, definition })
+    else createTemplate.mutate({ organizationId: orgId, name, description, definition })
   }
 
   const handleDelete = (id: string, wfName: string) => {
@@ -171,15 +199,6 @@ export default function WorkflowsPage() {
       return
     }
     executeWorkflow.mutate({ templateId: template.id, context: {} })
-  }
-
-  const handleCreateFromTemplate = (templateName: string, templateDescription: string) => {
-    createTemplate.mutate({
-      organizationId: orgId,
-      name: templateName,
-      description: templateDescription,
-      definition: { steps: [], triggers: [] }
-    })
   }
 
   const openExecutionLogs = (id: string) => {
@@ -220,7 +239,7 @@ export default function WorkflowsPage() {
           <h1 className="text-3xl font-semibold tracking-tight">Workflows</h1>
           <p className="text-muted-foreground">Automate your deployment and operational processes</p>
         </div>
-        <Button onClick={() => setShowCreateModal(true)}>
+        <Button onClick={() => openEditor()}>
           <Plus className="mr-2 h-4 w-4" />
           Create Workflow
         </Button>
@@ -312,7 +331,7 @@ export default function WorkflowsPage() {
                         <Play className="mr-2 h-3 w-3" />
                         Run
                       </Button>
-                      <Button variant="outline" size="sm" className="flex-1" disabled title="Editing workflows is coming soon (preview)">
+                      <Button variant="outline" size="sm" className="flex-1" onClick={() => openEditor(workflow)}>
                         <Edit className="mr-2 h-3 w-3" />
                         Edit (soon)
                       </Button>
@@ -374,12 +393,11 @@ export default function WorkflowsPage() {
         <TabsContent value="templates" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {[
-              { name: "Node.js CI/CD", desc: "Complete CI/CD pipeline for Node.js applications with testing and deployment" },
-              { name: "Database Maintenance", desc: "Automated database backup, cleanup, and health monitoring workflow" },
-              { name: "Security Scanning", desc: "Comprehensive security scanning for dependencies and containers" },
-              { name: "Multi-Environment Deploy", desc: "Deploy applications across multiple environments with approval gates" },
-              { name: "Kubernetes Deployment", desc: "Deploy and manage applications on Kubernetes clusters", experimental: true }
-            ].map((tmpl: { name: string; desc: string; experimental?: boolean }, i) => (
+              { name: "Application deployment", desc: "Deploy an existing application and wait for its deployment result.", action: "application.deploy" },
+              { name: "Stack deployment", desc: "Deploy a Compose stack and track its services becoming ready.", action: "stack.deploy" },
+              { name: "Database backup", desc: "Create a real backup and wait for it to finish.", action: "database.backup" },
+              { name: "HTTP health check", desc: "Check a public URL and fail the run if it does not respond successfully.", action: "http" },
+            ].map((tmpl: { name: string; desc: string; action: string; experimental?: boolean }, i) => (
               <Card key={i} className="cursor-pointer hover:shadow-md transition-shadow">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -394,7 +412,7 @@ export default function WorkflowsPage() {
                   <CardDescription>{tmpl.desc}</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button variant="outline" className="w-full" onClick={() => handleCreateFromTemplate(tmpl.name, tmpl.desc)} disabled={createTemplate.isLoading}>
+                  <Button variant="outline" className="w-full" onClick={() => openEditor({ name: tmpl.name, description: tmpl.desc }, tmpl.action)} disabled={createTemplate.isLoading}>
                     Use Template
                   </Button>
                 </CardContent>
@@ -412,7 +430,7 @@ export default function WorkflowsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Button variant="outline" className="w-full" onClick={() => setShowCreateModal(true)}>
+                <Button variant="outline" className="w-full" onClick={() => openEditor()}>
                   Create Custom
                 </Button>
               </CardContent>
@@ -424,21 +442,33 @@ export default function WorkflowsPage() {
       <ConfirmDialog {...confirmDialogProps} />
 
       {/* Create Modal */}
-      <ResponsiveModal open={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create Workflow">
+      <ResponsiveModal open={showCreateModal} onClose={() => setShowCreateModal(false)} title={editingId ? "Edit Workflow" : "Create Workflow"}>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>Workflow Name</Label>
-            <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. My CI/CD Pipeline" />
+            <Label htmlFor="workflow-name">Workflow Name</Label>
+            <Input id="workflow-name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. My CI/CD Pipeline" />
           </div>
           <div className="space-y-2">
             <Label>Description</Label>
             <Textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="What does this workflow do?" />
           </div>
+          <p className="text-sm text-muted-foreground">Steps run in order when you select Run. Resource actions use the current project and require owner or administrator access.</p>
+          {steps.map((step, index) => {
+            const resources = step.action === "application.deploy" ? appsQuery.data : step.action === "stack.deploy" ? stacksQuery.data : databasesQuery.data
+            const update = (patch: Partial<DraftStep>) => setSteps(current => current.map(item => item.id === step.id ? { ...item, ...patch } : item))
+            return <div key={step.id} className="space-y-2 rounded-lg border p-3">
+              <div className="flex items-center justify-between"><Label htmlFor={`action-${step.id}`}>Step {index + 1}</Label><Button variant="ghost" size="sm" onClick={() => setSteps(current => current.filter(item => item.id !== step.id))}>Remove</Button></div>
+              <select id={`action-${step.id}`} value={step.action} onChange={e => update({ action: e.target.value, value: "" })} className="w-full rounded-md border bg-background p-2 text-sm">{ACTIONS.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select>
+              {step.action.endsWith(".deploy") || step.action === "database.backup" ? <select aria-label={`Resource for step ${index + 1}`} value={step.value} onChange={e => update({ value: e.target.value })} className="w-full rounded-md border bg-background p-2 text-sm"><option value="">Choose a resource</option>{(resources || []).map((resource: any) => <option key={resource.id} value={resource.id}>{resource.name}</option>)}</select>
+                : step.action !== "approval" && <Input aria-label={`Value for step ${index + 1}`} value={step.value} onChange={e => update({ value: e.target.value })} placeholder={step.action === "http" ? "https://your-app.example.com/health" : step.action === "delay" ? "Milliseconds (0–30000)" : "Message"} />}
+            </div>
+          })}
+          <Button variant="outline" disabled={steps.length >= 30} onClick={() => setSteps(current => [...current, { id: crypto.randomUUID(), action: "log", value: "" }])}>Add step</Button>
           <div className="pt-4 flex justify-end gap-2">
             <Button variant="outline" onClick={() => setShowCreateModal(false)}>Cancel</Button>
             <Button onClick={handleCreate} disabled={createTemplate.isLoading}>
               {createTemplate.isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create
+              {editingId ? "Save changes" : "Create"}
             </Button>
           </div>
         </div>
@@ -457,10 +487,11 @@ export default function WorkflowsPage() {
                   {executionDetailsQuery.data.status}
                 </Badge>
               </div>
+              {executionDetailsQuery.data.approvalRequests.filter(request => request.status === "pending").map(request => <div key={request.id} className="flex gap-2"><Button disabled={approve.isLoading} onClick={() => approve.mutate({ requestId: request.id, approved: true })}>Approve and continue</Button><Button variant="outline" disabled={approve.isLoading} onClick={() => approve.mutate({ requestId: request.id, approved: false })}>Reject</Button></div>)}
               <div className="bg-muted p-4 rounded-md text-sm font-mono whitespace-pre-wrap">
-                {JSON.stringify(executionDetailsQuery.data.context, null, 2)}
+                {JSON.stringify(Object.fromEntries(Object.entries(executionDetailsQuery.data.context as Record<string, unknown> || {}).filter(([key]) => key !== "__definition")), null, 2)}
                 {"\n"}
-                Logs will appear here once the execution engine is fully implemented.
+                {executionDetailsQuery.data.errorMessage || `Step ${executionDetailsQuery.data.currentStep ?? 0} · ${executionDetailsQuery.data.status}`}
               </div>
             </div>
           ) : (

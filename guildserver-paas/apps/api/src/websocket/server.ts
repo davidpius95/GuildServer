@@ -4,6 +4,9 @@ import jwt from "jsonwebtoken";
 import { logger } from "../utils/logger";
 import { getContainerLogs, getAppContainer, getDockerClient } from "../services/docker";
 
+import { connectDatabaseTunnel } from "../services/database-tunnel";
+import { connectTerminal } from "../services/container-terminal";
+
 interface Subscription {
   channel: string;
   resourceId: string;
@@ -24,12 +27,17 @@ export function createWebSocketServer(httpServer: any) {
   const wss = new WebSocketServer({
     server: httpServer,
     path: "/ws",
+    maxPayload: 64 * 1024,
   });
 
   wss.on("connection", async (ws, request) => {
     try {
       // Extract token from query parameters or headers
       const url = new URL(request.url!, `http://${request.headers.host}`);
+      const tunnel = url.searchParams.get("databaseTunnel");
+      if (tunnel) { await connectDatabaseTunnel(ws, tunnel); return; }
+      const ticket = url.searchParams.get("ticket");
+      if (ticket) { await connectTerminal(ws, request, ticket); return; }
       const token = url.searchParams.get("token") || request.headers.authorization?.replace("Bearer ", "");
 
       if (!token) {

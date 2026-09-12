@@ -1,5 +1,7 @@
 "use client"
 
+import { DatabaseConnection } from "@/components/database-connection"
+import { ContainerTerminal } from "@/components/container-terminal"
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -451,6 +453,7 @@ export default function DatabasesPage() {
                     </div>
 
                     <p className="text-xs text-muted-foreground">Use this address from apps on this server. The copied URL needs your database password.</p>
+                    <div className="flex flex-wrap gap-2"><DatabaseConnection id={db.id} name={db.name} /><ContainerTerminal target={{ kind: "database", id: db.id }} name={db.name} /></div>
                     <Button variant="outline" className="w-full" onClick={() => { setConnectDatabase(db); setConnectAppId(""); setReplaceConnection(false) }}>Connect to app</Button>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" className="flex-1" onClick={() => handleRestart(db.id)} disabled={restartDatabase.isLoading}>

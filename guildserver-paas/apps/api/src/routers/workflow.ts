@@ -3,24 +3,15 @@ import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc/trpc";
 import { workflowTemplates, workflowExecutions, approvalRequests, members } from "@guildserver/database";
 import { eq, and, desc, type SQL } from "drizzle-orm";
-import { runExecution, resumeExecution } from "../services/workflow-engine";
+import { resumeExecution } from "../services/workflow-engine";
+
+import { workflowDefinitionSchema } from "../services/workflow-definition";
+import { enqueueWorkflow } from "../queues/workflows";
 
 const createWorkflowSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
-  definition: z.object({
-    steps: z.array(z.object({
-      id: z.string(),
-      name: z.string(),
-      type: z.enum(["action", "approval", "condition", "parallel"]),
-      config: z.record(z.any()),
-      nextSteps: z.array(z.string()).default([]),
-    })),
-    triggers: z.array(z.object({
-      type: z.string(),
-      config: z.record(z.any()),
-    })).default([]),
-  }),
+  definition: workflowDefinitionSchema,
   organizationId: z.string().uuid(),
 });
 
@@ -156,7 +147,7 @@ export const workflowRouter = createTRPCRouter({
         id: z.string().uuid(),
         name: z.string().min(1).optional(),
         description: z.string().optional(),
-        definition: z.record(z.any()).optional(),
+        definition: workflowDefinitionSchema.optional(),
         status: z.enum(["draft", "active", "inactive", "archived"]).optional(),
       })
     )
@@ -258,13 +249,14 @@ export const workflowRouter = createTRPCRouter({
         });
       }
 
+      const definition = workflowDefinitionSchema.parse(template.definition);
       const [execution] = await ctx.db
         .insert(workflowExecutions)
         .values({
           templateId,
           name: `${template.name} - ${new Date().toLocaleString()}`,
           status: "running",
-          context,
+          context: { __definition: definition },
           triggeredBy: ctx.user.id,
           organizationId: template.organizationId,
           startedAt: new Date(),
@@ -272,7 +264,10 @@ export const workflowRouter = createTRPCRouter({
         .returning();
 
       // Kick off the execution engine (async; UI polls listExecutions).
-      runExecution(execution.id).catch(() => {});
+      try { await enqueueWorkflow(execution.id); } catch {
+        await ctx.db.update(workflowExecutions).set({ status: "failed", errorMessage: "Could not enqueue workflow. Please retry." }).where(eq(workflowExecutions.id, execution.id));
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Could not enqueue workflow. Please retry." });
+      }
 
       return execution;
     }),
@@ -460,12 +455,14 @@ export const workflowRouter = createTRPCRouter({
           comments,
           respondedAt: new Date(),
         })
-        .where(eq(approvalRequests.id, requestId))
+        .where(and(eq(approvalRequests.id, requestId), eq(approvalRequests.status, "pending")))
         .returning();
+
+      if (!updatedRequest) throw new TRPCError({ code: "CONFLICT", message: "This approval was already processed." });
 
       // Resume (or cancel) the paused workflow execution based on the decision.
       if (request.workflowExecutionId) {
-        resumeExecution(request.workflowExecutionId, approved).catch(() => {});
+        await resumeExecution(request.workflowExecutionId, approved);
       }
 
       return updatedRequest;

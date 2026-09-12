@@ -1,5 +1,6 @@
 "use client"
 
+import { ContainerTerminal } from "@/components/container-terminal"
 import { useState, useRef, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
@@ -835,12 +836,14 @@ export default function ApplicationDetailPage() {
           <TabsTrigger value="preview">Preview</TabsTrigger>
           <TabsTrigger value="env-vars">Environment</TabsTrigger>
           <TabsTrigger value="domains">Domains</TabsTrigger>
+          <TabsTrigger value="terminal">Terminal</TabsTrigger>
           <TabsTrigger value="logs">Container Logs</TabsTrigger>
           <TabsTrigger value="build-logs">Build Logs</TabsTrigger>
           <TabsTrigger value="webhooks">Git auto-deploy</TabsTrigger>
           <TabsTrigger value="settings">Settings & Storage</TabsTrigger>
         </TabsList>
 
+        <TabsContent value="terminal"><ContainerTerminal target={{ kind: "application", id: appId }} name={app.name} /></TabsContent>
         <TabsContent value="settings">
           <Card>
             <CardHeader><CardTitle>Runtime settings</CardTitle><CardDescription>Save changes, then redeploy to apply them.</CardDescription></CardHeader>
