@@ -279,7 +279,7 @@ const deploymentWorker = new Worker(
           // Resolved through getValidAccessToken so an expired token is renewed
           // instead of handed to git. Reading the column directly failed private
           // clones about 8 hours after GitHub was connected.
-          const clone = await resolveCloneToken(userId, sourceProvider);
+          const clone = await resolveCloneToken(userId, sourceProvider, app.repository);
           gitToken = clone.token;
           allBuildLogs.push(clone.note);
         }

@@ -12,6 +12,7 @@ import { db, oauthAccounts } from "@guildserver/database";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { getValidAccessToken, TokenRefreshRequiredError, type GitProvider } from "./oauth-tokens";
+import { githubAppConfigured, installationTokenForRepository, parseRepository } from "./github-app";
 
 /** Providers whose tokens getValidAccessToken() knows how to renew. */
 const REFRESHABLE: readonly GitProvider[] = ["github", "gitlab", "bitbucket"];
@@ -23,7 +24,24 @@ export interface CloneTokenResult {
   note: string;
 }
 
-export async function resolveCloneToken(userId: string, provider: string): Promise<CloneTokenResult> {
+export async function resolveCloneToken(
+  userId: string,
+  provider: string,
+  repository?: string | null,
+): Promise<CloneTokenResult> {
+  // Prefer the App installation: it belongs to the installation rather than to
+  // whoever connected the repository, so it survives that person leaving or
+  // revoking access. Falls through to the user's token when unavailable.
+  if (provider === "github" && repository && githubAppConfigured()) {
+    const parsed = parseRepository(repository);
+    if (parsed) {
+      const token = await installationTokenForRepository(parsed.owner, parsed.repo);
+      if (token) {
+        return { token, note: "Using authenticated clone (GitHub App installation token)" };
+      }
+    }
+  }
+
   if ((REFRESHABLE as readonly string[]).includes(provider)) {
     try {
       const token = await getValidAccessToken(userId, provider as GitProvider);
