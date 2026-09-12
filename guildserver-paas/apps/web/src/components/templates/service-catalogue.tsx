@@ -284,12 +284,13 @@ export function ServiceCatalogue() {
                       </div>
                       {requiredVars.map((variable) => (
                         <div key={variable.key} className="space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <Label htmlFor={`catalogue-var-${variable.key}`} className="text-xs font-medium">
-                              {getVariableLabel(variable.key)} <span className="text-destructive">*</span>
-                            </Label>
-                            <span className="font-mono text-[10px] text-muted-foreground">{variable.key}</span>
-                          </div>
+                          <Label htmlFor={`catalogue-var-${variable.key}`} className="flex items-center justify-between text-xs font-medium">
+                            <span>
+                              {getVariableLabel(variable.key)}
+                              <span className="text-destructive"> *</span>
+                            </span>
+                            <span className="font-mono text-[10px] text-muted-foreground font-normal">{variable.key}</span>
+                          </Label>
                           <Input
                             id={`catalogue-var-${variable.key}`}
                             type={isSecretKey(variable.key) ? "password" : "text"}
@@ -326,12 +327,10 @@ export function ServiceCatalogue() {
                         <div className="mt-3 space-y-3 pt-2 border-t border-border/40">
                           {optionalVars.map((variable) => (
                             <div key={variable.key} className="space-y-1">
-                              <div className="flex items-center justify-between">
-                                <Label htmlFor={`catalogue-var-${variable.key}`} className="text-xs font-medium">
-                                  {getVariableLabel(variable.key)}
-                                </Label>
-                                <span className="font-mono text-[10px] text-muted-foreground">{variable.key}</span>
-                              </div>
+                              <Label htmlFor={`catalogue-var-${variable.key}`} className="flex items-center justify-between text-xs font-medium">
+                                <span>{getVariableLabel(variable.key)}</span>
+                                <span className="font-mono text-[10px] text-muted-foreground font-normal">{variable.key}</span>
+                              </Label>
                               <Input
                                 id={`catalogue-var-${variable.key}`}
                                 type={isSecretKey(variable.key) ? "password" : "text"}
