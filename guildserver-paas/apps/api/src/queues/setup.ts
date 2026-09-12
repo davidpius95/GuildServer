@@ -110,6 +110,8 @@ const deploymentWorker = new Worker(
       // 2. Fetch application config from DB
       app = await db.query.applications.findFirst({
         where: eq(applications.id, applicationId),
+        // The organization owns any GitHub App installation used to clone.
+        with: { project: { columns: { organizationId: true } } },
       });
 
       if (!app) {
@@ -279,7 +281,7 @@ const deploymentWorker = new Worker(
           // Resolved through getValidAccessToken so an expired token is renewed
           // instead of handed to git. Reading the column directly failed private
           // clones about 8 hours after GitHub was connected.
-          const clone = await resolveCloneToken(userId, sourceProvider, app.repository);
+          const clone = await resolveCloneToken(userId, sourceProvider, app.repository, app.project?.organizationId);
           gitToken = clone.token;
           allBuildLogs.push(clone.note);
         }

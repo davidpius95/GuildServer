@@ -6,11 +6,14 @@ import { eq, and } from "drizzle-orm";
 import { db, users, oauthAccounts, organizations, members, projects, plans, subscriptions } from "@guildserver/database";
 import { logger } from "../utils/logger";
 import { githubTokenFields } from "../services/github-token-response";
+import { installationDetails } from "../services/github-app";
+import { recordInstallation } from "../services/github-installations";
 import {
   consumeLinkJti,
   isAllowedLinkOrigin,
   linkOAuthAccountToUser,
   rememberLinkState,
+  takeInstallState,
   takeLinkState,
   verifyLinkToken,
 } from "../services/oauth-link";
@@ -295,6 +298,67 @@ oauthRouter.get("/github/callback", async (req: Request, res: Response) => {
 });
 
 // ---------- Google OAuth ----------
+
+/**
+ * Where GitHub sends someone after they install the App on their own account.
+ *
+ * The redirect carries `installation_id` and `setup_action` but no identity, so
+ * the `state` nonce minted by github.createInstallIntent is the only thing that
+ * says who installed it and for which organization. Without a valid, unredeemed
+ * nonce nothing is recorded — guessing an owner would hand one tenant another
+ * tenant's repositories.
+ */
+oauthRouter.get("/github/installation", async (req: Request, res: Response) => {
+  const settings = `${FRONTEND_URL}/dashboard/settings`;
+  const installationId = Number(req.query.installation_id);
+  const setupAction = typeof req.query.setup_action === "string" ? req.query.setup_action : "";
+  const state = typeof req.query.state === "string" ? req.query.state : "";
+
+  // An organization owner has to approve the request first; there is no
+  // installation to record yet.
+  if (setupAction === "request") {
+    return res.redirect(`${settings}?github=install_requested`);
+  }
+
+  if (!Number.isFinite(installationId) || installationId <= 0) {
+    return res.redirect(`${settings}?github=install_invalid`);
+  }
+
+  const claim = await takeInstallState(state);
+  if (!claim) {
+    logger.warn("GitHub install callback without a valid state nonce", { installationId });
+    return res.redirect(`${settings}?github=install_unmatched`);
+  }
+
+  const details = await installationDetails(installationId);
+  if (!details) {
+    return res.redirect(`${settings}?github=install_unreadable`);
+  }
+
+  try {
+    await recordInstallation({
+      organizationId: claim.organizationId,
+      installationId,
+      accountLogin: details.accountLogin,
+      accountType: details.accountType,
+      repositorySelection: details.repositorySelection,
+      installedByUserId: claim.userId,
+    });
+  } catch (error) {
+    logger.error("Could not record a GitHub App installation", {
+      installationId,
+      error: String((error as any)?.message ?? error),
+    });
+    return res.redirect(`${settings}?github=install_failed`);
+  }
+
+  logger.info("Recorded a GitHub App installation", {
+    installationId,
+    account: details.accountLogin,
+    organizationId: claim.organizationId,
+  });
+  return res.redirect(`${settings}?github=installed`);
+});
 
 oauthRouter.get("/google", (req: Request, res: Response) => {
   const clientId = process.env.GOOGLE_CLIENT_ID;

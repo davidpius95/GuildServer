@@ -140,6 +140,61 @@ export async function takeLinkState(nonce: string, redis: RedisLike = defaultRed
   }
 }
 
+/**
+ * Starting a GitHub App installation.
+ *
+ * An install is not a link: it records which organization an installation
+ * belongs to, so the nonce has to carry the organization as well as the user.
+ * It lives under its own Redis prefix so a nonce minted to install can never be
+ * redeemed as a link, or the reverse.
+ *
+ * GitHub's post-install redirect is a plain browser navigation carrying no
+ * Authorization header, so this nonce is the only thing that identifies the
+ * installer when they come back.
+ */
+export async function rememberInstallState(
+  nonce: string,
+  userId: string,
+  organizationId: string,
+  redis: RedisLike = defaultRedis(),
+): Promise<boolean> {
+  try {
+    const result = await redis.set(
+      `github-install:state:${nonce}`,
+      `${userId}:${organizationId}`,
+      "EX",
+      LINK_STATE_TTL_SECONDS,
+      "NX",
+    );
+    return result === "OK";
+  } catch (error) {
+    logger.warn("Could not store GitHub install state; refusing the install", {
+      error: String((error as any)?.message ?? error),
+    });
+    return false;
+  }
+}
+
+/** Retrieve and delete the installer for a returning install. Null if absent or already taken. */
+export async function takeInstallState(
+  nonce: string,
+  redis: RedisLike = defaultRedis(),
+): Promise<{ userId: string; organizationId: string } | null> {
+  if (!nonce) return null;
+  try {
+    const value = await redis.getdel(`github-install:state:${nonce}`);
+    if (!value) return null;
+    const [userId, organizationId] = value.split(":");
+    if (!userId || !organizationId) return null;
+    return { userId, organizationId };
+  } catch (error) {
+    logger.warn("Could not read GitHub install state; refusing the install", {
+      error: String((error as any)?.message ?? error),
+    });
+    return null;
+  }
+}
+
 export type LinkResult = { status: "linked" } | { status: "conflict" };
 
 export async function linkOAuthAccountToUser(params: {

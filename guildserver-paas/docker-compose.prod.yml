@@ -103,6 +103,8 @@ services:
       # GitHub App: with both set, a deploy clones with an installation token
       # belonging to the App instead of the connecting user's OAuth token.
       # Empty defaults keep the stack bootable without them.
+      # The App's public slug, used to build the install URL a customer visits.
+      GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
       GITHUB_APP_ID: ${GITHUB_APP_ID:-}
       GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
       GITLAB_CLIENT_ID: ${GITLAB_CLIENT_ID:-}

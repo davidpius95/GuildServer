@@ -160,3 +160,39 @@ describe('one App, many tenants', () => {
     expect(result.note).toMatch(/reconnect github/);
   });
 });
+
+jest.mock('../../src/services/github-installations', () => ({ installationForOwner: jest.fn() }));
+
+describe('an organization that installed the App itself', () => {
+  const { installationForOwner } = require('../../src/services/github-installations');
+  const mockedOwned = installationForOwner as jest.MockedFunction<any>;
+
+  beforeEach(() => {
+    mockedGetValid.mockReset().mockResolvedValue('user-token');
+    mockedAppConfigured.mockReset().mockReturnValue(true);
+    mockedInstallationToken.mockReset().mockResolvedValue('ghs_installation');
+    mockedCanRead.mockReset().mockResolvedValue(true);
+    mockedOwned.mockReset();
+  });
+
+  it('says which account the installation belongs to when the organization owns it', async () => {
+    mockedOwned.mockResolvedValue({ accountLogin: 'acme-inc' });
+    const result = await resolveCloneToken('user-1', 'github', 'acme-inc/shop', 'org-1');
+    expect(mockedOwned).toHaveBeenCalledWith('org-1', 'acme-inc');
+    expect(result.token).toBe('ghs_installation');
+    expect(result.note).toMatch(/installed on acme-inc/);
+  });
+
+  it('still deploys when the organization has recorded no installation', async () => {
+    mockedOwned.mockResolvedValue(null);
+    const result = await resolveCloneToken('user-1', 'github', 'acme-inc/shop', 'org-1');
+    expect(result.token).toBe('ghs_installation');
+    expect(result.note).toMatch(/installation token/);
+  });
+
+  it('does not look for an installation when the deploy carries no organization', async () => {
+    const result = await resolveCloneToken('user-1', 'github', 'acme-inc/shop');
+    expect(mockedOwned).not.toHaveBeenCalled();
+    expect(result.token).toBe('ghs_installation');
+  });
+});

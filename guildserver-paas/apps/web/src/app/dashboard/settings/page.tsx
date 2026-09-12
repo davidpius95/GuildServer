@@ -217,7 +217,16 @@ export default function SettingsPage() {
   })
 
   // Connected OAuth accounts
-  const githubStatusQuery = trpc.github.getConnectionStatus.useQuery()
+  const githubStatusQuery = trpc.github.getConnectionStatus.useQuery(
+    { organizationId: orgId || undefined },
+    { enabled: true },
+  )
+  const createInstallIntent = trpc.github.createInstallIntent.useMutation({
+    onSuccess: (data) => {
+      window.location.href = data.url
+    },
+    onError: (err) => toast.error(getFriendlyMessage(err)),
+  })
   const connectedAccountsQuery = trpc.github.getConnectedAccounts.useQuery()
   const disconnectMutation = trpc.github.disconnect.useMutation({
     onSuccess: () => {
@@ -851,6 +860,13 @@ export default function SettingsPage() {
                             Scopes: {githubStatus.scope}
                           </p>
                         )}
+                        {githubStatus?.appConfigured && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {githubStatus.installations && githubStatus.installations.length > 0
+                              ? `App installed on ${githubStatus.installations.map((i) => i.accountLogin).join(", ")} — deploys keep working if you lose access`
+                              : "Install the GitHub App to keep deploys working when a teammate leaves or revokes access"}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -876,6 +892,19 @@ export default function SettingsPage() {
                             >
                               <ExternalLink className="mr-2 h-3.5 w-3.5" />
                               Grant Repo Access
+                            </Button>
+                          )}
+                          {githubStatus.appConfigured && orgId && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => createInstallIntent.mutate({ organizationId: orgId })}
+                              disabled={createInstallIntent.isLoading}
+                            >
+                              <ExternalLink className="mr-2 h-3.5 w-3.5" />
+                              {githubStatus.installations && githubStatus.installations.length > 0
+                                ? "Manage App access"
+                                : "Install on GitHub"}
                             </Button>
                           )}
                           <Button

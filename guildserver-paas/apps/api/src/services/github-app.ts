@@ -159,6 +159,49 @@ export async function userCanReadRepository(
   }
 }
 
+/**
+ * Look one installation up by id, as the App.
+ *
+ * The post-install redirect gives us an installation id and nothing else, so
+ * this is how we learn whose account it is on and how much it covers.
+ * Returns null rather than throwing: a callback that cannot confirm an
+ * installation records nothing.
+ */
+export async function installationDetails(
+  installationId: number,
+  { env = process.env, fetchImpl = fetch, now = Date.now }: InstallationTokenOptions = {},
+): Promise<{ accountLogin: string; accountType: string | null; repositorySelection: string | null } | null> {
+  if (!githubAppConfigured(env)) return null;
+  try {
+    const appJwt = createAppJwt(env, now);
+    const response = await fetchImpl(`https://api.github.com/app/installations/${installationId}`, {
+      headers: {
+        Authorization: `Bearer ${appJwt}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "GuildServer",
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      logger.warn("Could not read a GitHub App installation", { installationId, status: response.status });
+      return null;
+    }
+    const body = (await response.json()) as {
+      account?: { login?: string; type?: string };
+      repository_selection?: string;
+    };
+    if (!body.account?.login) return null;
+    return {
+      accountLogin: body.account.login,
+      accountType: body.account.type ?? null,
+      repositorySelection: body.repository_selection ?? null,
+    };
+  } catch (error) {
+    logger.warn("GitHub App installation lookup failed", { installationId, error: (error as Error).message });
+    return null;
+  }
+}
+
 /** Split "owner/repo", a full GitHub URL, or an SSH remote into its parts. */
 export function parseRepository(repository: string): { owner: string; repo: string } | null {
   const cleaned = repository

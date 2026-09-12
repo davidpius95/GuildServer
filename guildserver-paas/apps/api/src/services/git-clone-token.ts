@@ -18,6 +18,7 @@ import {
   parseRepository,
   userCanReadRepository,
 } from "./github-app";
+import { installationForOwner } from "./github-installations";
 
 /** Providers whose tokens getValidAccessToken() knows how to renew. */
 const REFRESHABLE: readonly GitProvider[] = ["github", "gitlab", "bitbucket"];
@@ -33,6 +34,7 @@ export async function resolveCloneToken(
   userId: string,
   provider: string,
   repository?: string | null,
+  organizationId?: string | null,
 ): Promise<CloneTokenResult> {
   // Prefer the App installation: it belongs to the installation rather than to
   // whoever connected the repository, so it survives that person leaving or
@@ -52,9 +54,20 @@ export async function resolveCloneToken(
       }
 
       if (userToken && (await userCanReadRepository(userToken, parsed.owner, parsed.repo))) {
+        // An installation this organization recorded is the durable credential:
+        // it keeps working after the person who connected the repository loses
+        // access, which a user token cannot. An organization that has recorded
+        // none falls through to whatever installation covers the repository,
+        // which is how deploys made before the install flow existed keep working.
+        const owned = organizationId ? await installationForOwner(organizationId, parsed.owner) : null;
         const token = await installationTokenForRepository(parsed.owner, parsed.repo);
         if (token) {
-          return { token, note: "Using authenticated clone (GitHub App installation token)" };
+          return {
+            token,
+            note: owned
+              ? `Using authenticated clone (GitHub App installed on ${owned.accountLogin})`
+              : "Using authenticated clone (GitHub App installation token)",
+          };
         }
         // Installed nowhere, or GitHub refused: the user's own token still works.
         return { token: userToken, note: "Using authenticated clone (OAuth token found)" };
