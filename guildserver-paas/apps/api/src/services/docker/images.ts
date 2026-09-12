@@ -53,6 +53,17 @@ export function detectDefaultPort(image: string): number {
     [/httpd/, 80],
     [/apache/, 80],
     [/caddy/, 80],
+    // AI Agents and LLM Orchestration
+    [/hermes/, 9119],
+    [/openclaw/, 8080],
+    [/clawbot/, 8080],
+    [/langflow/, 7860],
+    [/flowise/, 3000],
+    [/librechat/, 3080],
+    [/anythingllm/, 3001],
+    [/lobe-chat/, 3210],
+    [/ollama/, 11434],
+    [/litellm/, 4000],
   ];
 
   for (const [pattern, port] of portMap) {
