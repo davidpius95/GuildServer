@@ -17,6 +17,12 @@ document is the original plan, kept for reference.
 | W7 | Notification channels (Slack, Discord, webhook, Telegram, email) and log drains. | router, provider and shipper tests |
 | W8 | Remote Docker hosts over SSH with pinned host keys. | provider and router tests |
 
+Verified on production (guild-technologies.com) on 2026-09-12 with a throwaway labelled
+account, then cleaned up: sign-up, deploying an application from an image on its auto URL,
+webhook notification channels, log drains, REST API tokens and their revocation, a one-click
+catalogue deploy (Uptime Kuma answering on its routed URL) and a hand-written Compose stack
+answering on its domain. Rolling deploys are enabled in production (`GS_ZERO_DOWNTIME=1`).
+
 The per-workstream feature flags proposed below were not all needed: only `GS_ZERO_DOWNTIME`
 exists, because the other workstreams are additive and invisible until used.
 
