@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { refreshInstallationFromPayload, removeInstallation, suspendInstallation } from "../services/github-installations";
 import { eq, and } from "drizzle-orm";
 import { db, applications, deployments, members, webhookDeliveries } from "@guildserver/database";
 import { logger } from "../utils/logger";
@@ -12,6 +13,39 @@ import {
 import { webhookDeliveries as webhookMetric } from "../services/prometheus-metrics";
 
 export const webhookRouter = Router();
+
+/**
+ * Keep our record of an installation in step with GitHub.
+ *
+ * Only lifecycle transitions are handled here: the row is created when a
+ * customer installs the App through the callback, which is where we learn
+ * which organization it belongs to. A webhook cannot tell us that, so an
+ * installation we have never seen is ignored rather than guessed at.
+ */
+async function handleInstallationEvent(event: string, payload: any): Promise<void> {
+  const installationId = payload?.installation?.id;
+  const action = payload?.action;
+  if (!installationId) return;
+
+  if (event === "installation" && (action === "deleted" || action === "removed")) {
+    await removeInstallation(Number(installationId));
+    return;
+  }
+  if (event === "installation" && action === "suspend") {
+    await suspendInstallation(Number(installationId), true);
+    return;
+  }
+  if (event === "installation" && action === "unsuspend") {
+    await suspendInstallation(Number(installationId), false);
+    return;
+  }
+
+  // added/removed repositories, or a new installation we have no organization
+  // for yet: refresh what we know, without inventing an owner.
+  await refreshInstallationFromPayload(Number(installationId), payload);
+}
+
+
 
 /**
  * GitHub Webhook Handler
@@ -32,6 +66,14 @@ webhookRouter.post("/github", async (req: Request, res: Response) => {
         logger.warn("GitHub webhook signature verification failed");
         return res.status(401).json({ error: "Invalid signature" });
       }
+    }
+
+    // Installation lifecycle: a customer installing the App on their own
+    // account is what makes deploys stop depending on one person's login, so
+    // record it rather than acknowledging and forgetting.
+    if (event === "installation" || event === "installation_repositories") {
+      await handleInstallationEvent(event, req.body);
+      return res.json({ message: `Installation event ${req.body?.action ?? event} processed` });
     }
 
     // Only handle push events

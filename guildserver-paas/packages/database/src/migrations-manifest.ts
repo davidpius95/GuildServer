@@ -102,6 +102,7 @@ export const MIGRATIONS: MigrationManifestEntry[] = [
   { id: "0017_log_drains", file: "0017_log_drains.sql", family: "hand" },
   { id: "0018_not_null_ownership", file: "0018_not_null_ownership.sql", family: "hand" },
   { id: "0019_cloudflare_custom_hostnames", file: "0019_cloudflare_custom_hostnames.sql", family: "hand" },
+  { id: "0020_github_app_installations", file: "0020_github_app_installations.sql", family: "hand" },
 ];
 
 export function findMigration(id: string): MigrationManifestEntry | undefined {

@@ -162,6 +162,33 @@ export const refundStatusEnum = pgEnum("refund_status", [
 // =====================
 
 // Organizations (Multi-tenancy)
+/**
+ * A GitHub App installation, owned by an organization.
+ *
+ * One App serves every tenant: a customer installs it on their own GitHub
+ * account, and this row is what lets a deploy mint an installation token for
+ * their repositories without an operator configuring anything per tenant.
+ */
+export const githubInstallations = pgTable("github_installations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  /** GitHub's numeric installation id. */
+  installationId: bigint("installation_id", { mode: "number" }).notNull(),
+  /** The account the App is installed on. */
+  accountLogin: varchar("account_login", { length: 255 }).notNull(),
+  accountType: varchar("account_type", { length: 32 }),
+  /** "all" or "selected". */
+  repositorySelection: varchar("repository_selection", { length: 32 }),
+  /** Kept for the audit trail even if that user is later removed. */
+  installedByUserId: uuid("installed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  suspendedAt: timestamp("suspended_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  installationIdIdx: uniqueIndex("github_installations_installation_id_idx").on(table.installationId),
+  organizationIdIdx: index("github_installations_organization_id_idx").on(table.organizationId),
+}));
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: varchar("name", { length: 255 }).notNull(),
