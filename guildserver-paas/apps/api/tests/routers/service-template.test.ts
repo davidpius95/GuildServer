@@ -86,7 +86,9 @@ describe('serviceTemplate router', () => {
     for (const variable of generated) expect(environment[variable.key]).toBeTruthy();
     const hosts = Object.values(stack.domains as Record<string, string[]>).flat();
     expect(hosts.length).toBeGreaterThan(0);
-    for (const host of hosts) expect(host).toMatch(/-catalogue-test\./);
+    // Hostnames carry a short random suffix so two stacks of the same template
+    // in one project cannot claim the same domain.
+    for (const host of hosts) expect(host).toMatch(/-catalogue-test-[0-9a-f]{4}\./);
     expect(result.urls.length).toBe(hosts.length);
     expect(result.deploymentId).toBeTruthy();
     expect(queueAdd).toHaveBeenCalledWith('deploy-service', expect.objectContaining({ serviceId: result.stackId }), expect.anything());
