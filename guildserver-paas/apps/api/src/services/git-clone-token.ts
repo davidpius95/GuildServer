@@ -12,7 +12,12 @@ import { db, oauthAccounts } from "@guildserver/database";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { getValidAccessToken, TokenRefreshRequiredError, type GitProvider } from "./oauth-tokens";
-import { githubAppConfigured, installationTokenForRepository, parseRepository } from "./github-app";
+import {
+  githubAppConfigured,
+  installationTokenForRepository,
+  parseRepository,
+  userCanReadRepository,
+} from "./github-app";
 
 /** Providers whose tokens getValidAccessToken() knows how to renew. */
 const REFRESHABLE: readonly GitProvider[] = ["github", "gitlab", "bitbucket"];
@@ -35,9 +40,24 @@ export async function resolveCloneToken(
   if (provider === "github" && repository && githubAppConfigured()) {
     const parsed = parseRepository(repository);
     if (parsed) {
-      const token = await installationTokenForRepository(parsed.owner, parsed.repo);
-      if (token) {
-        return { token, note: "Using authenticated clone (GitHub App installation token)" };
+      // One App serves every tenant, so the installation token must not widen
+      // what this user can reach: it is used only for a repository they can
+      // already read themselves. Without this, naming another tenant's private
+      // repository would clone it with the App's credentials.
+      let userToken: string | null = null;
+      try {
+        userToken = await getValidAccessToken(userId, "github");
+      } catch {
+        userToken = null;
+      }
+
+      if (userToken && (await userCanReadRepository(userToken, parsed.owner, parsed.repo))) {
+        const token = await installationTokenForRepository(parsed.owner, parsed.repo);
+        if (token) {
+          return { token, note: "Using authenticated clone (GitHub App installation token)" };
+        }
+        // Installed nowhere, or GitHub refused: the user's own token still works.
+        return { token: userToken, note: "Using authenticated clone (OAuth token found)" };
       }
     }
   }

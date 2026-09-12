@@ -1,6 +1,11 @@
 jest.mock('../../src/services/github-app', () => {
   const actual = jest.requireActual('../../src/services/github-app');
-  return { ...actual, githubAppConfigured: jest.fn(() => false), installationTokenForRepository: jest.fn() };
+  return {
+    ...actual,
+    githubAppConfigured: jest.fn(() => false),
+    installationTokenForRepository: jest.fn(),
+    userCanReadRepository: jest.fn(),
+  };
 });
 jest.mock('../../src/services/oauth-tokens', () => {
   const actual = jest.requireActual('../../src/services/oauth-tokens');
@@ -11,17 +16,19 @@ import { db, users, oauthAccounts } from '@guildserver/database';
 import { getValidAccessToken, TokenRefreshRequiredError } from '../../src/services/oauth-tokens';
 import { resolveCloneToken } from '../../src/services/git-clone-token';
 
-import { githubAppConfigured, installationTokenForRepository } from '../../src/services/github-app';
+import { githubAppConfigured, installationTokenForRepository, userCanReadRepository } from '../../src/services/github-app';
 
 const mockedGetValid = getValidAccessToken as jest.MockedFunction<typeof getValidAccessToken>;
 const mockedAppConfigured = githubAppConfigured as jest.MockedFunction<typeof githubAppConfigured>;
 const mockedInstallationToken = installationTokenForRepository as jest.MockedFunction<typeof installationTokenForRepository>;
+const mockedCanRead = userCanReadRepository as jest.MockedFunction<typeof userCanReadRepository>;
 
 describe('resolveCloneToken', () => {
   beforeEach(() => {
     mockedGetValid.mockReset();
     mockedAppConfigured.mockReset().mockReturnValue(false);
     mockedInstallationToken.mockReset();
+    mockedCanRead.mockReset().mockResolvedValue(true);
   });
 
   it.each(['github', 'gitlab', 'bitbucket'])('goes through getValidAccessToken for %s', async (provider) => {
@@ -78,20 +85,26 @@ describe('resolveCloneToken with a GitHub App installed', () => {
     mockedGetValid.mockReset();
     mockedAppConfigured.mockReset().mockReturnValue(true);
     mockedInstallationToken.mockReset();
+    mockedCanRead.mockReset().mockResolvedValue(true);
   });
 
   it('prefers the installation token, so a deploy does not depend on who connected the repo', async () => {
+    mockedGetValid.mockResolvedValue('user-token');
     mockedInstallationToken.mockResolvedValue('ghs_installation');
     const result = await resolveCloneToken('user-1', 'github', 'https://github.com/acme/shop.git');
     expect(mockedInstallationToken).toHaveBeenCalledWith('acme', 'shop');
     expect(result.token).toBe('ghs_installation');
     expect(result.note).toMatch(/installation token/i);
-    expect(mockedGetValid).not.toHaveBeenCalled();
+    // The user's identity is still consulted — not to clone with, but to
+    // confirm this repository is theirs to deploy before the App's
+    // credentials are used on it.
+    expect(mockedGetValid).toHaveBeenCalledWith('user-1', 'github');
   });
 
   it("falls back to the user's token when the app is not installed on that repository", async () => {
     mockedInstallationToken.mockResolvedValue(null);
     mockedGetValid.mockResolvedValue('user-token');
+    mockedCanRead.mockResolvedValue(true);
     const result = await resolveCloneToken('user-1', 'github', 'acme/shop');
     expect(result.token).toBe('user-token');
     expect(result.note).toMatch(/OAuth token/);
@@ -102,5 +115,48 @@ describe('resolveCloneToken with a GitHub App installed', () => {
     const result = await resolveCloneToken('user-1', 'gitlab', 'acme/shop');
     expect(mockedInstallationToken).not.toHaveBeenCalled();
     expect(result.token).toBe('gitlab-token');
+  });
+});
+
+describe('one App, many tenants', () => {
+  beforeEach(() => {
+    mockedGetValid.mockReset();
+    mockedAppConfigured.mockReset().mockReturnValue(true);
+    mockedInstallationToken.mockReset();
+    mockedCanRead.mockReset();
+  });
+
+  it("never mints an installation token for a repository this user cannot read", async () => {
+    // Another tenant installed the App on their account; naming their private
+    // repository must not borrow the App's access.
+    mockedGetValid.mockResolvedValue('user-token');
+    mockedCanRead.mockResolvedValue(false);
+    mockedInstallationToken.mockResolvedValue('ghs_other_tenant');
+
+    const result = await resolveCloneToken('user-1', 'github', 'otherOrg/private-repo');
+
+    expect(mockedInstallationToken).not.toHaveBeenCalled();
+    expect(result.token).not.toBe('ghs_other_tenant');
+  });
+
+  it('checks access with the requesting user\'s own token', async () => {
+    mockedGetValid.mockResolvedValue('user-token');
+    mockedCanRead.mockResolvedValue(true);
+    mockedInstallationToken.mockResolvedValue('ghs_installation');
+
+    await resolveCloneToken('user-1', 'github', 'acme/shop');
+
+    expect(mockedCanRead).toHaveBeenCalledWith('user-token', 'acme', 'shop');
+  });
+
+  it('does not reach for the App when the user has no usable GitHub connection', async () => {
+    mockedGetValid.mockRejectedValue(new TokenRefreshRequiredError('github'));
+    mockedInstallationToken.mockResolvedValue('ghs_installation');
+
+    const result = await resolveCloneToken('user-1', 'github', 'acme/shop');
+
+    expect(mockedInstallationToken).not.toHaveBeenCalled();
+    expect(result.token).toBeUndefined();
+    expect(result.note).toMatch(/reconnect github/);
   });
 });

@@ -127,6 +127,38 @@ export async function installationTokenForRepository(
   }
 }
 
+/**
+ * Can this user read this repository with their own GitHub identity?
+ *
+ * The platform is multi-tenant and one App serves every tenant, so an
+ * installation token must never widen what someone can reach: without this,
+ * a tenant could name another tenant's private repository and GuildServer
+ * would clone it with the App's credentials. A user's own token answers the
+ * only question that matters — is this repository yours to deploy?
+ */
+export async function userCanReadRepository(
+  userToken: string,
+  owner: string,
+  repo: string,
+  { fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {},
+): Promise<boolean> {
+  try {
+    const response = await fetchImpl(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers: {
+        Authorization: `Bearer ${userToken}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "GuildServer",
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    return response.ok;
+  } catch (error) {
+    // A network failure is not proof of access.
+    logger.warn("Could not confirm repository access", { owner, repo, error: (error as Error).message });
+    return false;
+  }
+}
+
 /** Split "owner/repo", a full GitHub URL, or an SSH remote into its parts. */
 export function parseRepository(repository: string): { owner: string; repo: string } | null {
   const cleaned = repository
