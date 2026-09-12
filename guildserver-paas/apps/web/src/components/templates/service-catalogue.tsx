@@ -70,7 +70,7 @@ export type CatalogueView = "apps" | "services"
 
 export function CatalogueViewToggle({ view, onChange }: { view: CatalogueView; onChange: (view: CatalogueView) => void }) {
   return (
-    <div role="tablist" aria-label="Template type" className="inline-flex rounded-xl border border-border/60 bg-muted/40 p-1">
+    <div role="tablist" aria-label="Template type" className="inline-flex max-w-full rounded-xl border border-border bg-muted/40 p-1">
       {(
         [
           { id: "apps", label: "App templates" },
@@ -84,8 +84,8 @@ export function CatalogueViewToggle({ view, onChange }: { view: CatalogueView; o
           aria-selected={view === option.id}
           onClick={() => onChange(option.id)}
           className={cn(
-            "rounded-lg px-4 py-1.5 text-sm font-medium transition-colors",
-            view === option.id ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground",
+            "rounded-lg px-3 sm:px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            view === option.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
           )}
         >
           {option.label}
@@ -205,9 +205,9 @@ export function ServiceCatalogue() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {templates.map((entry) => (
-            <Card key={entry.id} className="flex flex-col">
+            <Card key={entry.id} className="flex flex-col rounded-xl border-border transition-colors hover:border-primary/50">
               <CardHeader className="space-y-2">
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex flex-wrap items-start justify-between gap-2">
                   <CardTitle className="text-base">{entry.name}</CardTitle>
                   <Badge variant="outline" className="shrink-0 text-xs">
                     {entry.category}

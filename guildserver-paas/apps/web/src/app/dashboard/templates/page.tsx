@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Search,
@@ -32,7 +33,6 @@ import { cn } from "@/lib/utils"
 import { CatalogueViewToggle, ServiceCatalogue, type CatalogueView } from "@/components/templates/service-catalogue"
 import {
   FILTER_SECTIONS,
-  GRADIENT_MAP,
   TEMPLATES,
   SOURCE_LABELS,
   getFilterLabel,
@@ -53,7 +53,7 @@ function FilterGroup({
   selected: Set<string>
   onToggle: (value: string) => void
 }) {
-  const [isOpen, setIsOpen] = useState(true)
+  const [isOpen, setIsOpen] = useState(section.id === "useCase" || section.id === "track")
   const activeCount = section.options.filter((o) => selected.has(o)).length
 
   return (
@@ -61,6 +61,7 @@ function FilterGroup({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
         className="flex items-center justify-between w-full text-sm font-semibold text-foreground hover:text-foreground/80 transition-colors py-1"
       >
         <span className="flex items-center gap-2">
@@ -78,7 +79,7 @@ function FilterGroup({
         )}
       </button>
       {isOpen && (
-        <div className="mt-2 space-y-1 ml-1">
+        <div className="mt-2 max-h-72 space-y-1 overflow-y-auto overscroll-contain ml-1">
           {section.options.map((option) => (
             <label
               key={option}
@@ -150,7 +151,7 @@ function TemplateLogo({
             : `https://cdn.simpleicons.org/${spec.slug}?viewbox=auto&size=96`
         }
         alt={spec.label}
-        className="h-full w-full object-contain p-2.5"
+        className={cn("h-full w-full object-contain p-2.5", ["nextdotjs", "express", "remix", "flask", "fastify", "deno"].includes(spec.slug) && "dark:invert")}
         loading="lazy"
         decoding="async"
         onError={() => setFailed(true)}
@@ -171,172 +172,35 @@ const getIconComponent = (icon: string) => {
   }
 }
 
-const TRACK_ACCENT_MAP: Record<string, string> = {
-  ai: "from-emerald-400 via-cyan-400 to-sky-400",
-  "open-source": "from-slate-400 via-emerald-400 to-teal-400",
-  starter: "from-amber-300 via-orange-400 to-rose-400",
-  production: "from-rose-400 via-fuchsia-400 to-purple-400",
-  ops: "from-blue-400 via-sky-400 to-cyan-400",
-}
-
-// ─── Template card component ─────────────────────────────────────────────────
-
-function TemplateCard({
-  template,
-  isDeploying,
-  projectId,
-  onDeploy,
-}: {
+// Compact cards keep identity, source and the next action visible at every size.
+function TemplateCard({ template, isDeploying, onDeploy }: {
   template: Template
   isDeploying: boolean
-  projectId: string | null
   onDeploy: (t: Template) => void
 }) {
-  const gradient =
-    (template.framework && GRADIENT_MAP[template.framework]) ||
-    (template.category === "AI Agents" && (
-      (template.id.includes("hermes") && GRADIENT_MAP["Hermes"]) ||
-      (template.id.includes("deepseek") && GRADIENT_MAP["DeepSeek"]) ||
-      (template.id.includes("openclaw") && GRADIENT_MAP["OpenClaw"]) ||
-      (template.id.includes("ollama") && GRADIENT_MAP["Ollama"]) ||
-      (template.id.includes("dify") && GRADIENT_MAP["Dify"]) ||
-      (template.id.includes("bolt") && GRADIENT_MAP["Bolt"]) ||
-      (template.id.includes("n8n") && GRADIENT_MAP["n8n"]) ||
-      GRADIENT_MAP["AI Agent"]
-    )) ||
-    GRADIENT_MAP.default
-  const sourceLabel = SOURCE_LABELS[template.sourceKind]
-
   return (
-    <Card
-      role="button"
-      tabIndex={0}
-      aria-label={`Deploy ${template.name}`}
-      onClick={() => onDeploy(template)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault()
-          onDeploy(template)
-        }
-      }}
-      className="group cursor-pointer overflow-hidden border-border/40 hover:border-primary/40 hover:-translate-y-0.5 transition-all duration-300 hover:shadow-xl hover:shadow-black/10 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-    >
-      <div className={cn("h-1 bg-gradient-to-r", TRACK_ACCENT_MAP[template.track || "starter"] || TRACK_ACCENT_MAP.starter)} />
-
-      {/* Top text section */}
-      <CardHeader className="p-4 pb-3 pt-3">
-        <div className="flex items-start gap-3">
-          <TemplateLogo template={template} className="h-12 w-12 shrink-0" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <CardTitle className="text-[15px] font-semibold leading-tight line-clamp-1 group-hover:text-primary transition-colors">
-                {template.name}
-              </CardTitle>
-              {template.popular && (
-                <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-semibold uppercase tracking-wide">
-                  Popular
-                </Badge>
-              )}
-            </div>
-            <CardDescription className="text-xs text-muted-foreground line-clamp-2 mt-1 leading-relaxed">
-              {template.description}
-            </CardDescription>
-          </div>
+    <Card className="group flex h-full flex-col rounded-xl border-border bg-card transition-colors hover:border-primary/50">
+      <CardHeader className="p-5 pb-3">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <TemplateLogo template={template} className="h-11 w-11 shrink-0" />
+          {template.popular && <Badge variant="secondary" className="gap-1 text-[10px] font-medium"><Star className="h-3 w-3 text-amber-500" />Popular</Badge>}
         </div>
+        <CardTitle className="break-words text-base font-semibold leading-snug">{template.name}</CardTitle>
+        <CardDescription className="min-h-[3.75rem] line-clamp-3 text-sm leading-5">{template.description}</CardDescription>
       </CardHeader>
-
-      {/* Visual preview area */}
-      <div
-        className={cn(
-          "relative h-[140px] mx-3 mb-3 rounded-lg overflow-hidden bg-gradient-to-br",
-          gradient
-        )}
-      >
-        {/* Grid pattern overlay */}
-        <div
-          className="absolute inset-0 opacity-[0.07]"
-          style={{
-            backgroundImage:
-              "linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)",
-            backgroundSize: "24px 24px",
-          }}
-        />
-
-        {/* Centered logo */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-20 h-20 rounded-[1.25rem] bg-white/[0.08] backdrop-blur-sm border border-white/[0.08] shadow-2xl p-3 group-hover:scale-110 transition-transform duration-500">
-            <TemplateLogo template={template} tone="white" className="h-full w-full rounded-[1rem] bg-transparent border-0" />
-          </div>
+      <CardContent className="flex flex-1 flex-col px-5 pb-4 pt-0">
+        <div className="mb-5 flex flex-wrap gap-1.5">
+          {template.framework && <Badge variant="outline" className="rounded-md text-[11px] font-normal">{template.framework}</Badge>}
+          {template.useCase.slice(0, 2).map((useCase) => <Badge key={useCase} variant="secondary" className="rounded-md text-[11px] font-normal">{getFilterLabel("useCase", useCase)}</Badge>)}
         </div>
-
-        {/* Source badge */}
-        <div className="absolute top-2 right-2">
-          <Badge
-            variant="secondary"
-            className="text-[10px] px-1.5 py-0.5 bg-black/30 text-white/70 border-white/10 backdrop-blur-sm"
-          >
-            {template.sourceKind === "git" ? (
-              <span className="flex items-center gap-1">
-                <Github className="h-2.5 w-2.5" />
-                {sourceLabel}
-              </span>
-            ) : (
-              sourceLabel
-            )}
-          </Badge>
-        </div>
-
-        {template.track && (
-          <div className="absolute bottom-2 left-2">
-            <Badge
-              variant="secondary"
-              className="text-[10px] px-1.5 py-0.5 bg-black/30 text-white/70 border-white/10 backdrop-blur-sm"
-            >
-              {getTrackLabel(template.track)}
-            </Badge>
-          </div>
-        )}
-
-        {/* Popular star */}
-        {template.popular && (
-          <div className="absolute top-2 left-2">
-            <Star className="h-3.5 w-3.5 text-yellow-400 fill-yellow-400 drop-shadow" />
-          </div>
-        )}
-
-        {/* Deploy hover overlay */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100">
-          <Button
-            size="sm"
-            disabled={isDeploying || !projectId}
-            onClick={(e) => {
-              e.stopPropagation()
-              onDeploy(template)
-            }}
-            className="bg-white text-black hover:bg-white/90 shadow-xl"
-          >
-            {isDeploying ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-            ) : (
-              <Rocket className="h-3.5 w-3.5 mr-1.5" />
-            )}
-            Deploy
+        <div className="mt-auto flex items-center justify-between gap-2 border-t border-border/70 pt-3">
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            {template.sourceKind === "git" ? <Github className="h-3.5 w-3.5" /> : <Boxes className="h-3.5 w-3.5" />}
+            {SOURCE_LABELS[template.sourceKind]}
+          </span>
+          <Button size="sm" variant="ghost" disabled={isDeploying} onClick={() => onDeploy(template)} aria-label={`Configure ${template.name}`} className="h-8 gap-1.5 px-2 text-primary hover:bg-primary/10 hover:text-primary">
+            {isDeploying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <>Configure<ArrowRight className="h-3.5 w-3.5" /></>}
           </Button>
-        </div>
-      </div>
-
-      <CardContent className="px-4 pb-4 pt-0">
-        <div className="flex flex-wrap gap-2">
-          {template.framework && (
-            <Badge variant="outline" className="text-[11px] font-medium">
-              {template.framework}
-            </Badge>
-          )}
-          {template.useCase.slice(0, 2).map((useCase) => (
-            <Badge key={useCase} variant="secondary" className="text-[11px] font-medium">
-              {getFilterLabel("useCase", useCase)}
-            </Badge>
-          ))}
         </div>
       </CardContent>
     </Card>
@@ -398,12 +262,14 @@ export default function TemplatesPage() {
   const filteredTemplates = useMemo(() => {
     return TEMPLATES.filter((t) => {
       // Search
-      const q = searchQuery.toLowerCase()
+      const q = searchQuery.trim().toLowerCase()
       const matchesSearch =
         !searchQuery ||
         t.name.toLowerCase().includes(q) ||
         t.description.toLowerCase().includes(q) ||
-        t.tags.some((tag) => tag.toLowerCase().includes(q))
+        t.tags.some((tag) => tag.toLowerCase().includes(q)) ||
+        (t.framework?.toLowerCase().includes(q) ?? false) ||
+        t.useCase.some((value) => getFilterLabel("useCase", value).toLowerCase().includes(q))
 
       // Use Case filter
       const useCaseFilter = selectedFilters.useCase
@@ -454,7 +320,7 @@ export default function TemplatesPage() {
 
         return score(b) - score(a) || a.name.localeCompare(b.name)
       })
-      .slice(0, 6)
+      .slice(0, 3)
   }, [filteredTemplates])
 
   const openPreDeployDialog = (template: Template) => {
@@ -521,21 +387,21 @@ export default function TemplatesPage() {
     <div className="space-y-6">
       <CatalogueViewToggle view={view} onChange={setView} />
       {/* Page header */}
-      <div className="rounded-3xl border border-border/60 bg-gradient-to-br from-background via-background to-muted/25 p-6 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+        <div className="flex flex-col gap-6">
           <div className="max-w-2xl space-y-3">
             <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
               <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500" />
-              Curated deployable templates
+              Template catalog
             </div>
             <div>
               <h1 className="text-3xl font-semibold tracking-tight">Find your template</h1>
               <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                Start with a goal, narrow by stack, then deploy a ready-made app or service with the right brand logo and source clearly visible.
+                Launch your next project with a ready-made app. Explore by purpose, choose your stack, and make it yours.
               </p>
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 lg:min-w-[34rem]">
+          <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
             {[
               { label: "AI", sectionId: "track", value: "ai", helper: "Agents, chat, and LLM tools" },
               { label: "Open source", sectionId: "track", value: "open-source", helper: "Repo-backed templates" },
@@ -548,17 +414,18 @@ export default function TemplatesPage() {
                   key={item.label}
                   type="button"
                   onClick={() => toggleFilter(item.sectionId, item.value)}
+                  aria-pressed={selected}
                   className={cn(
-                    "rounded-2xl border p-4 text-left transition-all duration-200 hover:-translate-y-0.5",
+                    "rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     selected
-                      ? "border-primary/40 bg-primary/5 shadow-sm"
-                      : "border-border/60 bg-background hover:border-primary/30"
+                      ? "border-primary/50 bg-primary/10 shadow-sm"
+                      : "border-border bg-muted/30 hover:border-primary/30 hover:bg-muted/60"
                   )}
                 >
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <span className="text-sm font-semibold">{item.label}</span>
                     <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
-                      {selected ? "Selected" : "Quick pick"}
+                      {selected ? "Selected" : "Explore"}
                     </span>
                   </div>
                   <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{item.helper}</p>
@@ -574,15 +441,17 @@ export default function TemplatesPage() {
         <div className="relative">
           <Search className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search by template, stack, or use case..."
+            aria-label="Search templates"
+            placeholder="Search templates, frameworks, or use cases…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-12 rounded-2xl border-border/60 bg-background pl-11 text-base focus:border-primary/40"
+            className="h-12 rounded-xl border-border bg-card pl-11 pr-12 text-sm focus:border-primary/50"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery("")}
+              aria-label="Clear search"
               className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
             >
               <X className="h-4 w-4" />
@@ -636,6 +505,8 @@ export default function TemplatesPage() {
           variant="outline"
           size="sm"
           onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+          aria-expanded={mobileSidebarOpen}
+          aria-controls="catalog-filters"
           className="gap-2"
         >
           <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -649,11 +520,13 @@ export default function TemplatesPage() {
       </div>
 
       {/* Main layout: Sidebar + Grid */}
-      <div className="flex gap-8">
+      <div className="flex flex-col gap-6 lg:flex-row">
         {/* ── Sidebar ─────────────────────────────── */}
         <aside
+          id="catalog-filters"
+          aria-label="Template filters"
           className={cn(
-            "w-[248px] flex-shrink-0 space-y-1",
+            "w-full flex-shrink-0 self-start rounded-xl border border-border bg-card p-4 lg:w-[208px] space-y-1",
             "hidden lg:block",
             mobileSidebarOpen && "!block"
           )}
@@ -687,28 +560,27 @@ export default function TemplatesPage() {
 
         {/* ── Template grid ───────────────────────── */}
         <div className="flex-1 min-w-0">
-          {recommendedTemplates.length > 0 && (
-            <div className="mb-8 rounded-3xl border border-border/60 bg-gradient-to-br from-slate-50 via-background to-muted/20 p-4 sm:p-5">
-              <div className="mb-4 flex items-center justify-between gap-3">
+          {recommendedTemplates.length > 0 && !searchQuery && !hasActiveFilters && (
+            <div className="mb-7 rounded-2xl border border-primary/20 bg-primary/[0.04] p-4 sm:p-5">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  <h2 className="text-base font-semibold tracking-tight text-foreground">
                     Recommended
                   </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Best AI, open-source, and ops picks for the current view.
+                    A few popular starting points to get you building.
                   </p>
                 </div>
                 <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
-                  Auto-ranked
+                  Popular picks
                 </Badge>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
                 {recommendedTemplates.map((template) => (
                   <TemplateCard
                     key={`recommended-${template.id}`}
                     template={template}
                     isDeploying={deployingTemplate === template.id}
-                    projectId={projectId}
                     onDeploy={openPreDeployDialog}
                   />
                 ))}
@@ -716,8 +588,8 @@ export default function TemplatesPage() {
             </div>
           )}
 
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <p className="text-sm text-muted-foreground">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
               Showing {filteredTemplates.length} template{filteredTemplates.length !== 1 ? "s" : ""}{searchQuery ? ` for "${searchQuery}"` : ""}
             </p>
             {hasActiveFilters && (
@@ -731,13 +603,12 @@ export default function TemplatesPage() {
             )}
           </div>
 
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {filteredTemplates.map((template) => (
               <TemplateCard
                 key={template.id}
                 template={template}
                 isDeploying={deployingTemplate === template.id}
-                projectId={projectId}
                 onDeploy={openPreDeployDialog}
               />
             ))}
@@ -750,9 +621,9 @@ export default function TemplatesPage() {
               <p className="text-sm text-muted-foreground">
                 Try adjusting your search or filters
               </p>
-              {hasActiveFilters && (
-                <Button variant="outline" size="sm" className="mt-4" onClick={clearAllFilters}>
-                  Clear all filters
+              {(hasActiveFilters || searchQuery) && (
+                <Button variant="outline" size="sm" className="mt-4" onClick={() => { clearAllFilters(); setSearchQuery("") }}>
+                  Reset search and filters
                 </Button>
               )}
             </div>
@@ -762,27 +633,20 @@ export default function TemplatesPage() {
 
       {/* Pre-Deploy Configuration Dialog */}
       {preDeployTemplate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <Card className="w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto border-border/50 shadow-2xl">
+        <Dialog open onOpenChange={(open) => !open && setPreDeployTemplate(null)}>
+          <DialogContent className="max-h-[85dvh] w-[calc(100%-2rem)] overflow-y-auto p-0">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <TemplateLogo key={preDeployTemplate.id} template={preDeployTemplate} className="h-12 w-12" />
                   <div>
-                    <CardTitle className="text-lg">Deploy {preDeployTemplate.name}</CardTitle>
-                    <CardDescription className="text-xs mt-0.5">
+                    <DialogTitle className="pr-6 text-lg leading-snug">Configure {preDeployTemplate.name}</DialogTitle>
+                    <DialogDescription className="text-sm mt-1">
                       {preDeployTemplate.description}
-                    </CardDescription>
+                    </DialogDescription>
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="shrink-0"
-                  onClick={() => setPreDeployTemplate(null)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -847,8 +711,8 @@ export default function TemplatesPage() {
                 </Button>
               </div>
             </CardContent>
-          </Card>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* Deployed success message */}
