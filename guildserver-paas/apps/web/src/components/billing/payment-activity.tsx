@@ -61,12 +61,11 @@ export function PaymentActivity({ organizationId }: { organizationId: string }) 
     { organizationId, limit: 25 },
     {
       enabled: !!organizationId,
-      refetchInterval: (query) => {
+      refetchInterval: (data: any) => {
         // Poll more frequently (every 4s) if a transaction is pending or user just returned
-        const data = query.state.data
         const hasActive =
           !!returnId ||
-          data?.some((p) => p.status === "pending" || p.status === "processing")
+          (Array.isArray(data) && data.some((p: any) => p.status === "pending" || p.status === "processing"))
         return hasActive ? 4000 : 30000
       },
     }
@@ -93,7 +92,7 @@ export function PaymentActivity({ organizationId }: { organizationId: string }) 
     }
   }, [returnId, organizationId])
 
-  const returnPayment = paymentsQuery.data?.find((p) => p.id === returnId)
+  const returnPayment = (paymentsQuery.data as any[])?.find((p: any) => p.id === returnId)
 
   // Invalidate billing queries when return payment succeeds
   useEffect(() => {
@@ -197,7 +196,7 @@ export function PaymentActivity({ organizationId }: { organizationId: string }) 
         </div>
 
         <div className="divide-y border-t">
-          {visibleTransactions.map((tx) => {
+          {visibleTransactions.map((tx: any) => {
             const isSucceeded = tx.status === "succeeded"
             const isPending = tx.status === "pending" || tx.status === "processing"
             const isFailed = ["failed", "expired", "canceled"].includes(tx.status || "")

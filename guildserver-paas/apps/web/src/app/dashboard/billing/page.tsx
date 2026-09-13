@@ -367,6 +367,8 @@ function PlansTab({
   flutterwaveConfigured: boolean
 }) {
   const [selectedFlutterwavePlan, setSelectedFlutterwavePlan] = useState<any>(null)
+  const [currency, setCurrency] = useState<"USD" | "NGN">("USD")
+
   const checkoutMutation = trpc.billing.createCheckoutSession.useMutation({
     onSuccess: (data) => {
       window.location.href = data.url
@@ -391,63 +393,106 @@ function PlansTab({
         planSlug={selectedFlutterwavePlan?.slug}
         planName={selectedFlutterwavePlan?.name}
         fixedAmountCents={selectedFlutterwavePlan?.priceMonthly}
-
+        fixedCurrency={currency}
       />
+
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h2 className="text-lg font-semibold">Available Plans</h2>
+          <p className="text-sm text-muted-foreground">
+            Select the infrastructure tier for your deployments and database workloads.
+          </p>
+        </div>
+        <div className="inline-flex rounded-lg border bg-muted/40 p-1">
+          <button
+            type="button"
+            onClick={() => setCurrency("USD")}
+            className={cn(
+              "px-3 py-1 text-xs font-semibold rounded-md transition-colors",
+              currency === "USD"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            USD ($)
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurrency("NGN")}
+            className={cn(
+              "px-3 py-1 text-xs font-semibold rounded-md transition-colors",
+              currency === "NGN"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            NGN (₦)
+          </button>
+        </div>
+      </div>
 
       <div className="grid gap-6 md:grid-cols-3">
       {plans.map((plan: any) => {
         const isCurrent = plan.slug === currentSlug
         const planPrice = plan.priceMonthly ?? 0
+        const ngnPrice = plan.prices?.NGN?.monthly
         const isPaidUpgrade = planPrice > currentPrice && plan.slug !== "enterprise"
         const canUseStripeCheckout = stripeConfigured && plan.slug === "pro"
         const canUseFlutterwaveCheckout = flutterwaveConfigured && (plan.slug === "starter" || plan.slug === "pro")
+
+        const displayFormattedPrice =
+          plan.priceMonthly === 0
+            ? "Free"
+            : currency === "NGN" && ngnPrice != null
+            ? `₦${(ngnPrice / 100).toLocaleString()}`
+            : plan.priceMonthly
+            ? `$${(plan.priceMonthly / 100).toFixed(0)}`
+            : "Custom"
 
         return (
           <div
             key={plan.id}
             className={cn(
-              "rounded-xl border bg-card p-6 relative",
+              "rounded-xl border bg-card p-6 relative flex flex-col justify-between",
               isCurrent && "ring-2 ring-primary"
             )}
           >
             {isCurrent && (
               <Badge className="absolute -top-3 left-4">Current Plan</Badge>
             )}
-            <div className="mb-4">
-              <h3 className="text-xl font-bold">{plan.name}</h3>
-              <p className="text-sm text-muted-foreground mt-1">{plan.description}</p>
-            </div>
-            <div className="mb-6">
-              <p className="text-3xl font-semibold tracking-tight tabular-nums">
-                {plan.priceMonthly === 0
-                  ? "Free"
-                  : plan.priceMonthly
-                  ? `$${(plan.priceMonthly / 100).toFixed(0)}`
-                  : "Custom"}
-              </p>
-              {plan.priceMonthly > 0 && (
-                <p className="text-sm text-muted-foreground">/seat/month</p>
-              )}
-            </div>
+            <div>
+              <div className="mb-4">
+                <h3 className="text-xl font-bold">{plan.name}</h3>
+                <p className="text-sm text-muted-foreground mt-1">{plan.description}</p>
+              </div>
+              <div className="mb-6">
+                <p className="text-3xl font-semibold tracking-tight tabular-nums">
+                  {displayFormattedPrice}
+                </p>
+                {plan.priceMonthly > 0 && (
+                  <p className="text-sm text-muted-foreground">/seat/month</p>
+                )}
+              </div>
 
-            {/* Limits */}
-            <div className="space-y-2 mb-6">
-              <PlanLimit label="Applications" value={plan.limits?.maxApps} />
-              <PlanLimit label="Databases" value={plan.limits?.maxDatabases} />
-              <PlanLimit label="Deployments/mo" value={plan.limits?.maxDeployments} />
-              <PlanLimit label="Bandwidth" value={plan.limits?.maxBandwidthGb} suffix="GB" />
-              <PlanLimit label="Build Minutes" value={plan.limits?.maxBuildMinutes} suffix="min" />
-              <PlanLimit label="Memory/App" value={plan.limits?.maxMemoryMb} suffix="MB" />
-            </div>
+              {/* Limits */}
+              <div className="space-y-2 mb-6">
+                <PlanLimit label="Applications" value={plan.limits?.maxApps} />
+                <PlanLimit label="Databases" value={plan.limits?.maxDatabases} />
+                <PlanLimit label="Deployments/mo" value={plan.limits?.maxDeployments} />
+                <PlanLimit label="Bandwidth" value={plan.limits?.maxBandwidthGb} suffix="GB" />
+                <PlanLimit label="Build Minutes" value={plan.limits?.maxBuildMinutes} suffix="min" />
+                <PlanLimit label="Memory/App" value={plan.limits?.maxMemoryMb} suffix="MB" />
+              </div>
 
-            {/* Features */}
-            <div className="space-y-2 border-t pt-4">
-              <FeatureItem label="Preview Deployments" enabled={plan.features?.previewDeployments} />
-              <FeatureItem label="Team Collaboration" enabled={plan.features?.teamCollaboration} />
-              <FeatureItem label="Priority Support" enabled={plan.features?.prioritySupport} />
-              <FeatureItem label="SSO / SAML" enabled={plan.features?.sso} note="Coming soon" />
-              <FeatureItem label="Webhooks" enabled={plan.features?.webhooks} />
-              <FeatureItem label="API Access" enabled={plan.features?.apiAccess} />
+              {/* Features */}
+              <div className="space-y-2 border-t pt-4">
+                <FeatureItem label="Preview Deployments" enabled={plan.features?.previewDeployments} />
+                <FeatureItem label="Team Collaboration" enabled={plan.features?.teamCollaboration} />
+                <FeatureItem label="Priority Support" enabled={plan.features?.prioritySupport} />
+                <FeatureItem label="SSO / SAML" enabled={plan.features?.sso} note="Coming soon" />
+                <FeatureItem label="Webhooks" enabled={plan.features?.webhooks} />
+                <FeatureItem label="API Access" enabled={plan.features?.apiAccess} />
+              </div>
             </div>
 
             {/* Action Button */}
@@ -483,12 +528,12 @@ function PlansTab({
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                     ) : null}
                     {canUseStripeCheckout || canUseFlutterwaveCheckout
-                      ? `Upgrade to ${plan.name} — $${(planPrice / 100).toFixed(0)}/mo`
+                      ? `Upgrade to ${plan.name} — ${displayFormattedPrice}/mo`
                       : "Payment unavailable"}
                   </Button>
                   {!stripeConfigured && canUseFlutterwaveCheckout && (
                     <p className="text-xs text-muted-foreground text-center">
-                      Review a quote, then pay securely by card or NGN bank transfer.
+                      Review quote, then pay securely by Card or Bank Transfer via Flutterwave.
                     </p>
                   )}
                   {currentSlug === "hobby" && plan.slug === "pro" && (
