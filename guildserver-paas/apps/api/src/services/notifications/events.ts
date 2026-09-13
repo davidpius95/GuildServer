@@ -21,6 +21,7 @@ export const NOTIFICATION_EVENTS = [
   "payment_failed",
   "backup_failed",
   "backup_upload_failed",
+  "application_unhealthy",
 ] as const;
 
 export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];
@@ -64,6 +65,7 @@ export const EVENT_ICONS: Record<NotificationEvent, string> = {
   payment_failed: "💳",
   backup_failed: "🗄️",
   backup_upload_failed: "☁️",
+  application_unhealthy: "🔥",
 };
 
 const SEVERITY: Record<NotificationEvent, Severity> = {
@@ -84,6 +86,7 @@ const SEVERITY: Record<NotificationEvent, Severity> = {
   payment_failed: "critical",
   backup_failed: "critical",
   backup_upload_failed: "warning",
+  application_unhealthy: "critical",
 };
 
 const clip = (text: string | undefined, max: number) => (text ?? "").slice(0, max);
@@ -170,6 +173,12 @@ export function renderEvent(
       return withSeverity(
         `Off-site copy failed for ${data.databaseName}`,
         `The backup completed locally, but copying it to off-site storage failed${data.error ? `: ${clip(data.error, 200)}` : "."}`,
+      );
+    case "application_unhealthy":
+      return withSeverity(
+        `${clip(data.appName, 80)} is restarting repeatedly`,
+        `The container for ${clip(data.appName, 80)} keeps restarting, which usually means it crashes shortly after start. ` +
+          `${data.logsUrl ? `Check its logs at ${clip(data.logsUrl, 300)}` : "Check its logs for the cause."}`,
       );
     default:
       return withSeverity("Notification", JSON.stringify(data));

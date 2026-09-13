@@ -372,7 +372,7 @@ describe('runBackup waits for the engine', () => {
 });
 
 describe('off-site copies follow the database as it is configured', () => {
-  it('uploads when storage is attached after the backup was already queued', async () => {
+  (minio ? it : it.skip)('uploads when storage is attached after the backup was already queued', async () => {
     const { database, storageId } = await world({ storage: 'good' });
     // Queued first, storage attached afterwards: runBackup's snapshot of the
     // database row predates the change.

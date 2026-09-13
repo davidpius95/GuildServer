@@ -18,6 +18,7 @@ import { broadcastToUser } from "../websocket/server";
 import { cloneRepository, cleanupClone } from "../services/git-provider";
 import { buildImage, getPortForBuildType } from "../services/builder";
 import { startMetricsCollection, stopMetricsCollection, collectAndStoreMetrics, cleanupOldMetrics } from "../services/metrics-collector";
+import { checkApplicationHealth } from "../services/health-alerts";
 import { notify } from "../services/notification";
 import { trackDeployment, trackBuildMinutes } from "../services/usage-meter";
 import { checkSpendLimit, checkSpendThresholds } from "../services/spend-manager";
@@ -928,8 +929,11 @@ const monitoringWorker = new Worker(
         }
         case "health-check":
           await syncContainerStatuses();
+          // Alert on the states that sync just wrote, while they are fresh.
+          await checkApplicationHealth();
           break;
         case "alert-check":
+          await checkApplicationHealth();
           break;
         case "metrics-retention":
           await cleanupOldMetrics();
