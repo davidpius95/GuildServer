@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { recordAudit } from "../services/audit";
 import { createTRPCRouter, protectedProcedure } from "../trpc/trpc";
 import { projects, members, organizations } from "@guildserver/database";
 import { eq, and, desc } from "drizzle-orm";
@@ -188,6 +189,20 @@ export const projectRouter = createTRPCRouter({
       }
 
       await ctx.db.delete(projects).where(eq(projects.id, input.id));
+
+      if (!ctx.apiToken) {
+        await recordAudit(
+          {
+            userId: ctx.user.id,
+            organizationId: project.organization.id,
+            action: "project.deleted",
+            resourceType: "project",
+            resourceId: project.id,
+            resourceName: project.name,
+          },
+          ctx.req,
+        );
+      }
 
       return { success: true };
     }),

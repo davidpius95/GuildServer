@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { recordAudit } from "../services/audit";
 import { createTRPCRouter, protectedProcedure, enforcePlanLimit } from "../trpc/trpc";
 import { applications, projects, members, deployments, computeProviders } from "@guildserver/database";
 import { eq, and, desc, inArray } from "drizzle-orm";
@@ -546,6 +547,21 @@ export const applicationRouter = createTRPCRouter({
       await ctx.db.delete(applications).where(eq(applications.id, input.id));
       void syncTraefikDynamicDomains();
 
+      if (!ctx.apiToken) {
+        await recordAudit(
+          {
+            userId: ctx.user.id,
+            organizationId: application.project.organization.id,
+            action: "application.deleted",
+            resourceType: "application",
+            resourceId: application.id,
+            resourceName: application.name,
+            metadata: { projectId: application.projectId, deploymentTarget: application.deploymentTarget },
+          },
+          ctx.req,
+        );
+      }
+
       return { success: true };
     }),
 
@@ -605,6 +621,21 @@ export const applicationRouter = createTRPCRouter({
           removeOnFail: 20,
         }
       );
+
+      if (!ctx.apiToken) {
+        await recordAudit(
+          {
+            userId: ctx.user.id,
+            organizationId: application.project.organization.id,
+            action: "application.deployed",
+            resourceType: "application",
+            resourceId: application.id,
+            resourceName: application.name,
+            metadata: { deploymentId: deployment.id, gitCommitSha: gitCommitSha ?? null },
+          },
+          ctx.req,
+        );
+      }
 
       return deployment;
     }),

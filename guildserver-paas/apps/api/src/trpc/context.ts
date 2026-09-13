@@ -10,6 +10,18 @@ interface User {
   role: "admin" | "user" | null;
 }
 
+/**
+ * Set when a procedure is reached through the REST v1 surface, which
+ * authenticates with an API token rather than a session. Procedures use it
+ * either to refuse token callers outright (api-token management) or to leave
+ * the audit record to the REST layer, which attributes it to the token.
+ */
+export interface ApiTokenContext {
+  id: string;
+  organizationId: string;
+  scopes: string[];
+}
+
 export async function createContext({ req, res }: CreateExpressContextOptions) {
   // Get token from Authorization header
   const token = req.headers.authorization?.replace("Bearer ", "");
@@ -47,6 +59,8 @@ export async function createContext({ req, res }: CreateExpressContextOptions) {
     user,
     isAuthenticated: !!user,
     isAdmin: user?.role === "admin",
+    // A session context is never a token context; the REST caller supplies it.
+    apiToken: undefined as ApiTokenContext | undefined,
   };
 }
 

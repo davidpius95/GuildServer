@@ -22,7 +22,7 @@ export async function workflowCaller(scope: ExecutionScope, action: string, reso
   const { appRouter } = await import("../trpc/router");
   const req = new IncomingMessage(new Socket()) as Context["req"];
   const res = new ServerResponse(req) as Context["res"];
-  return appRouter.createCaller({ req, res, db, user, isAuthenticated: true, isAdmin: user.role === "admin" });
+  return appRouter.createCaller({ req, res, db, user, isAuthenticated: true, isAdmin: user.role === "admin", apiToken: undefined });
 }
 export async function runWorkflowAction(step: WorkflowStep, context: Record<string, any>, scope: ExecutionScope, persist: () => Promise<void>) {
   const action = String(step.config.action || step.config.type || "log");

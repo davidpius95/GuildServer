@@ -7,6 +7,7 @@
  */
 
 import { z } from "zod";
+import { recordAudit } from "../services/audit";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq } from "drizzle-orm";
 import { apiTokens, members } from "@guildserver/database";
@@ -28,7 +29,7 @@ const MEMBER_GRANTABLE_SCOPES = new Set(["read", "deploy"]);
 // context means no REST handler can let one credential mint, list or revoke
 // another.
 const dashboardProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if ((ctx as { apiToken?: unknown }).apiToken) {
+  if (ctx.apiToken) {
     throw new TRPCError({ code: "FORBIDDEN", message: "API tokens cannot manage API tokens" });
   }
   return next();
@@ -88,6 +89,22 @@ export const apiTokenRouter = createTRPCRouter({
           projectIds: input.projectIds ?? null,
           expiresAt: input.expiresAt ?? null,
         });
+        // The token itself is never recorded: only which token, and what it can do.
+        if (!ctx.apiToken) {
+          await recordAudit(
+            {
+              userId: ctx.user.id,
+              organizationId: input.organizationId,
+              action: "api_token.created",
+              resourceType: "api_token",
+              resourceId: record.id,
+              resourceName: input.name,
+              metadata: { scopes: input.scopes, expiresAt: input.expiresAt ?? null, projectIds: input.projectIds ?? null },
+            },
+            ctx.req,
+          );
+        }
+
         // The plaintext leaves the server exactly once, here.
         return { token, ...toPublicApiToken(record) };
       } catch (error) {
@@ -152,6 +169,22 @@ export const apiTokenRouter = createTRPCRouter({
       }
 
       await revokeApiToken(token.id);
+
+      if (!ctx.apiToken) {
+        await recordAudit(
+          {
+            userId: ctx.user.id,
+            organizationId: token.organizationId,
+            action: "api_token.revoked",
+            resourceType: "api_token",
+            resourceId: token.id,
+            resourceName: token.name,
+            metadata: { revokedByCreator: isCreator },
+          },
+          ctx.req,
+        );
+      }
+
       return { success: true, id: token.id };
     }),
 });

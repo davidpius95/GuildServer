@@ -1,5 +1,6 @@
 import * as path from "path";
 import { z } from "zod";
+import { recordAudit } from "../services/audit";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc/trpc";
 import { databases, projects, members, databaseBackups, applications, environmentVariables, s3Storages } from "@guildserver/database";
@@ -381,6 +382,22 @@ export const databaseRouter = createTRPCRouter({
       }
 
       await ctx.db.delete(databases).where(eq(databases.id, input.id));
+
+      if (!ctx.apiToken) {
+        await recordAudit(
+          {
+            userId: ctx.user.id,
+            organizationId: database.project.organization.id,
+            action: "database.deleted",
+            resourceType: "database",
+            resourceId: database.id,
+            resourceName: database.name,
+            // Whether the volume went with it is the part worth being able to answer for.
+            metadata: { type: database.type, destroyedData: input.destroyData === true },
+          },
+          ctx.req,
+        );
+      }
 
       return { success: true };
     }),
