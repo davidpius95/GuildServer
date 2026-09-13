@@ -11,6 +11,10 @@ jest.mock('../../src/queues/deployment', () => ({ deploymentQueue: { add: (...ar
 const mockProxy = () => new Proxy({ __esModule: true } as any, { get: (t, k) => (k in t ? t[k] : (t[k] = jest.fn())) });
 jest.mock('../../src/queues/backups', () => mockProxy());
 jest.mock('../../src/queues/instances', () => mockProxy());
+// queues/workflows opens Redis and starts a BullMQ worker at import time, so
+// importing the REST app without this leaves a handle open and jest never
+// exits — which wedged a CI run for over three hours.
+jest.mock('../../src/queues/workflows', () => mockProxy());
 jest.mock('../../src/services/db-backup', () => mockProxy());
 jest.mock('../../src/services/database-provision', () => mockProxy());
 jest.mock('../../src/services/compose/deploy', () => mockProxy());
