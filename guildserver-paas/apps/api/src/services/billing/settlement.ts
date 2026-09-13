@@ -162,6 +162,13 @@ export async function settlePaymentAttempt(args: SettlePaymentAttemptArgs): Prom
       };
     }
 
+    if (!Number.isSafeInteger(args.verifiedAmountCents) || args.verifiedAmountCents <= 0) throw new Error("Invalid verified amount");
+    if (paymentTx.invoiceId) {
+      const invoice = await tx.query.invoices.findFirst({ where: eq(invoices.id, paymentTx.invoiceId) });
+      if (!invoice || invoice.organizationId !== paymentTx.organizationId || normalizeCurrency(invoice.currency) !== verifiedCurrency) throw new Error("Invoice ownership or currency mismatch");
+      if (invoice.status !== "open" || Number(invoice.amountDueCents) - Number(invoice.amountPaidCents) !== args.verifiedAmountCents) throw new Error("Invoice balance mismatch; payment requires reconciliation");
+    }
+
     const paymentUpdate: Record<string, unknown> = {
       status: "succeeded",
       paidAt: new Date(),

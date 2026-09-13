@@ -134,6 +134,10 @@ services:
       TRAEFIK_DYNAMIC_DIR: /etc/traefik/dynamic
       # Flutterwave v4. Empty defaults keep the stack bootable without them —
       # isFlutterwaveV4Configured() gates every call site.
+      BILLING_STARTER_NGN_MONTHLY_KOBO: ${BILLING_STARTER_NGN_MONTHLY_KOBO:-}
+      BILLING_STARTER_NGN_YEARLY_KOBO: ${BILLING_STARTER_NGN_YEARLY_KOBO:-}
+      BILLING_PRO_NGN_MONTHLY_KOBO: ${BILLING_PRO_NGN_MONTHLY_KOBO:-}
+      BILLING_PRO_NGN_YEARLY_KOBO: ${BILLING_PRO_NGN_YEARLY_KOBO:-}
       FLW_V4_CLIENT_ID: ${FLW_V4_CLIENT_ID:-}
       FLW_V4_CLIENT_SECRET: ${FLW_V4_CLIENT_SECRET:-}
       FLW_V4_TOKEN_URL: ${FLW_V4_TOKEN_URL:-https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token}

@@ -6,6 +6,7 @@ import { trpc } from "@/components/trpc-provider"
 import { useOrganization } from "@/hooks/use-auth"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { PaymentActivity } from "@/components/billing/payment-activity"
 import { FlutterwaveCheckoutModal } from "@/components/billing/flutterwave-checkout-modal"
 import { cn } from "@/lib/utils"
 import {
@@ -73,7 +74,7 @@ export default function BillingPage() {
   const tabs: { id: Tab; label: string; icon: any }[] = [
     { id: "overview", label: "Overview", icon: BarChart3 },
     { id: "plans", label: "Plans", icon: Crown },
-    { id: "invoices", label: "Invoices", icon: FileText },
+    { id: "invoices", label: "Documents", icon: FileText },
     { id: "payment", label: "Payment", icon: CreditCard },
     { id: "spend", label: "Spend", icon: Settings2 },
   ]
@@ -90,13 +91,13 @@ export default function BillingPage() {
 
       {/* Tabs */}
       <div className="border-b">
-        <nav className="flex gap-4">
+        <nav aria-label="Billing sections" className="flex gap-4 overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "flex items-center gap-2 px-1 py-3 text-sm font-medium border-b-2 transition-colors",
+                "flex shrink-0 items-center gap-2 px-1 py-3 text-sm font-medium border-b-2 transition-colors",
                 activeTab === tab.id
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -109,6 +110,7 @@ export default function BillingPage() {
         </nav>
       </div>
 
+      <PaymentActivity organizationId={orgId} />
       {/* Tab Content */}
       {activeTab === "overview" && (
         <OverviewTab
@@ -388,7 +390,7 @@ function PlansTab({
         planSlug={selectedFlutterwavePlan?.slug}
         planName={selectedFlutterwavePlan?.name}
         fixedAmountCents={selectedFlutterwavePlan?.priceMonthly}
-        fixedCurrency="USD"
+
       />
 
       <div className="grid gap-6 md:grid-cols-3">
@@ -485,7 +487,7 @@ function PlansTab({
                   </Button>
                   {!stripeConfigured && canUseFlutterwaveCheckout && (
                     <p className="text-xs text-muted-foreground text-center">
-                      Pay securely with Flutterwave by card, transfer, mobile money, or USSD.
+                      Review a quote, then pay securely by card or NGN bank transfer.
                     </p>
                   )}
                   {currentSlug === "hobby" && plan.slug === "pro" && (
@@ -581,7 +583,7 @@ function InvoicesTab({
       />
 
       {quotes.length > 0 && (
-        <div className="rounded-xl border bg-card overflow-hidden">
+        <div className="rounded-xl border bg-card overflow-x-auto">
           <div className="border-b px-4 py-3">
             <h3 className="text-sm font-semibold">Quotes</h3>
           </div>
@@ -612,7 +614,7 @@ function InvoicesTab({
         </div>
       )}
 
-      <div className="rounded-xl border bg-card overflow-hidden">
+      <div className="rounded-xl border bg-card overflow-x-auto">
         <div className="border-b px-4 py-3">
           <h3 className="text-sm font-semibold">Invoices</h3>
         </div>
@@ -681,7 +683,7 @@ function InvoicesTab({
       </div>
 
       {receipts.length > 0 && (
-        <div className="rounded-xl border bg-card overflow-hidden">
+        <div className="rounded-xl border bg-card overflow-x-auto">
           <div className="border-b px-4 py-3">
             <h3 className="text-sm font-semibold">Receipts</h3>
           </div>
@@ -755,19 +757,6 @@ function PaymentTab({
     onSuccess: (data) => { window.location.href = data.url },
   })
 
-  const [flwOpen, setFlwOpen] = useState(false)
-  const virtualAccounts = trpc.billing.listVirtualAccounts.useQuery(
-    { organizationId: orgId },
-    { enabled: !!orgId && !!providers?.flutterwave },
-  )
-  const createVa = trpc.billing.createVirtualAccount.useMutation({
-    onSuccess: () => virtualAccounts.refetch(),
-  })
-
-  const activeNgnVirtualAccount = virtualAccounts.data?.find(
-    (va: any) => va.currency?.toUpperCase() === "NGN" && va.status === "active",
-  )
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -778,66 +767,11 @@ function PaymentTab({
 
   return (
     <div className="space-y-6">
-      <FlutterwaveCheckoutModal
-        open={flwOpen}
-        onOpenChange={setFlwOpen}
-        organizationId={orgId}
-        purpose="topup"
-      />
-
-      {providers?.flutterwave && (
-        <div className="rounded-xl border bg-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-semibold">Pay with Flutterwave</h3>
-              <p className="text-sm text-muted-foreground">
-                Card, bank transfer, mobile money, or USSD — in local currency.
-              </p>
-            </div>
-            <Button size="sm" onClick={() => setFlwOpen(true)}>Add funds</Button>
-          </div>
-
-          <div className="mt-2 border-t pt-4">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-sm font-medium">Bank accounts</p>
-                <p className="text-xs text-muted-foreground">
-                  Transfer to a dedicated account and funds are credited automatically.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => createVa.mutate({ organizationId: orgId, currency: "NGN", accountType: "static" })}
-                disabled={createVa.isPending || !!activeNgnVirtualAccount}
-              >
-                {createVa.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
-                {activeNgnVirtualAccount ? "Account issued" : "Issue account"}
-              </Button>
-            </div>
-
-            {createVa.error && <ErrorState error={createVa.error} compact className="mt-1" />}
-
-            {virtualAccounts.data && virtualAccounts.data.length > 0 ? (
-              <div className="space-y-2">
-                {virtualAccounts.data.map((va: any) => (
-                  <div key={va.id} className="flex items-center justify-between rounded-lg border p-3">
-                    <div>
-                      <p className="text-sm font-medium font-mono">{va.accountNumber}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {va.bankName} · {va.currency}
-                      </p>
-                    </div>
-                    <Badge variant={va.status === "active" ? "secondary" : "outline"}>{va.status}</Badge>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">No bank account issued yet.</p>
-            )}
-          </div>
-        </div>
-      )}
+      <div className="rounded-xl border bg-card p-6">
+        <h3 className="text-lg font-semibold">A clear record of every payment</h3>
+        <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">Choose a plan to prepare a quote, or open an unpaid invoice in Documents. Pay by card in USD or NGN, or select bank transfer for an NGN invoice. Bank details and expiry are provided securely by Flutterwave.</p>
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">{["1 · Review your quote", "2 · Pay securely", "3 · Receive confirmation"].map(step => <div key={step} className="rounded-lg border bg-muted/20 p-3 text-sm font-medium">{step}</div>)}</div>
+      </div>
 
       <div className="rounded-xl border bg-card p-6">
         <div className="flex items-center justify-between mb-4">
@@ -884,7 +818,7 @@ function PaymentTab({
         )}
         {!providers?.stripe && (
           <p className="text-xs text-amber-600 mt-2">
-            Stripe is not configured for this environment. Use Flutterwave for card, transfer, mobile money, or USSD payments.
+            Pay an invoice through Flutterwave. Card information is entered securely on the payment provider’s checkout.
           </p>
         )}
         {portalMutation.error && (

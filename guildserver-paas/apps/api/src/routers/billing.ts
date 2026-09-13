@@ -941,11 +941,12 @@ export const billingRouter = createTRPCRouter({
     .input(z.object({ organizationId: z.string().uuid(), limit: z.number().int().min(1).max(100).default(25) }))
     .query(async ({ ctx, input }) => {
       await assertBillingMember(ctx, input.organizationId);
-      return ctx.db
+      const rows = await ctx.db
         .select()
         .from(paymentTransactions)
         .where(eq(paymentTransactions.organizationId, input.organizationId))
         .orderBy(desc(paymentTransactions.createdAt))
         .limit(input.limit);
+      return rows.map(p => ({ id: p.id, invoiceId: p.invoiceId, amountCents: p.amountCents, currency: p.currency, status: p.status, createdAt: p.createdAt, flutterwaveTxRef: p.flutterwaveTxRef, checkoutUrl: ["pending", "processing"].includes(p.status || "") && Date.now() - new Date(p.createdAt!).getTime() < 30 * 60_000 ? (p.metadata as any)?.nextAction?.redirect_url?.url ?? null : null }));
     }),
 });

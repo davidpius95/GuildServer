@@ -12,6 +12,7 @@ import { appRouter } from "./trpc/router";
 import { logger } from "./utils/logger";
 import { createWebSocketServer } from "./websocket/server";
 import { startLogDrains, stopLogDrains } from "./services/log-drain";
+import { startPaymentReconciliation } from "./services/billing/reconciliation";
 import { initializeQueues } from "./queues/setup";
 import { startWorkflowWorker } from "./queues/workflows";
 import "./queues/instances"; // self-contained instance provisioning queue/worker
@@ -186,6 +187,7 @@ async function startServer() {
   try {
     // Initialize background queues
     await initializeQueues();
+    startPaymentReconciliation();
     startWorkflowWorker();
     logger.info("✅ Background queues initialized");
 
