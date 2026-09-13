@@ -13,6 +13,7 @@ import { logger } from "./utils/logger";
 import { createWebSocketServer } from "./websocket/server";
 import { startLogDrains, stopLogDrains } from "./services/log-drain";
 import { initializeQueues } from "./queues/setup";
+import { startWorkflowWorker } from "./queues/workflows";
 import "./queues/instances"; // self-contained instance provisioning queue/worker
 import "./queues/backups"; // self-contained database backup queue/worker + scheduler
 import { setupSwagger } from "./swagger";
@@ -185,6 +186,7 @@ async function startServer() {
   try {
     // Initialize background queues
     await initializeQueues();
+    startWorkflowWorker();
     logger.info("✅ Background queues initialized");
 
     // Start HTTP server
