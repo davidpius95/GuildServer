@@ -237,6 +237,7 @@ function PlatformPricing({
   billingInterval: "monthly" | "yearly"
   setBillingInterval: (interval: "monthly" | "yearly") => void
 }) {
+  const [currency, setCurrency] = useState<"USD" | "NGN">("USD")
   return (
     <section className="pb-16 md:pb-24">
       <div className="main-container">
@@ -249,6 +250,7 @@ function PlatformPricing({
             </p>
           </div>
 
+          <label className="text-sm font-semibold">Currency<select aria-label="Pricing currency" value={currency} onChange={e => setCurrency(e.target.value as "USD" | "NGN")} className="ml-2 rounded-full border bg-transparent p-2"><option value="USD">USD</option><option value="NGN">NGN</option></select></label>
           <div className="inline-flex w-fit rounded-full border border-[#171713]/10 bg-white/70 p-1 dark:border-white/10 dark:bg-white/[0.06]">
             {(["monthly", "yearly"] as const).map((interval) => (
               <button
@@ -262,7 +264,7 @@ function PlatformPricing({
                 )}
               >
                 {interval === "monthly" ? "Monthly" : "Yearly"}
-                {interval === "yearly" && <span className="ml-2 text-[#276f54] dark:text-[#85d9a8]">save 17%</span>}
+                
               </button>
             ))}
           </div>
@@ -275,7 +277,7 @@ function PlatformPricing({
             {plans.map((plan) => (
               <PricingCard
                 key={plan.id}
-                plan={plan}
+                plan={{ ...plan, priceMonthly: plan.prices?.[currency]?.monthly ?? null, priceYearly: plan.prices?.[currency]?.yearly ?? null, currency }}
                 billingInterval={billingInterval}
                 featured={plan.slug === "pro"}
               />
@@ -302,8 +304,9 @@ function PricingCard({
   billingInterval: "monthly" | "yearly"
   featured: boolean
 }) {
-  const price = billingInterval === "yearly" && plan.priceYearly ? plan.priceYearly : plan.priceMonthly
-  const monthlyEquivalent = billingInterval === "yearly" && plan.priceYearly ? Math.round(plan.priceYearly / 12) : plan.priceMonthly
+  const price = billingInterval === "yearly" ? plan.priceYearly : plan.priceMonthly
+  const currency = plan.currency || "USD"
+  const displayPrice = price == null ? "Not available" : new Intl.NumberFormat("en-NG", { style: "currency", currency, maximumFractionDigits: 0 }).format(price / 100)
   const isEnterprise = plan.slug === "enterprise"
   const isHobby = plan.slug === "hobby"
 
@@ -338,11 +341,11 @@ function PricingCard({
         ) : (
           <>
             <p className="text-5xl font-black tracking-[-0.04em]">
-              ${((monthlyEquivalent || price || 0) / 100).toFixed(0)}
-              <span className={cn("text-base font-medium", featured ? "text-white/58 dark:text-black/58" : "text-[#171713]/52 dark:text-white/52")}>/mo</span>
+              {displayPrice}
+              <span className={cn("text-base font-medium", featured ? "text-white/58 dark:text-black/58" : "text-[#171713]/52 dark:text-white/52")}>{price == null ? "" : billingInterval === "yearly" ? "/year" : "/month"}</span>
             </p>
             <p className={cn("mt-1 text-sm", featured ? "text-white/58 dark:text-black/58" : "text-[#171713]/55 dark:text-white/55")}>
-              {isHobby ? "Free to start" : billingInterval === "yearly" ? "Billed yearly" : "Billed monthly"}
+              {isHobby ? "Free to start" : price == null ? "Contact support for a quote" : `Billed in ${currency}. ${billingInterval === "yearly" ? "Full annual amount." : "One month of service."}`}
             </p>
           </>
         )}

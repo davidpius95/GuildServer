@@ -147,7 +147,7 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
   const currency = normalizeCurrency(args.currency).toUpperCase();
   assertPaymentSelection(currency, args.paymentMethod);
   if (!args.invoiceId) throw new Error("An invoice is required for checkout");
-  return db.transaction(async (connection) => {
+  const reserved = await db.transaction(async (connection) => {
   await connection.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"billing:" + args.organizationId}, 0))`);
   const invoice = await connection.query.invoices.findFirst({ where: and(eq(invoices.id, args.invoiceId!), eq(invoices.organizationId, args.organizationId)) });
   if (!invoice || invoice.status !== "open" || invoice.currency?.toLowerCase() !== currency.toLowerCase() || Number(invoice.amountDueCents) - Number(invoice.amountPaidCents) !== args.amountCents) throw new Error("Invoice balance changed. Refresh billing before paying.");
@@ -176,6 +176,10 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
       metadata: (args.metadata ?? {}) as any,
     })
     .returning();
+  return { tx, reference };
+  });
+  if (!("tx" in reserved)) return reserved;
+  const { tx, reference } = reserved;
 
   try {
     const customerId = await ensureFlutterwaveCustomer(args.organizationId);
@@ -205,7 +209,7 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
       data.checkoutUrl ??
       (data.id ? `https://flutterwave.com/pay/${data.id}` : null);
 
-    await connection
+    await db
       .update(paymentTransactions)
       .set({
         flutterwaveTxId: data.id ?? null,
@@ -213,7 +217,7 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
         status: "pending",
         updatedAt: new Date(),
       })
-      .where(eq(paymentTransactions.id, tx.id));
+      .where(and(eq(paymentTransactions.id, tx.id), eq(paymentTransactions.status, "pending")));
 
     if (!checkoutUrl) {
       throw new Error("Flutterwave checkout session did not return a checkout URL");
@@ -231,26 +235,22 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
       },
     };
   } catch (err: any) {
-    await connection
+    await db
       .update(paymentTransactions)
       .set({
         status: "processing",
         failureReason: String(err?.message ?? err).slice(0, 1000),
         updatedAt: new Date(),
       })
-      .where(eq(paymentTransactions.id, tx.id));
+      .where(and(eq(paymentTransactions.id, tx.id), eq(paymentTransactions.status, "pending")));
 
     logger.error("Flutterwave checkout session failed", {
       organizationId: args.organizationId,
       reference,
       error: String(err?.message ?? err),
     });
-    return { checkoutError: "Checkout could not be confirmed. Check Billing before trying again." };
+    throw new Error("Checkout could not be confirmed. Check Billing before trying again.");
   }
-  }).then(result => {
-    if ("checkoutError" in result) throw new Error(result.checkoutError);
-    return result;
-  });
 }
 
 export async function createFlutterwaveCharge(args: CreateChargeArgs): Promise<ChargeResult> {

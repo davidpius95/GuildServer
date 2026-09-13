@@ -6,6 +6,7 @@ import { trpc } from "@/components/trpc-provider"
 import { useOrganization } from "@/hooks/use-auth"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { BillingDocument } from "@/components/billing/billing-document"
 import { PaymentActivity } from "@/components/billing/payment-activity"
 import { FlutterwaveCheckoutModal } from "@/components/billing/flutterwave-checkout-modal"
 import { cn } from "@/lib/utils"
@@ -545,6 +546,7 @@ function InvoicesTab({
   orgId: string
 }) {
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null)
+  const [selectedDocument, setSelectedDocument] = useState<{ document: any; kind: "quote" | "invoice" | "receipt" } | null>(null)
 
   if (isLoading) {
     return (
@@ -568,6 +570,7 @@ function InvoicesTab({
 
   return (
     <div className="space-y-6">
+      {selectedDocument && <BillingDocument {...selectedDocument} organizationId={orgId} onClose={() => setSelectedDocument(null)} onPay={setSelectedInvoice} />}
       <FlutterwaveCheckoutModal
         open={!!selectedInvoice}
         onOpenChange={(open) => !open && setSelectedInvoice(null)}
@@ -599,13 +602,13 @@ function InvoicesTab({
             <tbody>
               {quotes.map((quote: any) => (
                 <tr key={quote.id} className="border-b last:border-0">
-                  <td className="px-4 py-3 text-sm font-mono">{quote.number || "—"}</td>
+                  <td className="px-4 py-3 text-sm font-mono"><button className="text-primary underline underline-offset-4" onClick={() => setSelectedDocument({ document: quote, kind: "quote" })}>{quote.number || "View quote"}</button></td>
                   <td className="px-4 py-3 text-sm text-muted-foreground">
                     {quote.validUntil ? formatDate(quote.validUntil) : "—"}
                   </td>
                   <td className="px-4 py-3 text-sm">{formatMoney(quote.totalCents, quote.currency)}</td>
                   <td className="px-4 py-3">
-                    <InvoiceStatusBadge status={quote.status} />
+                    <InvoiceStatusBadge status={quote.status !== "accepted" && quote.validUntil && new Date(quote.validUntil).getTime() <= Date.now() ? "expired" : quote.status} />
                   </td>
                 </tr>
               ))}
@@ -641,7 +644,7 @@ function InvoicesTab({
 
               return (
                 <tr key={inv.id} className="border-b last:border-0">
-                  <td className="px-4 py-3 text-sm font-mono">{inv.number || "—"}</td>
+                  <td className="px-4 py-3 text-sm font-mono"><button className="text-primary underline underline-offset-4" onClick={() => setSelectedDocument({ document: inv, kind: "invoice" })}>{inv.number || "View invoice"}</button></td>
                   <td className="px-4 py-3 text-sm text-muted-foreground">
                     {inv.createdAt ? formatDate(inv.createdAt) : "—"}
                   </td>
@@ -699,7 +702,7 @@ function InvoicesTab({
             <tbody>
               {receipts.map((receipt: any) => (
                 <tr key={receipt.id} className="border-b last:border-0">
-                  <td className="px-4 py-3 text-sm font-mono">{receipt.number || "—"}</td>
+                  <td className="px-4 py-3 text-sm font-mono"><button className="text-primary underline underline-offset-4" onClick={() => setSelectedDocument({ document: receipt, kind: "receipt" })}>{receipt.number || "View receipt"}</button></td>
                   <td className="px-4 py-3 text-sm text-muted-foreground">
                     {receipt.issuedAt ? formatDate(receipt.issuedAt) : "—"}
                   </td>
