@@ -6,7 +6,7 @@ import {
   quotes,
   type Database,
 } from "@guildserver/database";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { appendInvoiceChargeLedgerEntry, getInvoiceWithLines, type InvoiceWithLines } from "./invoices";
 import { assertPositiveMinorAmount, normalizeCurrency } from "./money";
 
@@ -219,6 +219,7 @@ export async function acceptQuote(args: AcceptQuoteArgs): Promise<InvoiceWithLin
   const now = args.now ?? new Date();
 
   return database.transaction(async (tx: DbLike) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"quote:" + args.quoteId}, 0))`);
     const quote = await tx.query.quotes.findFirst({
       where: eq(quotes.id, args.quoteId),
       with: { lineItems: true },

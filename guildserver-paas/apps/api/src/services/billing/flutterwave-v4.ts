@@ -16,10 +16,11 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { db, paymentTransactions, organizations } from "@guildserver/database";
-import { eq } from "drizzle-orm";
+import { db, paymentTransactions, organizations, invoices } from "@guildserver/database";
+import { eq, and, sql } from "drizzle-orm";
 import { flwV4Request, isFlutterwaveV4Configured } from "./flutterwave-v4-client";
 import { assertPositiveMinorAmount, normalizeCurrency, toMajorUnits, toMinorUnits } from "./money";
+import { assertPaymentSelection } from "./catalog";
 import { settlePaymentAttempt } from "./settlement";
 import { logger } from "../../utils/logger";
 
@@ -144,9 +145,23 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
   assertPositiveMinorAmount(args.amountCents);
 
   const currency = normalizeCurrency(args.currency).toUpperCase();
-  const reference = `GS-${args.purpose.toUpperCase().slice(0, 8)}-${randomUUID().slice(0, 12)}`;
+  assertPaymentSelection(currency, args.paymentMethod);
+  if (!args.invoiceId) throw new Error("An invoice is required for checkout");
+  return db.transaction(async (connection) => {
+  await connection.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"billing:" + args.organizationId}, 0))`);
+  const invoice = await connection.query.invoices.findFirst({ where: and(eq(invoices.id, args.invoiceId!), eq(invoices.organizationId, args.organizationId)) });
+  if (!invoice || invoice.status !== "open" || invoice.currency?.toLowerCase() !== currency.toLowerCase() || Number(invoice.amountDueCents) - Number(invoice.amountPaidCents) !== args.amountCents) throw new Error("Invoice balance changed. Refresh billing before paying.");
+  const existing = await connection.query.paymentTransactions.findMany({ where: and(eq(paymentTransactions.invoiceId, args.invoiceId!), eq(paymentTransactions.provider, "flutterwave")), orderBy: (p, { desc }) => [desc(p.createdAt)] });
+  const pending = existing.find(p => p.status === "pending" || p.status === "processing");
+  if (pending) {
+    const action = (pending.metadata as any)?.nextAction;
+    if (!action) throw new Error("A payment is being confirmed. Please check its status before trying again.");
+    if (Date.now() - new Date(pending.createdAt!).getTime() > 30 * 60_000) throw new Error("Your checkout has expired. We are checking for a payment before issuing another. Contact support if this persists.");
+    return { paymentTransactionId: pending.id, reference: pending.flutterwaveTxRef!, chargeId: pending.flutterwaveTxId, status: pending.status!, nextAction: action };
+  }
+  const reference = `GS-INVOICE-${randomUUID()}`;
 
-  const [tx] = await db
+  const [tx] = await connection
     .insert(paymentTransactions)
     .values({
       organizationId: args.organizationId,
@@ -172,7 +187,7 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
         amount: toMajorUnits(args.amountCents, currency),
         customer_id: customerId,
         reference,
-        redirect_url: args.redirectUrl,
+        redirect_url: `${args.redirectUrl}?payment=${tx.id}`,
         max_retry_attempts: 3,
         session_duration: 30,
         meta: {
@@ -190,10 +205,11 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
       data.checkoutUrl ??
       (data.id ? `https://flutterwave.com/pay/${data.id}` : null);
 
-    await db
+    await connection
       .update(paymentTransactions)
       .set({
         flutterwaveTxId: data.id ?? null,
+        metadata: { ...(args.metadata ?? {}), nextAction: { type: "redirect_url", redirect_url: { url: checkoutUrl } } },
         status: "pending",
         updatedAt: new Date(),
       })
@@ -215,10 +231,10 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
       },
     };
   } catch (err: any) {
-    await db
+    await connection
       .update(paymentTransactions)
       .set({
-        status: "failed",
+        status: "processing",
         failureReason: String(err?.message ?? err).slice(0, 1000),
         updatedAt: new Date(),
       })
@@ -229,8 +245,12 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
       reference,
       error: String(err?.message ?? err),
     });
-    throw err;
+    return { checkoutError: "Checkout could not be confirmed. Check Billing before trying again." };
   }
+  }).then(result => {
+    if ("checkoutError" in result) throw new Error(result.checkoutError);
+    return result;
+  });
 }
 
 export async function createFlutterwaveCharge(args: CreateChargeArgs): Promise<ChargeResult> {
@@ -364,29 +384,22 @@ export async function settleChargeFromProvider(args: {
   chargeId?: string;
   reference?: string;
 }): Promise<SettleOutcome> {
-  const { chargeId, reference } = args;
-  if (!chargeId && !reference) return { result: "ignored", reason: "no charge id or reference" };
-
-  const [tx] = reference
-    ? await db
-        .select()
-        .from(paymentTransactions)
-        .where(eq(paymentTransactions.flutterwaveTxRef, reference))
-        .limit(1)
-    : await db
-        .select()
-        .from(paymentTransactions)
-        .where(eq(paymentTransactions.flutterwaveTxId, chargeId!))
-        .limit(1);
-
-  if (!tx) return { result: "ignored", reason: "unknown transaction" };
-
+  let { chargeId, reference } = args;
+  if (!chargeId && reference) {
+    const matches = await flwV4Request<{ data: any[] }>(`/charges?reference=${encodeURIComponent(reference)}`);
+    const charge = matches.data?.find(item => item.reference === reference);
+    if (charge) chargeId = charge.id;
+  }
   if (!chargeId) return { result: "ignored", reason: "no charge id to verify against" };
-
-  // Never trust the webhook body for amounts — re-read from the API.
   const charge = await fetchCharge(chargeId);
-  const status = mapChargeStatus(charge?.status);
-  const paidMinor = toMinorUnits(Number(charge?.amount ?? 0), charge?.currency ?? tx.currency);
+  if (!charge?.id || charge.id !== chargeId || !ownsReference(charge.reference)) return { result: "ignored", reason: "not a GuildServer charge" };
+  if (reference && charge.reference !== reference) throw new Error("Provider reference mismatch");
+  reference = charge.reference;
+  const [tx] = await db.select().from(paymentTransactions).where(and(eq(paymentTransactions.provider, "flutterwave"), eq(paymentTransactions.flutterwaveTxRef, reference!))).limit(1);
+  if (!tx) return { result: "ignored", reason: "unknown transaction" };
+  if (!charge.currency) throw new Error("Provider currency missing");
+  const status = mapChargeStatus(charge.status);
+  const paidMinor = status === "succeeded" ? toMinorUnits(Number(charge.amount), charge.currency) : 0;
 
   const settled = await settlePaymentAttempt({
     provider: "flutterwave",

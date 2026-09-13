@@ -50,7 +50,7 @@ app.use(morgan("combined"));
 // Stripe webhook route MUST come before json() middleware — needs raw body for signature verification
 app.use("/webhooks/stripe", express.raw({ type: "application/json" }), stripeWebhookRouter);
 
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: "10mb", verify: (req, _res, buf) => { if (req.url?.startsWith("/webhooks/flutterwave")) (req as any).rawBody = Buffer.from(buf); } }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Prometheus Metrics Middleware

@@ -27,7 +27,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
-import { timingSafeEqual } from "node:crypto";
+import { verifyFlutterwaveSignature } from "../services/billing/webhook-signature";
 import { ownsReference, settleChargeFromProvider } from "../services/billing/flutterwave-v4";
 import { logger } from "../utils/logger";
 
@@ -47,77 +47,19 @@ function downstreams(): Downstream[] {
   return [{ name: "guildpay", url: guildpay, prefixes: ["GPA-"] }];
 }
 
-function verifySignature(header: string | undefined): boolean {
-  const expected = process.env.FLW_V4_WEBHOOK_SECRET_HASH;
-  if (!expected) {
-    logger.error("FLW_V4_WEBHOOK_SECRET_HASH is not set; rejecting dispatcher webhook");
-    return false;
-  }
-  if (!header) return false;
-  const a = Buffer.from(header);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
-
-async function forward(
-  target: Downstream,
-  body: unknown,
-  verifHash: string,
-  attempt = 1,
-): Promise<void> {
-  const MAX_ATTEMPTS = 3;
-  try {
-    const res = await fetch(target.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // Consumers run their own signature check — pass it through.
-        "verif-hash": verifHash,
-        "x-forwarded-by": "guildserver-flutterwave-dispatcher",
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(10_000),
-    });
-
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-    logger.info("Dispatched Flutterwave event downstream", { target: target.name, attempt });
-  } catch (err: any) {
-    if (attempt < MAX_ATTEMPTS) {
-      const delayMs = 500 * 2 ** (attempt - 1);
-      setTimeout(() => {
-        void forward(target, body, verifHash, attempt + 1);
-      }, delayMs);
-      logger.warn("Downstream dispatch failed; retrying", {
-        target: target.name,
-        attempt,
-        retryInMs: delayMs,
-        error: String(err?.message ?? err),
-      });
-      return;
-    }
-    // Give up loudly — the event is lost to this consumer and needs
-    // reconciliation rather than silent failure.
-    logger.error("Downstream dispatch failed permanently", {
-      target: target.name,
-      attempts: attempt,
-      error: String(err?.message ?? err),
-    });
-  }
+async function forward(target: Downstream, body: unknown): Promise<void> {
+  const res = await fetch(target.url, { method: "POST", headers: { "Content-Type": "application/json", "verif-hash": process.env.FLW_V4_WEBHOOK_SECRET_HASH!, "x-forwarded-by": "guildserver-flutterwave-dispatcher" }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) });
+  if (!res.ok) throw new Error(`Downstream returned ${res.status}`);
 }
 
 flutterwaveDispatcherRouter.post("/", async (req: Request, res: Response) => {
   const verifHash = req.header("verif-hash");
 
-  if (!verifySignature(verifHash)) {
+  if (!verifyFlutterwaveSignature(req)) {
     logger.warn("Rejected dispatcher webhook with bad signature", { ip: req.ip });
     return res.status(401).json({ error: "invalid signature" });
   }
 
-  // Ack before doing any work.
-  res.status(200).json({ received: true });
 
   const event = req.body ?? {};
   const data = event.data ?? {};
@@ -126,6 +68,7 @@ flutterwaveDispatcherRouter.post("/", async (req: Request, res: Response) => {
 
   try {
     if (ownsReference(reference)) {
+      if ((event.type || event.event) !== "charge.completed") return res.status(200).json({ received: true });
       const outcome = await settleChargeFromProvider({ chargeId, reference });
       logger.info("Dispatcher handled own event", {
         reference,
@@ -133,7 +76,7 @@ flutterwaveDispatcherRouter.post("/", async (req: Request, res: Response) => {
         outcome: outcome.result,
         detail: outcome.result === "ignored" ? outcome.reason : outcome.status,
       });
-      return;
+      return res.status(200).json({ received: true });
     }
 
     const targets = downstreams().filter(
@@ -147,16 +90,20 @@ flutterwaveDispatcherRouter.post("/", async (req: Request, res: Response) => {
         reference,
         chargeId,
       });
-      for (const d of downstreams()) void forward(d, event, verifHash!);
-      return;
+      // A checkout event can omit reference. Resolve its verified ownership first.
+      if (chargeId && (event.type || event.event) === "charge.completed") await settleChargeFromProvider({ chargeId });
+      for (const d of downstreams()) await forward(d, event);
+      return res.status(200).json({ received: true });
     }
 
-    for (const t of targets) void forward(t, event, verifHash!);
+    for (const t of targets) await forward(t, event);
+    return res.status(200).json({ received: true });
   } catch (err: any) {
     logger.error("Dispatcher failed handling event", {
       reference,
       chargeId,
       error: String(err?.message ?? err),
     });
+    return res.status(503).json({ error: "Payment verification unavailable; retry delivery" });
   }
 });

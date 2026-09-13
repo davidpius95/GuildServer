@@ -1,13 +1,14 @@
 import {
   db,
   invoices,
+  invoiceLineItems,
   plans,
   paymentTransactions,
   receipts,
   subscriptions,
   type Database,
 } from "@guildserver/database";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { appendLedgerEntry } from "./ledger";
 import { normalizeCurrency } from "./money";
 
@@ -82,11 +83,15 @@ export async function settlePaymentAttempt(args: SettlePaymentAttemptArgs): Prom
   const verifiedCurrency = normalizeCurrency(args.verifiedCurrency);
 
   return database.transaction(async (tx: DbLike) => {
+    const initial = await findPaymentTransaction(args, tx);
+    if (!initial) return { result: "ignored", reason: "unknown payment transaction" };
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"billing:" + initial.organizationId}, 0))`);
     const paymentTx = await findPaymentTransaction(args, tx);
     if (!paymentTx) {
       return { result: "ignored", reason: "unknown payment transaction" };
     }
 
+    if (paymentTx.provider !== args.provider) throw new Error("Payment provider mismatch");
     if (paymentTx.status === "succeeded") {
       const existingReceipt = paymentTx.invoiceId
         ? await tx.query.receipts.findFirst({
@@ -122,7 +127,7 @@ export async function settlePaymentAttempt(args: SettlePaymentAttemptArgs): Prom
       };
     }
 
-    if (args.verifiedStatus === "succeeded" && args.verifiedAmountCents < paymentTx.amountCents) {
+    if (args.verifiedStatus === "succeeded" && args.verifiedAmountCents !== paymentTx.amountCents) {
       await tx
         .update(paymentTransactions)
         .set({
@@ -174,8 +179,11 @@ export async function settlePaymentAttempt(args: SettlePaymentAttemptArgs): Prom
     await tx.update(paymentTransactions).set(paymentUpdate).where(eq(paymentTransactions.id, paymentTx.id));
 
     let receiptId: string | null = null;
-    if (paymentTx.purpose === "subscription") {
-      const metadata = (paymentTx.metadata ?? {}) as Record<string, unknown>;
+    // Only immutable server-catalog invoice lines can grant a plan.
+    const planLines = paymentTx.invoiceId ? await tx.query.invoiceLineItems.findMany({ where: eq(invoiceLineItems.invoiceId, paymentTx.invoiceId) }) : [];
+    const planLine = planLines.find((line: any) => line.productType === "plan" && line.metadata?.source === "catalog");
+    if (planLine) {
+      const metadata = (planLine.metadata ?? {}) as Record<string, unknown>;
       const planSlug =
         metadata.planSlug === "starter" || metadata.planSlug === "pro" ? metadata.planSlug : null;
 
@@ -187,7 +195,7 @@ export async function settlePaymentAttempt(args: SettlePaymentAttemptArgs): Prom
         if (plan) {
           const now = new Date();
           const periodEnd = new Date(now);
-          periodEnd.setMonth(periodEnd.getMonth() + 1);
+          periodEnd.setMonth(periodEnd.getMonth() + (metadata.interval === "yearly" ? 12 : 1));
 
           const existingSub = await tx.query.subscriptions.findFirst({
             where: eq(subscriptions.organizationId, paymentTx.organizationId),

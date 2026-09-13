@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { createTRPCRouter, publicProcedure, protectedProcedure } from "../trpc/trpc";
+import { createTRPCRouter, publicProcedure, protectedProcedure, adminProcedure } from "../trpc/trpc";
 import {
   plans,
   instanceTypes,
@@ -31,11 +31,13 @@ import {
   createVirtualAccount,
   listVirtualAccounts,
   listBanks,
+  settleChargeFromProvider,
 } from "../services/billing/flutterwave-v4";
 import {
   acceptQuote as acceptBillingQuote,
   createQuote as createBillingQuote,
 } from "../services/billing/quotes";
+import { planPrice, assertPaymentSelection } from "../services/billing/catalog";
 import { getInvoiceWithLines } from "../services/billing/invoices";
 
 /**
@@ -90,6 +92,7 @@ export const billingRouter = createTRPCRouter({
       description: plan.description,
       priceMonthly: plan.priceMonthly,
       priceYearly: plan.priceYearly,
+      prices: { USD: { monthly: plan.priceMonthly, yearly: plan.priceYearly }, NGN: { monthly: planPrice(plan, "NGN", "monthly"), yearly: planPrice(plan, "NGN", "yearly") } },
       limits: plan.limits as Record<string, number>,
       features: plan.features as Record<string, boolean>,
       sortOrder: plan.sortOrder,
@@ -691,7 +694,7 @@ export const billingRouter = createTRPCRouter({
       });
     }),
 
-  createQuote: protectedProcedure
+  createQuote: adminProcedure
     .input(
       z.object({
         organizationId: z.string().uuid(),
@@ -715,6 +718,31 @@ export const billingRouter = createTRPCRouter({
       } catch (err: any) {
         throw new TRPCError({ code: "BAD_REQUEST", message: String(err?.message ?? "Quote could not be created") });
       }
+    }),
+
+  createPlanQuote: protectedProcedure
+    .input(z.object({ organizationId: z.string().uuid(), planSlug: z.enum(["starter", "pro"]), currency: z.enum(["NGN", "USD"]), interval: z.enum(["monthly", "yearly"]).default("monthly") }))
+    .mutation(async ({ ctx, input }) => {
+      await assertBillingAdmin(ctx, input.organizationId);
+      const plan = await ctx.db.query.plans.findFirst({ where: and(eq(plans.slug, input.planSlug), eq(plans.isActive, true)) });
+      if (!plan) throw new TRPCError({ code: "NOT_FOUND", message: "Plan unavailable" });
+      const amount = planPrice(plan, input.currency, input.interval);
+      if (!amount) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Pricing for this currency is not available yet. Choose USD or contact support." });
+      return createBillingQuote({ organizationId: input.organizationId, currency: input.currency,
+        validUntil: new Date(Date.now() + 30 * 60_000), database: ctx.db,
+        metadata: { source: "catalog", planSlug: plan.slug, interval: input.interval },
+        lineItems: [{ productType: "plan", productId: plan.id, description: `${plan.name} — ${input.interval === "yearly" ? "12 months" : "1 month"}`,
+          unitAmountCents: amount, metadata: { planSlug: plan.slug, interval: input.interval, source: "catalog" } }],
+      });
+    }),
+
+  getPaymentStatus: protectedProcedure
+    .input(z.object({ organizationId: z.string().uuid(), paymentTransactionId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await assertBillingMember(ctx, input.organizationId);
+      const payment = await ctx.db.query.paymentTransactions.findFirst({ where: and(eq(paymentTransactions.id, input.paymentTransactionId), eq(paymentTransactions.organizationId, input.organizationId)) });
+      if (!payment) throw new TRPCError({ code: "NOT_FOUND", message: "Payment not found" });
+      return { id: payment.id, status: payment.status, invoiceId: payment.invoiceId, amountCents: payment.amountCents, currency: payment.currency };
     }),
 
   acceptQuote: protectedProcedure
@@ -791,17 +819,14 @@ export const billingRouter = createTRPCRouter({
       }
 
       try {
-        const startPayment =
-          input.paymentMethod === "card" ? startFlutterwaveCheckoutSession : startFlutterwaveCharge;
-
-        return await startPayment({
+        assertPaymentSelection(invoice.currency ?? "usd", input.paymentMethod);
+        return await startFlutterwaveCheckoutSession({
           organizationId: input.organizationId,
           amountCents: remainingCents,
           currency: invoice.currency ?? "ngn",
           purpose: "invoice",
           paymentMethod: input.paymentMethod,
-          redirectUrl: input.redirectUrl,
-          mobileMoney: input.mobileMoney as any,
+          redirectUrl: `${process.env.FRONTEND_URL || "http://localhost:3000"}/dashboard/billing`,
           invoiceId: invoice.id,
           metadata: {
             invoice_id: invoice.id,
@@ -882,28 +907,7 @@ export const billingRouter = createTRPCRouter({
         });
       }
 
-      try {
-        const startPayment =
-          input.purpose === "subscription" || input.paymentMethod === "card"
-            ? startFlutterwaveCheckoutSession
-            : startFlutterwaveCharge;
-
-        return await startPayment({
-          organizationId: input.organizationId,
-          amountCents: input.amountCents,
-          currency: input.currency,
-          purpose: input.purpose,
-          paymentMethod: input.paymentMethod,
-          redirectUrl: input.redirectUrl,
-          metadata: input.planSlug ? { planSlug: input.planSlug } : undefined,
-          mobileMoney: input.mobileMoney as any,
-        });
-      } catch (err: any) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: String(err?.message ?? "Payment could not be started"),
-        });
-      }
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Create and accept a quote, then pay its invoice from Billing." });
     }),
 
   /** Issue a bank account the org can transfer into. */
@@ -921,7 +925,7 @@ export const billingRouter = createTRPCRouter({
       if (!isFlutterwaveV4Configured()) {
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Flutterwave is not configured" });
       }
-      return createVirtualAccount(input as any);
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Pay an invoice to receive transaction-specific bank transfer instructions." });
     }),
 
   listVirtualAccounts: protectedProcedure

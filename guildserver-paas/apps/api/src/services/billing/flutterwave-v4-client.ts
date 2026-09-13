@@ -53,6 +53,7 @@ async function fetchToken(): Promise<string> {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!res.ok) {
@@ -121,6 +122,7 @@ export async function flwV4Request<T = any>(
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(15_000),
   });
 
   // A token can be invalidated server-side before its advertised expiry.
