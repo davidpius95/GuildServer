@@ -148,35 +148,47 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
   assertPaymentSelection(currency, args.paymentMethod);
   if (!args.invoiceId) throw new Error("An invoice is required for checkout");
   const reserved = await db.transaction(async (connection) => {
-  await connection.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"billing:" + args.organizationId}, 0))`);
-  const invoice = await connection.query.invoices.findFirst({ where: and(eq(invoices.id, args.invoiceId!), eq(invoices.organizationId, args.organizationId)) });
-  if (!invoice || invoice.status !== "open" || invoice.currency?.toLowerCase() !== currency.toLowerCase() || Number(invoice.amountDueCents) - Number(invoice.amountPaidCents) !== args.amountCents) throw new Error("Invoice balance changed. Refresh billing before paying.");
-  const existing = await connection.query.paymentTransactions.findMany({ where: and(eq(paymentTransactions.invoiceId, args.invoiceId!), eq(paymentTransactions.provider, "flutterwave")), orderBy: (p, { desc }) => [desc(p.createdAt)] });
-  const pending = existing.find(p => p.status === "pending" || p.status === "processing");
-  if (pending) {
-    const action = (pending.metadata as any)?.nextAction;
-    if (!action) throw new Error("A payment is being confirmed. Please check its status before trying again.");
-    if (Date.now() - new Date(pending.createdAt!).getTime() > 30 * 60_000) throw new Error("Your checkout has expired. We are checking for a payment before issuing another. Contact support if this persists.");
-    return { paymentTransactionId: pending.id, reference: pending.flutterwaveTxRef!, chargeId: pending.flutterwaveTxId, status: pending.status!, nextAction: action };
-  }
-  const reference = `GS-INVOICE-${randomUUID()}`;
+    await connection.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"billing:" + args.organizationId}, 0))`);
+    const invoice = await connection.query.invoices.findFirst({ where: and(eq(invoices.id, args.invoiceId!), eq(invoices.organizationId, args.organizationId)) });
+    if (!invoice || invoice.status !== "open" || invoice.currency?.toLowerCase() !== currency.toLowerCase() || Number(invoice.amountDueCents) - Number(invoice.amountPaidCents) !== args.amountCents) throw new Error("Invoice balance changed. Refresh billing before paying.");
+    const existing = await connection.query.paymentTransactions.findMany({ where: and(eq(paymentTransactions.invoiceId, args.invoiceId!), eq(paymentTransactions.provider, "flutterwave")), orderBy: (p, { desc }) => [desc(p.createdAt)] });
+    const pending = existing.find(p => p.status === "pending" || p.status === "processing");
+    if (pending) {
+      const isStale = Date.now() - new Date(pending.createdAt!).getTime() > 30 * 60_000;
+      if (isStale) {
+        await connection
+          .update(paymentTransactions)
+          .set({ status: "expired", updatedAt: new Date() })
+          .where(eq(paymentTransactions.id, pending.id));
+      } else {
+        const action = (pending.metadata as any)?.nextAction;
+        if (action?.redirect_url?.url) {
+          return { paymentTransactionId: pending.id, reference: pending.flutterwaveTxRef!, chargeId: pending.flutterwaveTxId, status: pending.status!, nextAction: action };
+        }
+        await connection
+          .update(paymentTransactions)
+          .set({ status: "failed", failureReason: "Checkout session was not initialized", updatedAt: new Date() })
+          .where(eq(paymentTransactions.id, pending.id));
+      }
+    }
+    const reference = `GS-INVOICE-${randomUUID()}`;
 
-  const [tx] = await connection
-    .insert(paymentTransactions)
-    .values({
-      organizationId: args.organizationId,
-      invoiceId: args.invoiceId ?? null,
-      provider: "flutterwave",
-      status: "pending",
-      purpose: args.purpose,
-      amountCents: args.amountCents,
-      currency: normalizeCurrency(currency),
-      flutterwaveTxRef: reference,
-      paymentMethodDetail: args.paymentMethod,
-      metadata: (args.metadata ?? {}) as any,
-    })
-    .returning();
-  return { tx, reference };
+    const [tx] = await connection
+      .insert(paymentTransactions)
+      .values({
+        organizationId: args.organizationId,
+        invoiceId: args.invoiceId ?? null,
+        provider: "flutterwave",
+        status: "pending",
+        purpose: args.purpose,
+        amountCents: args.amountCents,
+        currency: normalizeCurrency(currency),
+        flutterwaveTxRef: reference,
+        paymentMethodDetail: args.paymentMethod,
+        metadata: (args.metadata ?? {}) as any,
+      })
+      .returning();
+    return { tx, reference };
   });
   if (!("tx" in reserved)) return reserved;
   const { tx, reference } = reserved;
@@ -184,6 +196,9 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
 
   try {
     const customerId = await ensureFlutterwaveCustomer(args.organizationId);
+    const redirectBase = args.redirectUrl || `${process.env.FRONTEND_URL || process.env.APP_URL || "http://localhost:3000"}/dashboard/billing`;
+    const redirectUrl = `${redirectBase}${redirectBase.includes("?") ? "&" : "?"}payment=${tx.id}`;
+
     const session = await flwV4Request<{ data: any }>("/checkout/sessions", {
       method: "POST",
       idempotencyKey: reference,
@@ -192,9 +207,10 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
         amount: toMajorUnits(args.amountCents, currency),
         customer_id: customerId,
         reference,
-        redirect_url: `${args.redirectUrl}?payment=${tx.id}`,
+        redirect_url: redirectUrl,
         max_retry_attempts: 3,
         session_duration: 30,
+        payment_methods: currency === "USD" ? ["card"] : ["card", "bank_transfer"],
         meta: {
           organization_id: args.organizationId,
           payment_transaction_id: tx.id,
@@ -208,6 +224,7 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
     const checkoutUrl =
       data.checkout_url ??
       data.checkoutUrl ??
+      data.link ??
       (data.id ? `https://flutterwave.com/pay/${data.id}` : null);
 
     await db
@@ -239,7 +256,7 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
     await db
       .update(paymentTransactions)
       .set({
-        status: "processing",
+        status: "failed",
         failureReason: String(err?.message ?? err).slice(0, 1000),
         updatedAt: new Date(),
       })
@@ -250,7 +267,7 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
       reference,
       error: String(err?.message ?? err),
     });
-    throw new Error("Checkout could not be confirmed. Check Billing before trying again.");
+    throw new Error(err?.message || "Checkout could not be started. Please try again.");
   }
 }
 

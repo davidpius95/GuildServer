@@ -826,7 +826,7 @@ export const billingRouter = createTRPCRouter({
           currency: invoice.currency ?? "ngn",
           purpose: "invoice",
           paymentMethod: input.paymentMethod,
-          redirectUrl: `${process.env.FRONTEND_URL || "http://localhost:3000"}/dashboard/billing`,
+          redirectUrl: `${process.env.FRONTEND_URL || process.env.APP_URL || "http://localhost:3000"}/dashboard/billing`,
           invoiceId: invoice.id,
           metadata: {
             invoice_id: invoice.id,
@@ -948,5 +948,42 @@ export const billingRouter = createTRPCRouter({
         .orderBy(desc(paymentTransactions.createdAt))
         .limit(input.limit);
       return rows.map(p => ({ id: p.id, invoiceId: p.invoiceId, amountCents: p.amountCents, currency: p.currency, status: p.status, createdAt: p.createdAt, flutterwaveTxRef: p.flutterwaveTxRef, checkoutUrl: ["pending", "processing"].includes(p.status || "") && Date.now() - new Date(p.createdAt!).getTime() < 30 * 60_000 ? (p.metadata as any)?.nextAction?.redirect_url?.url ?? null : null }));
+    }),
+
+  /** Verify or synchronize the status of a payment transaction with Flutterwave on demand. */
+  verifyPaymentTransaction: protectedProcedure
+    .input(z.object({ organizationId: z.string().uuid(), paymentTransactionId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertBillingMember(ctx, input.organizationId);
+      const [tx] = await ctx.db
+        .select()
+        .from(paymentTransactions)
+        .where(and(eq(paymentTransactions.id, input.paymentTransactionId), eq(paymentTransactions.organizationId, input.organizationId)))
+        .limit(1);
+      if (!tx) throw new TRPCError({ code: "NOT_FOUND", message: "Payment transaction not found" });
+
+      if (tx.provider === "flutterwave" && tx.flutterwaveTxRef && ["pending", "processing"].includes(tx.status || "")) {
+        try {
+          await settleChargeFromProvider({ reference: tx.flutterwaveTxRef });
+        } catch (err: any) {
+          // Log and proceed to return current DB state
+        }
+      }
+
+      const [updated] = await ctx.db
+        .select()
+        .from(paymentTransactions)
+        .where(eq(paymentTransactions.id, input.paymentTransactionId))
+        .limit(1);
+
+      return {
+        id: updated?.id ?? tx.id,
+        status: updated?.status ?? tx.status,
+        amountCents: updated?.amountCents ?? tx.amountCents,
+        currency: updated?.currency ?? tx.currency,
+        invoiceId: updated?.invoiceId ?? tx.invoiceId,
+        flutterwaveTxRef: updated?.flutterwaveTxRef ?? tx.flutterwaveTxRef,
+        updatedAt: updated?.updatedAt ?? tx.updatedAt,
+      };
     }),
 });
