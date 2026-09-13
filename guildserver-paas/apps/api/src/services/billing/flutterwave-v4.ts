@@ -171,7 +171,7 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
           .where(eq(paymentTransactions.id, pending.id));
       }
     }
-    const reference = `GS-INVOICE-${randomUUID()}`;
+    const reference = `GS-INV-${randomUUID().replace(/-/g, "").slice(0, 24)}`;
 
     const [tx] = await connection
       .insert(paymentTransactions)

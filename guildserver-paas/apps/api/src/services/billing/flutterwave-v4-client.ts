@@ -141,16 +141,22 @@ export async function flwV4Request<T = any>(
 
   if (!res.ok || json?.status === "failed") {
     const err = (json as FlutterwaveV4Error).error;
+    const valErrors = (json as any)?.error?.validation_errors || (json as any)?.validation_errors;
+    const detail = Array.isArray(valErrors)
+      ? valErrors.map((v: any) => `${v.field_name}: ${v.message}`).join("; ")
+      : null;
     const msg = err?.message ?? `HTTP ${res.status}`;
+    const fullMsg = detail ? `${msg} (${detail})` : msg;
     logger.error("Flutterwave v4 request failed", {
       path,
       method,
       status: res.status,
       code: err?.code,
       type: err?.type,
-      message: msg,
+      message: fullMsg,
+      validationErrors: valErrors,
     });
-    throw new Error(`Flutterwave: ${msg}`);
+    throw new Error(`Flutterwave: ${fullMsg}`);
   }
 
   return json as T;
