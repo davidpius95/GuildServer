@@ -180,6 +180,7 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
   });
   if (!("tx" in reserved)) return reserved;
   const { tx, reference } = reserved;
+  if (!tx || !reference) throw new Error("Payment reservation failed");
 
   try {
     const customerId = await ensureFlutterwaveCustomer(args.organizationId);

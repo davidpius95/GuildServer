@@ -35,12 +35,12 @@ jest.mock("../../src/services/billing/invoices", () => ({
 
 import { billingRouter } from "../../src/routers/billing";
 
-function createCaller(db: any, user: any = { id: "user-1" }) {
+function createCaller(db: any, user: any = { id: "user-1" }, isAdmin = false) {
   return billingRouter.createCaller({
     db,
     user,
     isAuthenticated: Boolean(user),
-    isAdmin: false,
+    isAdmin,
   } as any);
 }
 
@@ -92,9 +92,9 @@ describe("billing router API", () => {
     });
   });
 
-  it("allows organization admins to create quotes", async () => {
+  it("allows platform admins to create custom quotes", async () => {
     const db = createDb({ role: "admin", userId: "user-1", organizationId: "22222222-2222-4222-8222-222222222222" });
-    const caller = createCaller(db);
+    const caller = createCaller(db, { id: "user-1" }, true);
 
     await caller.createQuote({
       organizationId: "22222222-2222-4222-8222-222222222222",
@@ -127,7 +127,7 @@ describe("billing router API", () => {
         currency: "USD",
         lineItems: [{ productType: "plan", description: "Pro monthly", unitAmountCents: 5000 }],
       }),
-    ).rejects.toThrow("Only organization owners or admins can manage billing");
+    ).rejects.toThrow("FORBIDDEN");
   });
 
   it("starts a Flutterwave checkout session for card payment of the remaining invoice balance", async () => {
@@ -154,26 +154,20 @@ describe("billing router API", () => {
     expect(startFlutterwaveCharge).not.toHaveBeenCalled();
   });
 
-  it("starts a direct Flutterwave charge for mobile money payment of the remaining invoice balance", async () => {
-    const caller = createCaller(createDb({ role: "owner", userId: "user-1", organizationId: "22222222-2222-4222-8222-222222222222" }));
-
-    await caller.payInvoiceWithFlutterwave({
-      organizationId: "22222222-2222-4222-8222-222222222222",
-      invoiceId: "11111111-1111-4111-8111-111111111111",
-      paymentMethod: "mobile_money",
-      mobileMoney: { network: "MTN", phoneNumber: "08012345678" },
-    });
-
-    expect(startFlutterwaveCharge).toHaveBeenCalledWith(
-      expect.objectContaining({
-        organizationId: "22222222-2222-4222-8222-222222222222",
-        invoiceId: "11111111-1111-4111-8111-111111111111",
-        amountCents: 100000,
-        currency: "ngn",
-        purpose: "invoice",
-        paymentMethod: "mobile_money",
-      }),
-    );
+  it("rejects unsupported methods before initiating payment", async () => {
+    const caller = createCaller(createDb());
+    await expect(caller.payInvoiceWithFlutterwave({ organizationId: "22222222-2222-4222-8222-222222222222", invoiceId: "11111111-1111-4111-8111-111111111111", paymentMethod: "mobile_money", mobileMoney: { network: "MTN", phoneNumber: "08012345678" } })).rejects.toThrow("Bank transfer is available for NGN");
+    expect(startFlutterwaveCharge).not.toHaveBeenCalled();
     expect(startFlutterwaveCheckoutSession).not.toHaveBeenCalled();
+  });
+  it("rejects a browser-supplied subscription amount", async () => {
+    const caller = createCaller(createDb());
+    await expect(caller.createFlutterwaveCharge({ organizationId: "22222222-2222-4222-8222-222222222222", amountCents: 1, currency: "USD", purpose: "subscription", planSlug: "pro", paymentMethod: "card" })).rejects.toThrow("Create and accept a quote");
+    expect(startFlutterwaveCheckoutSession).not.toHaveBeenCalled();
+  });
+  it("routes NGN transfers through hosted checkout", async () => {
+    const caller = createCaller(createDb());
+    await caller.payInvoiceWithFlutterwave({ organizationId: "22222222-2222-4222-8222-222222222222", invoiceId: "11111111-1111-4111-8111-111111111111", paymentMethod: "bank_transfer" });
+    expect(startFlutterwaveCheckoutSession).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 100000, currency: "ngn", paymentMethod: "bank_transfer" }));
   });
 });

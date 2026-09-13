@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import express from "express";
 import request from "supertest";
 
@@ -19,7 +20,7 @@ import { flutterwaveV4WebhookRouter } from "../../src/handlers/flutterwave-v4-we
 
 function createApp() {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ verify: (req, _res, body) => { (req as any).rawBody = body; } }));
   app.use("/", flutterwaveV4WebhookRouter);
   return app;
 }
@@ -63,4 +64,23 @@ describe("flutterwaveV4WebhookRouter", () => {
       reference: "GS-REF",
     });
   });
+  it("returns retryable failure when settlement fails", async () => {
+    settleChargeFromProvider.mockRejectedValueOnce(new Error("provider unavailable"));
+    await request(createApp()).post("/").set("verif-hash", "test-secret").send({ type: "charge.completed", data: { id: "chg_1", reference: "GS-1" } }).expect(503);
+  });
+  it("verifies a current v4 signature over the exact raw body", async () => {
+    const body = JSON.stringify({ type: "charge.completed", data: { id: "chg_1", reference: "GS-1" } });
+    const signature = createHmac("sha256", "test-secret").update(body).digest("base64");
+    await request(createApp()).post("/").set("Content-Type", "application/json").set("flutterwave-signature", signature).send(body).expect(200);
+    expect(settleChargeFromProvider).toHaveBeenCalled();
+  });
+  it("does not fall back to legacy hash when a signed payload was altered", async () => {
+    await request(createApp()).post("/").set("flutterwave-signature", "invalid").set("verif-hash", "test-secret").send({ data: { id: "chg_1" } }).expect(401);
+    expect(settleChargeFromProvider).not.toHaveBeenCalled();
+  });
+  it("does not settle refunds or payout events as charges", async () => {
+    await request(createApp()).post("/").set("verif-hash", "test-secret").send({ type: "transfer.completed", data: { id: "trf_1" } }).expect(200);
+    expect(settleChargeFromProvider).not.toHaveBeenCalled();
+  });
+
 });

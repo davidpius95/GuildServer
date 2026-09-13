@@ -1,6 +1,7 @@
 const mockState: { db?: any } = {};
 
 jest.mock("drizzle-orm", () => ({
+  sql: jest.fn(),
   eq: jest.fn((left: unknown, right: unknown) => ({ op: "eq", left, right })),
 }));
 
@@ -21,6 +22,7 @@ jest.mock("@guildserver/database", () => {
   return {
     db,
     invoices: table("invoices"),
+    invoiceLineItems: table("invoice_line_items"),
     paymentTransactions: table("payment_transactions"),
     receipts: table("receipts"),
     billingLedgerEntries: table("billing_ledger_entries"),
@@ -49,9 +51,11 @@ function createTx(options: {
   const inserted: Record<string, unknown[]> = {};
 
   const tx = {
+    execute: jest.fn(async () => []),
     updates,
     inserted,
     query: {
+      invoiceLineItems: { findMany: jest.fn(async () => []) },
       paymentTransactions: {
         findFirst: jest.fn(async () => options.paymentTx ?? null),
       },
@@ -102,6 +106,7 @@ describe("settlePaymentAttempt", () => {
       },
       invoice: {
         id: "invoice-1",
+        organizationId: "org-1", currency: "usd", status: "open",
         amountDueCents: 5000,
         amountPaidCents: 0,
         paidAt: null,

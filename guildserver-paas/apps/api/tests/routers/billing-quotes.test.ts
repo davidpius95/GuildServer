@@ -1,6 +1,7 @@
 const mockState: { db?: any } = {};
 
 jest.mock("drizzle-orm", () => ({
+  sql: jest.fn(),
   eq: jest.fn((left: unknown, right: unknown) => ({ op: "eq", left, right })),
 }));
 
@@ -56,6 +57,7 @@ function createTx(options: {
   const inserted: Record<string, unknown[]> = {};
 
   const tx = {
+    execute: jest.fn(async () => []),
     updates,
     inserted,
     query: {

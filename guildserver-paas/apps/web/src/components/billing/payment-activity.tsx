@@ -1,7 +1,7 @@
 "use client"
 import { useEffect, useState } from "react"
 import { trpc } from "@/components/trpc-provider"
-import { CheckCircle2, Clock, CircleAlert, ExternalLink } from "lucide-react"
+import { CheckCircle2, Clock, AlertCircle, ExternalLink } from "lucide-react"
 
 export function PaymentActivity({ organizationId }: { organizationId: string }) {
   const utils = trpc.useUtils()
@@ -25,7 +25,7 @@ export function PaymentActivity({ organizationId }: { organizationId: string }) 
     <div className="divide-y">{payments.data?.map(p => {
       const success = p.status === "succeeded", pending = ["pending", "processing"].includes(p.status || "")
       const action = (p as any).checkoutUrl
-      return <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"><div className="flex min-w-0 items-center gap-3">{success ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : pending ? <Clock className="h-4 w-4 shrink-0 text-amber-600" /> : <CircleAlert className="h-4 w-4 shrink-0 text-muted-foreground" />}<div><p className="font-medium tabular-nums">{new Intl.NumberFormat("en-NG", { style: "currency", currency: p.currency || "USD" }).format(p.amountCents / 100)}</p><p className="break-all text-xs text-muted-foreground">{p.flutterwaveTxRef || p.id}</p></div></div><div className="text-right"><p className="capitalize">{success ? "Paid" : p.status}</p>{pending && action && <a className="inline-flex items-center gap-1 text-xs text-primary underline" href={action}>Resume checkout<ExternalLink className="h-3 w-3" /></a>}</div></div>
+      return <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"><div className="flex min-w-0 items-center gap-3">{success ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : pending ? <Clock className="h-4 w-4 shrink-0 text-amber-600" /> : <AlertCircle className="h-4 w-4 shrink-0 text-muted-foreground" />}<div><p className="font-medium tabular-nums">{new Intl.NumberFormat("en-NG", { style: "currency", currency: p.currency || "USD" }).format(p.amountCents / 100)}</p><p className="break-all text-xs text-muted-foreground">{p.flutterwaveTxRef || p.id}</p></div></div><div className="text-right"><p className="capitalize">{success ? "Paid" : p.status}</p>{pending && action && <a className="inline-flex items-center gap-1 text-xs text-primary underline" href={action}>Resume checkout<ExternalLink className="h-3 w-3" /></a>}</div></div>
     })}</div>
   </section>
 }
