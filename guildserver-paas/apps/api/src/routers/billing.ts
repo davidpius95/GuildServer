@@ -785,6 +785,14 @@ export const billingRouter = createTRPCRouter({
         invoiceId: z.string().uuid(),
         paymentMethod: z.enum(["card", "bank_transfer", "mobile_money", "ussd"]),
         redirectUrl: z.string().url().optional(),
+        card: z
+          .object({
+            cardNumber: z.string().min(12).max(23),
+            expiryMonth: z.string().min(1).max(2),
+            expiryYear: z.string().min(2).max(4),
+            cvv: z.string().min(3).max(4),
+          })
+          .optional(),
         mobileMoney: z
           .object({
             network: z.string().min(2),
@@ -826,6 +834,7 @@ export const billingRouter = createTRPCRouter({
           currency: invoice.currency ?? "ngn",
           purpose: "invoice",
           paymentMethod: input.paymentMethod,
+          card: input.card,
           redirectUrl: `${process.env.FRONTEND_URL || process.env.APP_URL || "http://localhost:3000"}/dashboard/billing`,
           invoiceId: invoice.id,
           metadata: {

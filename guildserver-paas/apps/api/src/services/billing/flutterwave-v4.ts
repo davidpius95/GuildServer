@@ -15,7 +15,7 @@
  *     instead of creating a second charge.
  */
 
-import { randomUUID } from "node:crypto";
+import crypto, { randomUUID, randomBytes, createCipheriv } from "node:crypto";
 import { db, paymentTransactions, organizations, invoices, members, users } from "@guildserver/database";
 import { eq, and, sql } from "drizzle-orm";
 import { flwV4Request, isFlutterwaveV4Configured } from "./flutterwave-v4-client";
@@ -187,8 +187,69 @@ export async function ensureFlutterwaveCustomer(organizationId: string): Promise
 }
 
 // ---------------------------------------------------------------------------
-// Charges
-// ---------------------------------------------------------------------------
+export interface CardPaymentDetails {
+  cardNumber: string;
+  expiryMonth: string;
+  expiryYear: string;
+  cvv: string;
+}
+
+export function encryptCardPayload(
+  card: CardPaymentDetails,
+  encryptionKeyBase64: string,
+): {
+  encryptedCardNumber: string;
+  encryptedExpiryMonth: string;
+  encryptedExpiryYear: string;
+  encryptedCvv: string;
+  nonce: string;
+} {
+  const key = Buffer.from(encryptionKeyBase64, "base64");
+  if (key.length !== 32) {
+    throw new Error(`Flutterwave v4 encryption key must be 32 bytes (got ${key.length})`);
+  }
+
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let nonce = "";
+  const random = randomBytes(12);
+  for (let i = 0; i < 12; i++) {
+    nonce += chars[random[i] % chars.length];
+  }
+  const nonceBuf = Buffer.from(nonce, "utf8");
+
+  function encryptField(val: string): string {
+    const cipher = createCipheriv("aes-256-gcm", key, nonceBuf);
+    const enc = Buffer.concat([cipher.update(val, "utf8"), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return Buffer.concat([enc, tag]).toString("base64");
+  }
+
+  const cleanNumber = card.cardNumber.replace(/\D/g, "");
+  const cleanMonth = card.expiryMonth.replace(/\D/g, "").padStart(2, "0");
+  const cleanYear = card.expiryYear.replace(/\D/g, "").slice(-2);
+  const cleanCvv = card.cvv.replace(/\D/g, "");
+
+  if (cleanNumber.length < 12 || cleanNumber.length > 19) {
+    throw new Error("Invalid card number format");
+  }
+  if (!cleanMonth || Number(cleanMonth) < 1 || Number(cleanMonth) > 12) {
+    throw new Error("Invalid card expiry month (01-12)");
+  }
+  if (!cleanYear || cleanYear.length !== 2) {
+    throw new Error("Invalid card expiry year (2 digits)");
+  }
+  if (cleanCvv.length < 3 || cleanCvv.length > 4) {
+    throw new Error("Invalid CVV (3-4 digits)");
+  }
+
+  return {
+    encryptedCardNumber: encryptField(cleanNumber),
+    encryptedExpiryMonth: encryptField(cleanMonth),
+    encryptedExpiryYear: encryptField(cleanYear),
+    encryptedCvv: encryptField(cleanCvv),
+    nonce,
+  };
+}
 
 export interface CreateChargeArgs {
   organizationId: string;
@@ -199,6 +260,7 @@ export interface CreateChargeArgs {
   paymentMethod: FlutterwavePaymentMethod;
   /** Where to send the payer after a redirect-based flow (card 3DS, USSD). */
   redirectUrl?: string;
+  card?: CardPaymentDetails;
   /** Mobile money needs the payer's network and number. */
   mobileMoney?: { network: string; phoneNumber: string; countryCode?: string };
   invoiceId?: string;
@@ -320,59 +382,150 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
       };
     }
 
-    const customerId = await ensureFlutterwaveCustomer(args.organizationId);
-    const redirectBase = args.redirectUrl || `${process.env.FRONTEND_URL || process.env.APP_URL || "http://localhost:3000"}/dashboard/billing`;
-    const redirectUrl = `${redirectBase}${redirectBase.includes("?") ? "&" : "?"}payment=${tx.id}`;
+    if (args.paymentMethod === "card") {
+      if (!args.card) {
+        throw new Error(
+          "Please enter your card number, expiry date, and CVV to proceed with card payment, or choose Bank Transfer (instant virtual account)."
+        );
+      }
 
-    const session = await flwV4Request<{ data: any }>("/checkout/sessions", {
-      method: "POST",
-      idempotencyKey: reference,
-      body: {
-        currency,
-        amount: toMajorUnits(args.amountCents, currency),
-        customer_id: customerId,
-        reference,
-        redirect_url: redirectUrl,
-        max_retry_attempts: 3,
-        session_duration: 30,
-        payment_methods: ["card"],
-        meta: {
-          organization_id: args.organizationId,
-          payment_transaction_id: tx.id,
-          purpose: args.purpose,
-          ...(args.metadata ?? {}),
+      const encryptionKey = process.env.FLW_V4_ENCRIPTION_KEY;
+      if (!encryptionKey) {
+        throw new Error(
+          "Card processing is temporarily unavailable (encryption key not configured). Please choose Bank Transfer (instant virtual account)."
+        );
+      }
+
+      const enc = encryptCardPayload(args.card, encryptionKey);
+
+      // Create payment method with encrypted card payload
+      const pmdRes = await flwV4Request<{ data: any }>("/payment-methods", {
+        method: "POST",
+        idempotencyKey: `pmd-${reference.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)}`,
+        body: {
+          type: "card",
+          card: {
+            encrypted_card_number: enc.encryptedCardNumber,
+            encrypted_expiry_month: enc.encryptedExpiryMonth,
+            encrypted_expiry_year: enc.encryptedExpiryYear,
+            encrypted_cvv: enc.encryptedCvv,
+            nonce: enc.nonce,
+          },
         },
-      },
-    });
+      });
 
-    const data = session?.data ?? {};
-    const checkoutUrl = data.checkout_url ?? data.checkoutUrl ?? data.link ?? null;
+      const paymentMethodId = pmdRes?.data?.id;
+      if (!paymentMethodId) {
+        throw new Error("Could not register card payment method with Flutterwave");
+      }
 
-    if (!checkoutUrl) {
-      throw new Error("Card checkout is unavailable. Please choose Bank Transfer (instant virtual account) to complete your payment.");
+      const customerId = await ensureFlutterwaveCustomer(args.organizationId);
+      const redirectBase =
+        args.redirectUrl ||
+        `${process.env.FRONTEND_URL || process.env.APP_URL || "http://localhost:3000"}/dashboard/billing`;
+      const redirectUrl = `${redirectBase}${redirectBase.includes("?") ? "&" : "?"}payment=${tx.id}`;
+
+      const charge = await flwV4Request<{ data: any }>("/charges", {
+        method: "POST",
+        idempotencyKey: reference,
+        body: {
+          amount: toMajorUnits(args.amountCents, currency),
+          currency,
+          customer_id: customerId,
+          payment_method_id: paymentMethodId,
+          reference,
+          redirect_url: redirectUrl,
+          meta: {
+            organization_id: args.organizationId,
+            payment_transaction_id: tx.id,
+            purpose: args.purpose,
+            ...(args.metadata ?? {}),
+          },
+        },
+      });
+
+      const data = charge?.data ?? {};
+      const status = mapChargeStatus(data.status);
+
+      if (status === "succeeded") {
+        await db
+          .update(paymentTransactions)
+          .set({
+            flutterwaveTxId: data.id ?? null,
+            status: "succeeded",
+            paidAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(paymentTransactions.id, tx.id));
+
+        if (args.invoiceId) {
+          await settlePaymentAttempt({
+            provider: "flutterwave",
+            providerReference: data.id ?? reference,
+            paymentTransactionId: tx.id,
+            verifiedStatus: "succeeded",
+            verifiedAmountCents: args.amountCents,
+            verifiedCurrency: currency,
+            providerPaymentMethodDetail: "card",
+            rawProviderPayload: data,
+          });
+        }
+
+        return {
+          paymentTransactionId: tx.id,
+          reference,
+          chargeId: data.id ?? null,
+          status: "succeeded",
+          nextAction: null,
+        };
+      }
+
+      const redirectActionUrl = data.next_action?.redirect_url?.url || data.redirect_url;
+      if (redirectActionUrl) {
+        const nextAction = {
+          type: "redirect_url",
+          redirect_url: { url: redirectActionUrl },
+        };
+
+        await db
+          .update(paymentTransactions)
+          .set({
+            flutterwaveTxId: data.id ?? null,
+            metadata: { ...(args.metadata ?? {}), nextAction },
+            status: "pending",
+            updatedAt: new Date(),
+          })
+          .where(and(eq(paymentTransactions.id, tx.id), eq(paymentTransactions.status, "pending")));
+
+        return {
+          paymentTransactionId: tx.id,
+          reference,
+          chargeId: data.id ?? null,
+          status: "pending",
+          nextAction,
+        };
+      }
+
+      if (status === "failed") {
+        const reason =
+          data.processor_response?.message ||
+          data.processor_response?.type ||
+          "Card payment was declined by your bank";
+        throw new Error(
+          `${reason}. Please verify your card details or choose Bank Transfer (instant virtual account) to complete payment.`
+        );
+      }
+
+      return {
+        paymentTransactionId: tx.id,
+        reference,
+        chargeId: data.id ?? null,
+        status: "pending",
+        nextAction: data.next_action ?? null,
+      };
     }
 
-    await db
-      .update(paymentTransactions)
-      .set({
-        flutterwaveTxId: data.id ?? null,
-        metadata: { ...(args.metadata ?? {}), nextAction: { type: "redirect_url", redirect_url: { url: checkoutUrl } } },
-        status: "pending",
-        updatedAt: new Date(),
-      })
-      .where(and(eq(paymentTransactions.id, tx.id), eq(paymentTransactions.status, "pending")));
-
-    return {
-      paymentTransactionId: tx.id,
-      reference,
-      chargeId: data.id ?? null,
-      status: "pending",
-      nextAction: {
-        type: "redirect_url",
-        redirect_url: { url: checkoutUrl },
-        checkoutSessionId: data.id ?? null,
-      },
-    };
+    throw new Error(`Unsupported payment method: ${args.paymentMethod}`);
   } catch (err: any) {
     await db
       .update(paymentTransactions)

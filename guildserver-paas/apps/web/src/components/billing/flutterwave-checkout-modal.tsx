@@ -27,6 +27,7 @@ import {
   Check,
   ExternalLink,
   RefreshCw,
+  Lock,
 } from "lucide-react"
 
 type Currency = "USD" | "NGN"
@@ -41,6 +42,32 @@ interface BankTransferDetails {
   expiresAt: string | null
   reference: string
   note?: string
+}
+
+function formatCardNumber(val: string): string {
+  const digits = val.replace(/\D/g, "").slice(0, 19)
+  const parts: string[] = []
+  for (let i = 0; i < digits.length; i += 4) {
+    parts.push(digits.slice(i, i + 4))
+  }
+  return parts.join(" ")
+}
+
+function formatCardExpiry(val: string): string {
+  const digits = val.replace(/\D/g, "").slice(0, 4)
+  if (digits.length >= 3) {
+    return `${digits.slice(0, 2)}/${digits.slice(2)}`
+  }
+  return digits
+}
+
+function detectCardBrand(number: string): string {
+  const clean = number.replace(/\D/g, "")
+  if (/^4/.test(clean)) return "Visa"
+  if (/^(5[1-5]|2[2-7])/.test(clean)) return "Mastercard"
+  if (/^(506|507|650|504)/.test(clean)) return "Verve"
+  if (/^3[47]/.test(clean)) return "Amex"
+  return clean.length > 0 ? "Card" : ""
 }
 
 function formatCurrency(amountCents: number, currency: string) {
@@ -70,9 +97,12 @@ export function FlutterwaveCheckoutModal(props: {
 }) {
   const { open, onOpenChange, organizationId, invoiceId, planSlug, planName } = props
 
-  const [currency, setCurrency] = useState<Currency>("USD")
+  const [currency, setCurrency] = useState<Currency>("NGN")
   const [interval, setInterval] = useState<Interval>("monthly")
-  const [method, setMethod] = useState<PaymentMethod>("card")
+  const [method, setMethod] = useState<PaymentMethod>("bank_transfer")
+  const [cardNumber, setCardNumber] = useState("")
+  const [cardExpiry, setCardExpiry] = useState("")
+  const [cardCvv, setCardCvv] = useState("")
   const [quote, setQuote] = useState<any>(null)
   const [acceptedInvoice, setAcceptedInvoice] = useState<any>(null)
   const [bankTransfer, setBankTransfer] = useState<BankTransferDetails | null>(null)
@@ -114,7 +144,10 @@ export function FlutterwaveCheckoutModal(props: {
       setVerifying(false)
       setVerifyMessage("")
       setError("")
-      const initialCurr = (props.fixedCurrency?.toUpperCase() as Currency) || "USD"
+      setCardNumber("")
+      setCardExpiry("")
+      setCardCvv("")
+      const initialCurr = (props.fixedCurrency?.toUpperCase() as Currency) || "NGN"
       setCurrency(initialCurr)
       setMethod(initialCurr === "NGN" ? "bank_transfer" : "card")
       setBusy(false)
@@ -207,6 +240,35 @@ export function FlutterwaveCheckoutModal(props: {
     }
   }, [open, activeCurrency])
 
+  async function handleSwitchToNgn() {
+    setBusy(true)
+    setError("")
+    try {
+      const slug =
+        planSlug ||
+        (targetInvoice?.lineItems?.[0]?.metadata?.planSlug as any) ||
+        "starter"
+      const createdQuote = await createQuoteMutation.mutateAsync({
+        organizationId,
+        planSlug: slug,
+        currency: "NGN",
+        interval,
+      })
+      const accepted = await acceptQuoteMutation.mutateAsync({
+        organizationId,
+        quoteId: createdQuote.id,
+      })
+      setAcceptedInvoice(accepted)
+      setCurrency("NGN")
+      setMethod("bank_transfer")
+      await utils.billing.invalidate()
+    } catch (e: any) {
+      setError(e?.message || "Could not switch currency to NGN.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const remainingBalance = targetInvoice
     ? Math.max(
         (targetInvoice.amountDueCents || 0) -
@@ -284,11 +346,47 @@ export function FlutterwaveCheckoutModal(props: {
       const activeMethod: PaymentMethod =
         activeCurrency === "USD" ? "card" : method
 
+      let cardPayload:
+        | { cardNumber: string; expiryMonth: string; expiryYear: string; cvv: string }
+        | undefined
+      if (activeMethod === "card") {
+        const cleanCard = cardNumber.replace(/\D/g, "")
+        const [expM, expY] = cardExpiry.split("/")
+        const cleanMonth = (expM || "").trim()
+        const cleanYear = (expY || "").trim()
+        const cleanCvv = cardCvv.trim()
+
+        if (cleanCard.length < 12) {
+          throw new Error("Please enter a valid card number (16-19 digits).")
+        }
+        if (!cleanMonth || !cleanYear || cleanMonth.length < 1 || cleanYear.length < 2) {
+          throw new Error("Please enter a valid expiry date (MM/YY).")
+        }
+        if (cleanCvv.length < 3) {
+          throw new Error("Please enter a valid CVV (3 or 4 digits).")
+        }
+
+        cardPayload = {
+          cardNumber: cleanCard,
+          expiryMonth: cleanMonth,
+          expiryYear: cleanYear,
+          cvv: cleanCvv,
+        }
+      }
+
       const result = await paymentMutation.mutateAsync({
         organizationId,
         invoiceId: invoiceToPay.id,
         paymentMethod: activeMethod,
+        card: cardPayload,
       })
+
+      if (result.status === "succeeded") {
+        setPaymentSuccess(true)
+        await utils.billing.invalidate()
+        setBusy(false)
+        return
+      }
 
       const action = result.nextAction as any
 
@@ -300,7 +398,7 @@ export function FlutterwaveCheckoutModal(props: {
         return
       }
 
-      // Card / Hosted checkout
+      // Card / Hosted 3DS checkout redirect
       const url = action?.redirect_url?.url || action?.redirect_url
       if (typeof url === "string" && url.startsWith("https://")) {
         window.location.assign(url)
@@ -755,6 +853,27 @@ export function FlutterwaveCheckoutModal(props: {
                   ))}
                 </div>
 
+                {/* Switch to NGN for USD invoices banner */}
+                {activeCurrency === "USD" && (
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 flex items-center justify-between text-xs">
+                    <div>
+                      <p className="font-semibold text-foreground">Nigerian Bank Transfer Available</p>
+                      <p className="text-muted-foreground mt-0.5">
+                        Switch to NGN (₦15,000) for instant dedicated virtual account transfer.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleSwitchToNgn}
+                      disabled={busy}
+                      className="shrink-0 text-xs font-semibold h-8 ml-2"
+                    >
+                      Pay in NGN (₦15,000)
+                    </Button>
+                  </div>
+                )}
+
                 {/* Total Balance */}
                 <div className="border-t pt-3 flex items-center justify-between">
                   <div>
@@ -826,10 +945,74 @@ export function FlutterwaveCheckoutModal(props: {
                     )}
                   </div>
 
+                  {method === "card" && (
+                    <div className="rounded-xl border bg-card p-3.5 space-y-3 mt-2 transition-all">
+                      <div className="flex items-center justify-between border-b pb-2">
+                        <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                          <Lock className="h-3.5 w-3.5 text-primary" />
+                          Card Details
+                        </span>
+                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-mono">
+                          <span className="px-1.5 py-0.5 rounded bg-muted/70 font-semibold">Visa</span>
+                          <span className="px-1.5 py-0.5 rounded bg-muted/70 font-semibold">Mastercard</span>
+                          <span className="px-1.5 py-0.5 rounded bg-muted/70 font-semibold">Verve</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-medium text-muted-foreground block mb-1">
+                          Card Number
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="0000 0000 0000 0000"
+                            value={cardNumber}
+                            onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                            maxLength={23}
+                            className="h-9 w-full rounded-lg border bg-background px-3 pr-14 font-mono text-sm tracking-wide focus:ring-2 focus:ring-primary focus:outline-none"
+                          />
+                          <div className="absolute right-2.5 top-2 text-xs font-medium text-primary uppercase">
+                            {detectCardBrand(cardNumber)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="text-[11px] font-medium text-muted-foreground block mb-1">
+                            Expiry Date
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="MM/YY"
+                            value={cardExpiry}
+                            onChange={(e) => setCardExpiry(formatCardExpiry(e.target.value))}
+                            maxLength={5}
+                            className="h-9 w-full rounded-lg border bg-background px-3 font-mono text-sm tracking-wide focus:ring-2 focus:ring-primary focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-muted-foreground block mb-1">
+                            CVV / CVC
+                          </label>
+                          <input
+                            type="password"
+                            placeholder="123"
+                            value={cardCvv}
+                            onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                            maxLength={4}
+                            className="h-9 w-full rounded-lg border bg-background px-3 font-mono text-sm tracking-wide focus:ring-2 focus:ring-primary focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <p className="text-xs text-muted-foreground mt-1">
                     {method === "bank_transfer"
                       ? "A dedicated Nigerian bank account will be generated immediately for instant transfer."
-                      : "You will be connected to secure card processing to complete your payment."}
+                      : "Card payments are encrypted and processed securely via Flutterwave."}
                   </p>
                 </div>
               )}
@@ -838,14 +1021,32 @@ export function FlutterwaveCheckoutModal(props: {
 
           {/* Error Message */}
           {!paymentSuccess && (error || invoiceDetail.error || plansQuery.error) && (
-            <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3.5 flex items-start gap-2.5 text-sm text-red-600 dark:text-red-400">
-              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-              <div className="flex-1">
-                <p className="font-medium text-xs">Payment issue encountered</p>
-                <p className="text-xs mt-0.5">
-                  {error || invoiceDetail.error?.message || plansQuery.error?.message}
-                </p>
+            <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3.5 space-y-2 text-sm text-red-600 dark:text-red-400">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="font-medium text-xs">Payment issue encountered</p>
+                  <p className="text-xs mt-0.5">
+                    {error || invoiceDetail.error?.message || plansQuery.error?.message}
+                  </p>
+                </div>
               </div>
+
+              {activeCurrency === "NGN" && method === "card" && (
+                <div className="pt-1 flex items-center justify-end">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs border-red-500/30 hover:bg-red-500/10 text-foreground"
+                    onClick={() => {
+                      setMethod("bank_transfer")
+                      setError("")
+                    }}
+                  >
+                    Switch to Bank Transfer (Instant Virtual Account)
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
@@ -898,14 +1099,15 @@ export function FlutterwaveCheckoutModal(props: {
                       isFlutterwaveUnavailable ||
                       !!isQuoteExpired ||
                       !(remainingBalance > 0) ||
-                      (invoiceId ? !targetInvoice : !quote)
+                      (invoiceId ? !targetInvoice : !quote) ||
+                      (method === "card" && (cardNumber.replace(/\D/g, "").length < 12 || cardExpiry.length < 5 || cardCvv.length < 3))
                     }
                     onClick={handlePay}
                   >
                     {busy ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        {method === "bank_transfer" ? "Generating Account…" : "Connecting to Checkout…"}
+                        {method === "bank_transfer" ? "Generating Account…" : "Processing Card…"}
                       </>
                     ) : (
                       <>
@@ -914,6 +1116,8 @@ export function FlutterwaveCheckoutModal(props: {
                           ? "Paid in Full"
                           : method === "bank_transfer"
                           ? "Generate Account & Pay"
+                          : method === "card"
+                          ? `Pay ${formatCurrency(remainingBalance, activeCurrency)} with Card`
                           : targetInvoice
                           ? "Continue to Payment"
                           : "Accept Quote & Pay"}
