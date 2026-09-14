@@ -342,7 +342,7 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
         currency,
         accountType: "dynamic",
         amountCents: args.amountCents,
-        narration: (args.metadata?.invoice_number as string) || "GuildServer",
+        narration: "GuildServer",
         reference,
       });
 
@@ -351,6 +351,8 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
         bank_transfer: {
           accountNumber: va.accountNumber,
           bankName: va.bankName,
+          accountName: va.accountName || "GuildServer",
+          beneficiaryName: "GuildServer",
           amount: toMajorUnits(args.amountCents, currency),
           currency,
           expiresAt: va.expiresAt,
@@ -728,6 +730,7 @@ export interface VirtualAccountResult {
   id: string;
   accountNumber: string;
   bankName: string;
+  accountName?: string;
   reference: string;
   status: string;
   expiresAt: string | null;
@@ -757,8 +760,11 @@ export async function createVirtualAccount(args: {
     customer_id: customerId,
     reference,
     account_type: args.accountType ?? "static",
-    narration: args.narration ?? "GuildServer",
-    meta: { organization_id: args.organizationId },
+    narration: "GuildServer",
+    meta: {
+      organization_id: args.organizationId,
+      ...(args.narration && args.narration !== "GuildServer" ? { invoice_reference: args.narration } : {}),
+    },
   };
 
   if (args.accountType === "dynamic") {
@@ -785,6 +791,7 @@ export async function createVirtualAccount(args: {
     id: d.id,
     accountNumber: d.account_number,
     bankName: d.account_bank_name,
+    accountName: d.account_name ?? "GuildServer",
     reference: d.reference ?? reference,
     status: d.status,
     expiresAt: d.account_expiration_datetime ?? null,

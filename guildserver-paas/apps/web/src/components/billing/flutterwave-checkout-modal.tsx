@@ -37,6 +37,8 @@ type PaymentMethod = "card" | "bank_transfer"
 interface BankTransferDetails {
   accountNumber: string
   bankName: string
+  accountName?: string
+  beneficiaryName?: string
   amount: number
   currency: string
   expiresAt: string | null
@@ -619,7 +621,7 @@ export function FlutterwaveCheckoutModal(props: {
 
                 <div className="flex items-center justify-between pt-1 text-xs">
                   <span className="text-muted-foreground">Beneficiary Name</span>
-                  <span className="font-medium text-foreground">GuildServer Payment</span>
+                  <span className="font-medium text-foreground">{bankTransfer.beneficiaryName || bankTransfer.accountName || "GuildServer"}</span>
                 </div>
 
                 <div className="flex items-center justify-between pt-1 text-xs">
