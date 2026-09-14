@@ -114,8 +114,9 @@ export function FlutterwaveCheckoutModal(props: {
       setVerifying(false)
       setVerifyMessage("")
       setError("")
-      setCurrency((props.fixedCurrency?.toUpperCase() as Currency) || "USD")
-      setMethod("card")
+      const initialCurr = (props.fixedCurrency?.toUpperCase() as Currency) || "USD"
+      setCurrency(initialCurr)
+      setMethod(initialCurr === "NGN" ? "bank_transfer" : "card")
       setBusy(false)
     }
   }, [open, invoiceId, planSlug, props.fixedCurrency])
@@ -198,6 +199,13 @@ export function FlutterwaveCheckoutModal(props: {
     quote?.currency ||
     currency
   ).toUpperCase()
+
+  // Automatically select bank_transfer for NGN payments
+  useEffect(() => {
+    if (open && activeCurrency === "NGN") {
+      setMethod("bank_transfer")
+    }
+  }, [open, activeCurrency])
 
   const remainingBalance = targetInvoice
     ? Math.max(
