@@ -16,7 +16,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { db, paymentTransactions, organizations, invoices } from "@guildserver/database";
+import { db, paymentTransactions, organizations, invoices, members, users } from "@guildserver/database";
 import { eq, and, sql } from "drizzle-orm";
 import { flwV4Request, isFlutterwaveV4Configured } from "./flutterwave-v4-client";
 import { assertPositiveMinorAmount, normalizeCurrency, toMajorUnits, toMinorUnits } from "./money";
@@ -84,30 +84,106 @@ export async function ensureFlutterwaveCustomer(organizationId: string): Promise
 
   const meta = (org.metadata ?? {}) as Record<string, unknown>;
   const existing = meta.flutterwaveCustomerId;
-  if (typeof existing === "string" && existing.startsWith("cus_")) {
+
+  // Resolve best email: billingEmail on meta, or org owner's email
+  let targetEmail = typeof meta.billingEmail === "string" ? meta.billingEmail.trim() : "";
+  if (!targetEmail || targetEmail.includes("+")) {
+    const [ownerRecord] = await db
+      .select({ email: users.email })
+      .from(members)
+      .innerJoin(users, eq(users.id, members.userId))
+      .where(and(eq(members.organizationId, organizationId), eq(members.role, "owner")))
+      .limit(1);
+
+    if (ownerRecord?.email && !ownerRecord.email.includes("+")) {
+      targetEmail = ownerRecord.email.trim();
+    }
+  }
+
+  if (!targetEmail) {
+    targetEmail = `billing@guild-technologies.com`;
+  }
+
+  // If already cached with matching email, return it
+  if (
+    typeof existing === "string" &&
+    existing.startsWith("cus_") &&
+    meta.flutterwaveCustomerEmail === targetEmail
+  ) {
     return existing;
   }
 
-  const created = await flwV4Request<{ data: FlwCustomer }>("/customers", {
-    method: "POST",
-    idempotencyKey: `cus-${organizationId}`,
-    body: {
-      email: (meta.billingEmail as string) || `billing+${organizationId}@guild-technologies.com`,
-      name: { first: org.name?.slice(0, 100) ?? "GuildServer", last: "Org" },
-      meta: { organization_id: organizationId },
-    },
-  });
+  // Check if customer already exists on Flutterwave by email
+  try {
+    const searchRes = await flwV4Request<{ data: FlwCustomer[] }>(
+      `/customers?email=${encodeURIComponent(targetEmail)}`
+    );
+    const matched = searchRes.data?.find((c) => c.email?.toLowerCase() === targetEmail.toLowerCase());
+    if (matched?.id) {
+      await db
+        .update(organizations)
+        .set({
+          metadata: {
+            ...meta,
+            flutterwaveCustomerId: matched.id,
+            flutterwaveCustomerEmail: targetEmail,
+          },
+        })
+        .where(eq(organizations.id, organizationId));
+      return matched.id;
+    }
+  } catch {
+    // Continue to creation if search fails
+  }
 
-  const customerId = created?.data?.id;
-  if (!customerId) throw new Error("Flutterwave did not return a customer id");
+  try {
+    const created = await flwV4Request<{ data: FlwCustomer }>("/customers", {
+      method: "POST",
+      idempotencyKey: `cus-${organizationId}-${Buffer.from(targetEmail).toString("hex").slice(0, 10)}`,
+      body: {
+        email: targetEmail,
+        name: { first: org.name?.slice(0, 100) ?? "GuildServer", last: "Org" },
+        meta: { organization_id: organizationId },
+      },
+    });
 
-  await db
-    .update(organizations)
-    .set({ metadata: { ...meta, flutterwaveCustomerId: customerId } })
-    .where(eq(organizations.id, organizationId));
+    const customerId = created?.data?.id;
+    if (!customerId) throw new Error("Flutterwave did not return a customer id");
 
-  logger.info("Created Flutterwave customer", { organizationId, customerId });
-  return customerId;
+    await db
+      .update(organizations)
+      .set({
+        metadata: {
+          ...meta,
+          flutterwaveCustomerId: customerId,
+          flutterwaveCustomerEmail: targetEmail,
+        },
+      })
+      .where(eq(organizations.id, organizationId));
+
+    logger.info("Created Flutterwave customer", { organizationId, customerId, email: targetEmail });
+    return customerId;
+  } catch (err: any) {
+    // If conflict, re-fetch customer by email
+    const searchRes = await flwV4Request<{ data: FlwCustomer[] }>(
+      `/customers?email=${encodeURIComponent(targetEmail)}`
+    );
+    const matched = searchRes.data?.find((c) => c.email?.toLowerCase() === targetEmail.toLowerCase());
+    if (matched?.id) {
+      await db
+        .update(organizations)
+        .set({
+          metadata: {
+            ...meta,
+            flutterwaveCustomerId: matched.id,
+            flutterwaveCustomerEmail: targetEmail,
+          },
+        })
+        .where(eq(organizations.id, organizationId));
+      return matched.id;
+    }
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +238,9 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
           .where(eq(paymentTransactions.id, pending.id));
       } else {
         const action = (pending.metadata as any)?.nextAction;
+        if (action?.type === "bank_transfer" && action.bank_transfer) {
+          return { paymentTransactionId: pending.id, reference: pending.flutterwaveTxRef!, chargeId: pending.flutterwaveTxId, status: pending.status!, nextAction: action };
+        }
         if (action?.redirect_url?.url) {
           return { paymentTransactionId: pending.id, reference: pending.flutterwaveTxRef!, chargeId: pending.flutterwaveTxId, status: pending.status!, nextAction: action };
         }
@@ -195,6 +274,52 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
   if (!tx || !reference) throw new Error("Payment reservation failed");
 
   try {
+    if (args.paymentMethod === "bank_transfer") {
+      const va = await createVirtualAccount({
+        organizationId: args.organizationId,
+        currency,
+        accountType: "dynamic",
+        amountCents: args.amountCents,
+        narration: (args.metadata?.invoice_number as string) || "GuildServer",
+        reference,
+      });
+
+      const nextAction = {
+        type: "bank_transfer",
+        bank_transfer: {
+          accountNumber: va.accountNumber,
+          bankName: va.bankName,
+          amount: toMajorUnits(args.amountCents, currency),
+          currency,
+          expiresAt: va.expiresAt,
+          reference: va.reference,
+          note: "Transfer the exact amount to the virtual account details above.",
+        },
+      };
+
+      await db
+        .update(paymentTransactions)
+        .set({
+          flutterwaveTxId: va.id ?? null,
+          flutterwaveTxRef: va.reference,
+          metadata: {
+            ...(args.metadata ?? {}),
+            nextAction,
+          },
+          status: "pending",
+          updatedAt: new Date(),
+        })
+        .where(and(eq(paymentTransactions.id, tx.id), eq(paymentTransactions.status, "pending")));
+
+      return {
+        paymentTransactionId: tx.id,
+        reference: va.reference,
+        chargeId: va.id ?? null,
+        status: "pending",
+        nextAction,
+      };
+    }
+
     const customerId = await ensureFlutterwaveCustomer(args.organizationId);
     const redirectBase = args.redirectUrl || `${process.env.FRONTEND_URL || process.env.APP_URL || "http://localhost:3000"}/dashboard/billing`;
     const redirectUrl = `${redirectBase}${redirectBase.includes("?") ? "&" : "?"}payment=${tx.id}`;
@@ -210,7 +335,7 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
         redirect_url: redirectUrl,
         max_retry_attempts: 3,
         session_duration: 30,
-        payment_methods: currency === "USD" ? ["card"] : ["card", "bank_transfer"],
+        payment_methods: ["card"],
         meta: {
           organization_id: args.organizationId,
           payment_transaction_id: tx.id,
@@ -221,11 +346,11 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
     });
 
     const data = session?.data ?? {};
-    const checkoutUrl =
-      data.checkout_url ??
-      data.checkoutUrl ??
-      data.link ??
-      (data.id ? `https://flutterwave.com/pay/${data.id}` : null);
+    const checkoutUrl = data.checkout_url ?? data.checkoutUrl ?? data.link ?? null;
+
+    if (!checkoutUrl) {
+      throw new Error("Card checkout is unavailable. Please choose Bank Transfer (instant virtual account) to complete your payment.");
+    }
 
     await db
       .update(paymentTransactions)
@@ -236,10 +361,6 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
         updatedAt: new Date(),
       })
       .where(and(eq(paymentTransactions.id, tx.id), eq(paymentTransactions.status, "pending")));
-
-    if (!checkoutUrl) {
-      throw new Error("Flutterwave checkout session did not return a checkout URL");
-    }
 
     return {
       paymentTransactionId: tx.id,
@@ -470,12 +591,13 @@ export async function createVirtualAccount(args: {
   accountType?: "static" | "dynamic";
   amountCents?: number;
   narration?: string;
+  reference?: string;
 }): Promise<VirtualAccountResult> {
   if (!isFlutterwaveV4Configured()) throw new Error("Flutterwave is not configured");
 
   const currency = (args.currency ?? "NGN").toUpperCase();
   const customerId = await ensureFlutterwaveCustomer(args.organizationId);
-  const reference = `GS-VA-${randomUUID().slice(0, 12)}`;
+  const reference = args.reference ?? `GS-VA-${randomUUID().replace(/-/g, "").slice(0, 16)}`;
 
   const body: Record<string, unknown> = {
     currency,
@@ -486,8 +608,12 @@ export async function createVirtualAccount(args: {
     meta: { organization_id: args.organizationId },
   };
 
-  // Which bank issues the account (035 = Wema by default).
-  if (process.env.FLW_VA_BANK_CODE) body.account_bank_code = process.env.FLW_VA_BANK_CODE;
+  if (args.accountType === "dynamic") {
+    body.expiry = 1800; // 30 minutes in seconds
+  } else if (process.env.FLW_VA_BANK_CODE) {
+    body.account_bank_code = process.env.FLW_VA_BANK_CODE;
+  }
+
   if (args.amountCents) body.amount = toMajorUnits(args.amountCents, currency);
 
   const res = await flwV4Request<{ data: any }>("/virtual-accounts", {

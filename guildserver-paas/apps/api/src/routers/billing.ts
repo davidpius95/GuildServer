@@ -947,7 +947,22 @@ export const billingRouter = createTRPCRouter({
         .where(eq(paymentTransactions.organizationId, input.organizationId))
         .orderBy(desc(paymentTransactions.createdAt))
         .limit(input.limit);
-      return rows.map(p => ({ id: p.id, invoiceId: p.invoiceId, amountCents: p.amountCents, currency: p.currency, status: p.status, createdAt: p.createdAt, flutterwaveTxRef: p.flutterwaveTxRef, checkoutUrl: ["pending", "processing"].includes(p.status || "") && Date.now() - new Date(p.createdAt!).getTime() < 30 * 60_000 ? (p.metadata as any)?.nextAction?.redirect_url?.url ?? null : null }));
+      return rows.map((p) => {
+        const isRecent = Date.now() - new Date(p.createdAt!).getTime() < 30 * 60_000;
+        const nextAction = ["pending", "processing"].includes(p.status || "") && isRecent ? (p.metadata as any)?.nextAction ?? null : null;
+        return {
+          id: p.id,
+          invoiceId: p.invoiceId,
+          amountCents: p.amountCents,
+          currency: p.currency,
+          status: p.status,
+          paymentMethodDetail: p.paymentMethodDetail,
+          createdAt: p.createdAt,
+          flutterwaveTxRef: p.flutterwaveTxRef,
+          checkoutUrl: nextAction?.redirect_url?.url ?? null,
+          nextAction,
+        };
+      });
     }),
 
   /** Verify or synchronize the status of a payment transaction with Flutterwave on demand. */
