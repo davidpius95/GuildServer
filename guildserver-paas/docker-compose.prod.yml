@@ -144,6 +144,8 @@ services:
       FLW_V4_BASE_URL: ${FLW_V4_BASE_URL:-https://f4bexperience.flutterwave.com}
       FLW_VA_BANK_CODE: ${FLW_VA_BANK_CODE:-035}
       FLW_V4_WEBHOOK_SECRET_HASH: ${FLW_V4_WEBHOOK_SECRET_HASH:-}
+      FLW_V4_ENCRIPTION_KEY: ${FLW_V4_ENCRIPTION_KEY:-}
+      FLW_V4_ENCRYPTION_KEY: ${FLW_V4_ENCRYPTION_KEY:-${FLW_V4_ENCRIPTION_KEY:-}}
       # Where the dispatcher forwards events this platform does not own.
       # Internal Docker network — never via the public edge.
       GUILDPAY_WEBHOOK_URL: ${GUILDPAY_WEBHOOK_URL:-http://guildpay-api:3001/webhooks/flutterwave-v4}

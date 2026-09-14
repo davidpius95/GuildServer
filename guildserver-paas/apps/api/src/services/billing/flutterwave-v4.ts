@@ -389,7 +389,7 @@ export async function createFlutterwaveCheckoutSession(args: CreateChargeArgs): 
         );
       }
 
-      const encryptionKey = process.env.FLW_V4_ENCRIPTION_KEY;
+      const encryptionKey = process.env.FLW_V4_ENCRIPTION_KEY || process.env.FLW_V4_ENCRYPTION_KEY;
       if (!encryptionKey) {
         throw new Error(
           "Card processing is temporarily unavailable (encryption key not configured). Please choose Bank Transfer (instant virtual account)."
